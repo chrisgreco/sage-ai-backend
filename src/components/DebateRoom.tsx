@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Play, Pause, Users, Clock, Settings } from 'lucide-react';
 import SageLogo from './SageLogo';
 import ParticipantSlot from './ParticipantSlot';
+import UserMenu from './UserMenu';
 
 const DebateRoom: React.FC = () => {
   const [debateStarted, setDebateStarted] = useState(false);
@@ -91,6 +92,7 @@ const DebateRoom: React.FC = () => {
                 <h1 className="text-2xl font-bold text-content-primary">Debate Room</h1>
                 <p className="text-content-secondary">AI-Moderated Discussion Platform</p>
               </div>
+              <UserMenu />
               <button className="glass-button hover-lift">
                 <Settings className="w-5 h-5" />
               </button>

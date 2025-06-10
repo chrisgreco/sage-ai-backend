@@ -1,76 +1,60 @@
-
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* SAGE Design System - Liquid Glass Aesthetic */
-
 @layer base {
   :root {
-    /* Liquid Glass Color Palette */
-    --glass-primary: 220 14% 96%;
-    --glass-secondary: 220 14% 93%;
-    --glass-accent: 214 32% 91%;
-    --glass-surface: 220 14% 98%;
-    --glass-border: 220 13% 89%;
-    
-    /* Content Colors */
-    --content-primary: 220 9% 9%;
-    --content-secondary: 220 9% 46%;
-    --content-muted: 220 9% 65%;
-    --content-inverse: 0 0% 100%;
-    
-    /* Semantic Colors */
-    --success: 142 76% 36%;
-    --warning: 38 92% 50%;
-    --error: 0 84% 60%;
-    --info: 217 91% 60%;
-    
-    /* Glass Effect Variables */
-    --glass-blur: 20px;
-    --glass-opacity: 0.85;
-    --glass-border-opacity: 0.2;
-    
-    /* Animation Variables */
-    --transition-fast: 0.15s ease-out;
-    --transition-normal: 0.3s ease-out;
-    --transition-slow: 0.5s ease-out;
-    
-    /* Legacy shadcn variables for compatibility */
-    --background: var(--glass-surface);
-    --foreground: var(--content-primary);
-    --card: var(--glass-primary);
-    --card-foreground: var(--content-primary);
-    --popover: var(--glass-primary);
-    --popover-foreground: var(--content-primary);
-    --primary: var(--content-primary);
-    --primary-foreground: var(--content-inverse);
-    --secondary: var(--glass-secondary);
-    --secondary-foreground: var(--content-primary);
-    --muted: var(--glass-accent);
-    --muted-foreground: var(--content-muted);
-    --accent: var(--glass-accent);
-    --accent-foreground: var(--content-primary);
-    --destructive: var(--error);
-    --destructive-foreground: var(--content-inverse);
-    --border: var(--glass-border);
-    --input: var(--glass-border);
-    --ring: var(--content-primary);
-    --radius: 0.75rem;
+    --background: 0 0% 100%;
+    --foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 47.4% 11.2%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 47.4% 11.2%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 222.2 84% 4.9%;
+    --radius: 0.5rem;
+    --primary: 222.2 47.4% 11.2%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 47.4% 11.2%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 47.4% 11.2%;
   }
 
   .dark {
-    /* Dark mode glass colors */
-    --glass-primary: 220 14% 8%;
-    --glass-secondary: 220 14% 11%;
-    --glass-accent: 220 14% 14%;
-    --glass-surface: 220 14% 4%;
-    --glass-border: 220 14% 18%;
-    
-    --content-primary: 220 14% 96%;
-    --content-secondary: 220 9% 65%;
-    --content-muted: 220 9% 46%;
-    --content-inverse: 220 14% 4%;
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --muted: 212.5 26.8% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 212.7 26.8% 83.9%;
+    --primary: 210 40% 98%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 212.5 26.8% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --accent: 212.5 26.8% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
   }
 }
 
@@ -80,150 +64,91 @@
   }
 
   body {
-    @apply bg-background text-foreground font-sans;
-    background: linear-gradient(135deg, 
-      hsl(var(--glass-surface)) 0%, 
-      hsl(var(--glass-primary)) 100%);
-    min-height: 100vh;
-  }
-}
-
-@layer components {
-  /* Liquid Glass Components */
-  .glass-panel {
-    @apply relative backdrop-blur-xl bg-white/80 border border-white/20 rounded-xl;
-    background: linear-gradient(135deg, 
-      hsl(var(--glass-primary) / var(--glass-opacity)) 0%, 
-      hsl(var(--glass-secondary) / var(--glass-opacity)) 100%);
-    border: 1px solid hsl(var(--glass-border) / var(--glass-border-opacity));
-    box-shadow: 
-      0 8px 32px rgba(0, 0, 0, 0.1),
-      inset 0 1px 0 rgba(255, 255, 255, 0.2);
-  }
-  
-  .glass-panel-elevated {
-    @apply glass-panel;
-    box-shadow: 
-      0 20px 40px rgba(0, 0, 0, 0.15),
-      0 8px 16px rgba(0, 0, 0, 0.1),
-      inset 0 1px 0 rgba(255, 255, 255, 0.3);
-  }
-  
-  .glass-button {
-    @apply glass-panel px-6 py-3 font-medium text-sm transition-all duration-200;
-    @apply hover:scale-105 hover:shadow-lg active:scale-95;
-  }
-  
-  .glass-input {
-    @apply glass-panel px-4 py-3 bg-white/60 backdrop-blur-md;
-    @apply focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-transparent;
-  }
-  
-  /* Participant Slots */
-  .participant-slot {
-    @apply glass-panel p-6 transition-all duration-300;
-    @apply hover:glass-panel-elevated hover:scale-102;
-  }
-  
-  .participant-slot.active {
-    @apply ring-2 ring-blue-500/50 bg-blue-50/60;
-    box-shadow: 
-      0 0 20px rgba(59, 130, 246, 0.3),
-      0 8px 32px rgba(0, 0, 0, 0.1),
-      inset 0 1px 0 rgba(255, 255, 255, 0.2);
-  }
-  
-  .participant-slot.speaking {
-    @apply ring-2 ring-green-500/50 bg-green-50/60;
-    animation: pulse-glow 2s ease-in-out infinite;
-  }
-  
-  /* Agent Slots */
-  .agent-slot {
-    @apply glass-panel p-4 border-2 border-purple-200/50 bg-purple-50/40;
-  }
-  
-  .agent-slot.active {
-    @apply ring-2 ring-purple-500/50;
-    animation: agent-pulse 1.5s ease-in-out infinite;
-  }
-  
-  /* Micro-interactions */
-  .hover-lift {
-    @apply transition-transform duration-200 hover:scale-105 hover:-translate-y-1;
-  }
-  
-  .fade-in-up {
-    animation: fadeInUp 0.6s ease-out forwards;
-  }
-  
-  .scale-in {
-    animation: scaleIn 0.4s ease-out forwards;
+    @apply bg-background text-foreground;
   }
 }
 
 @layer utilities {
   .text-gradient {
-    background: linear-gradient(135deg, 
-      hsl(var(--content-primary)) 0%, 
-      hsl(var(--content-secondary)) 100%);
+    background: linear-gradient(to right, #667eea, #764ba2);
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
-    background-clip: text;
+  }
+
+  .hover-lift {
+    @apply transition-transform duration-200 hover:scale-105;
+  }
+
+  .fade-in-up {
+    animation: fadeInUp 0.5s ease-out forwards;
+  }
+
+  .scale-in {
+    animation: scaleIn 0.3s ease-out forwards;
+  }
+
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes scaleIn {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+}
+
+@layer components {
+  /* Glass effect components */
+  .glass-panel {
+    @apply bg-white/70 backdrop-blur-md border border-white/20 rounded-2xl shadow-lg;
   }
   
-  .backdrop-glass {
-    backdrop-filter: blur(var(--glass-blur)) saturate(1.8);
+  .glass-panel-elevated {
+    @apply bg-white/80 backdrop-blur-lg border border-white/30 rounded-2xl shadow-xl;
   }
-}
+  
+  .glass-button {
+    @apply bg-white/60 backdrop-blur-sm border border-white/30 rounded-xl px-4 py-2 
+           transition-all duration-200 hover:bg-white/80 hover:border-white/40 
+           hover:shadow-md active:scale-95;
+  }
 
-/* Animations */
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
+  .glass-input {
+    @apply bg-white/50 backdrop-blur-sm border border-white/30 rounded-lg
+           focus:bg-white/70 focus:border-white/50 transition-all duration-200;
   }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+  
+  /* Debate Room Specific Styles */
+  .participant-slot {
+    @apply p-4 rounded-xl bg-white/70 backdrop-blur-md border border-white/20 shadow-sm transition-all duration-200;
   }
-}
 
-@keyframes scaleIn {
-  from {
-    opacity: 0;
-    transform: scale(0.9);
+  .participant-slot.active {
+    @apply border-blue-300 shadow-md;
   }
-  to {
-    opacity: 1;
-    transform: scale(1);
-  }
-}
 
-@keyframes pulse-glow {
-  0%, 100% {
-    box-shadow: 
-      0 0 20px rgba(34, 197, 94, 0.3),
-      0 8px 32px rgba(0, 0, 0, 0.1),
-      inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  .participant-slot.speaking {
+    @apply border-green-300 shadow-md;
   }
-  50% {
-    box-shadow: 
-      0 0 30px rgba(34, 197, 94, 0.5),
-      0 12px 40px rgba(0, 0, 0, 0.15),
-      inset 0 1px 0 rgba(255, 255, 255, 0.3);
-  }
-}
 
-@keyframes agent-pulse {
-  0%, 100% {
-    box-shadow: 
-      0 0 15px rgba(168, 85, 247, 0.3),
-      0 8px 32px rgba(0, 0, 0, 0.1);
+  .agent-slot {
+    @apply p-4 rounded-xl bg-white/70 backdrop-blur-md border border-white/20 shadow-sm transition-all duration-200;
   }
-  50% {
-    box-shadow: 
-      0 0 25px rgba(168, 85, 247, 0.5),
-      0 12px 40px rgba(0, 0, 0, 0.15);
+
+  .agent-slot.active {
+    @apply border-purple-300 shadow-md;
   }
 }
