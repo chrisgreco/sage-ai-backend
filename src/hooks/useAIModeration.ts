@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import type { UseAIModerationProps, UseAIModerationReturn, TranscriptEntry } from '@/types/aiModeration';
 import { useAIWebSocket } from './useAIWebSocket';
 import { determineActiveAgent, encodeAudioForAI } from '@/utils/aiModerationUtils';
@@ -10,6 +10,19 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
   const [activeAgent, setActiveAgent] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
+  
+  // Use refs to avoid dependency changes
+  const agentsRef = useRef(agents);
+  const isConnectedRef = useRef(isConnected);
+  
+  // Update refs when props change
+  useEffect(() => {
+    agentsRef.current = agents;
+  }, [agents]);
+  
+  useEffect(() => {
+    isConnectedRef.current = isConnected;
+  }, [isConnected]);
 
   const handleConnectionChange = useCallback((connected: boolean, connecting: boolean) => {
     setAiConnected(connected);
@@ -17,10 +30,12 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
   }, []);
 
   const handleAIMessage = useCallback((message: any) => {
+    console.log('AI message received:', message.type, message);
+    
     switch (message.type) {
       case 'response.audio_transcript.delta':
         if (message.delta) {
-          const agentName = determineActiveAgent(agents, message);
+          const agentName = determineActiveAgent(agentsRef.current, message);
           setActiveAgent(agentName);
           
           setTranscript(prev => {
@@ -70,20 +85,23 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
       default:
         console.log('Unhandled AI message type:', message.type);
     }
-  }, [agents]);
+  }, []);
 
+  // Always call useAIWebSocket with stable dependencies
   const { connect, disconnect, sendMessage, isSessionConfigured } = useAIWebSocket({
     onMessage: handleAIMessage,
     onConnectionChange: handleConnectionChange,
     onError: setError,
-    agents
+    agents: [] // Use empty array to avoid dependency changes
   });
 
   // Connect to AI moderation when WebRTC is connected
   useEffect(() => {
-    if (isConnected && !aiConnected && !aiConnecting) {
+    if (isConnectedRef.current && !aiConnected && !aiConnecting) {
+      console.log('WebRTC connected, connecting to AI...');
       connect();
-    } else if (!isConnected && (aiConnected || aiConnecting)) {
+    } else if (!isConnectedRef.current && (aiConnected || aiConnecting)) {
+      console.log('WebRTC disconnected, disconnecting from AI...');
       disconnect();
     }
   }, [isConnected, aiConnected, aiConnecting, connect, disconnect]);
@@ -100,6 +118,7 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
         type: 'input_audio_buffer.append',
         audio: base64Audio
       };
+      console.log('Sending audio data to AI, length:', audioData.length);
       sendMessage(audioMessage);
     } catch (err) {
       console.error('Error sending audio to AI:', err);

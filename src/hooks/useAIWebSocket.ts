@@ -10,7 +10,7 @@ interface UseAIWebSocketProps {
   agents: AIAgent[];
 }
 
-export const useAIWebSocket = ({ onMessage, onConnectionChange, onError, agents }: UseAIWebSocketProps) => {
+export const useAIWebSocket = ({ onMessage, onConnectionChange, onError }: UseAIWebSocketProps) => {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const sessionConfiguredRef = useRef(false);
@@ -21,8 +21,19 @@ export const useAIWebSocket = ({ onMessage, onConnectionChange, onError, agents 
       return;
     }
 
-    const activeAgents = agents.filter(agent => agent.active);
-    const instructions = generateModerationInstructions(activeAgents);
+    // Use a default instruction set since we removed the agents dependency
+    const instructions = `You are part of a multi-agent AI moderation system for live voice debates. 
+
+Your role depends on your assigned persona. Only speak when your specific moderation criteria are met:
+- Socrates: Ask clarifying questions when assumptions are made
+- Solon: Enforce rules when violations occur (interruptions, personal attacks)
+- Buddha: Intervene when tone becomes aggressive or hostile
+- Hermes: Summarize key points during natural breaks
+- Aristotle: Request sources for factual claims
+
+Keep interventions brief (1-2 sentences), polite, and focused on your specific role. Only one agent should speak at a time.
+
+The user is in a live debate. Listen carefully and only interject when necessary according to your role.`;
 
     const sessionUpdate = {
       type: 'session.update',
@@ -46,9 +57,9 @@ export const useAIWebSocket = ({ onMessage, onConnectionChange, onError, agents 
       }
     };
 
-    console.log('Configuring AI session:', sessionUpdate);
+    console.log('Configuring AI session with instructions');
     wsRef.current.send(JSON.stringify(sessionUpdate));
-  }, [agents]);
+  }, []);
 
   const connect = useCallback(() => {
     try {
@@ -71,7 +82,7 @@ export const useAIWebSocket = ({ onMessage, onConnectionChange, onError, agents 
       ws.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
-          console.log('AI message received:', message.type, message);
+          console.log('AI message received:', message.type);
           
           if (message.type === 'session.created' && !sessionConfiguredRef.current) {
             console.log('AI session created, configuring...');
