@@ -20,47 +20,47 @@ const DebateStoryCircle: React.FC<DebateStoryCircleProps> = ({ room }) => {
   return (
     <div className="flex-shrink-0 cursor-pointer group">
       <div className="relative">
-        {/* Story Circle with Instagram-style gradient border */}
-        <div className={`relative w-20 h-20 rounded-full bg-gradient-to-br ${room.gradient} p-0.5 ${room.isLive ? 'animate-pulse-glow' : ''}`}>
-          <div className="w-full h-full rounded-full bg-white/95 backdrop-blur-sm flex items-center justify-center border-2 border-white">
+        {/* Enhanced Story Circle with deeper glass effect */}
+        <div className={`relative w-20 h-20 rounded-full bg-gradient-to-br ${room.gradient} p-1 shadow-2xl ${room.isLive ? 'animate-pulse-glow shadow-green-400/30' : 'shadow-black/10'} story-circle`}>
+          <div className="w-full h-full rounded-full bg-white/95 backdrop-blur-lg flex items-center justify-center border-2 border-white/60 group-hover:scale-105 transition-all duration-300 shadow-inner">
             <div className="text-center">
-              <div className="text-xs font-bold text-slate-800 leading-tight">
+              <div className="text-xs font-bold text-slate-800 leading-tight tracking-wide">
                 {room.title.split(' ').map(word => word.slice(0, 2)).join('')}
               </div>
             </div>
           </div>
           
-          {/* Live indicator */}
+          {/* Enhanced Live indicator with better glass effect */}
           {room.isLive && (
-            <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-green-500 rounded-full border-2 border-white flex items-center justify-center shadow-sm">
-              <div className="w-2 h-2 bg-white rounded-full"></div>
+            <div className="absolute -bottom-1 -right-1 w-7 h-7 bg-gradient-to-br from-green-400 to-emerald-500 rounded-full border-3 border-white flex items-center justify-center shadow-lg shadow-green-500/30">
+              <div className="w-2.5 h-2.5 bg-white rounded-full animate-pulse"></div>
             </div>
           )}
         </div>
 
-        {/* Enhanced tooltip on hover */}
-        <div className="absolute top-24 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-20">
-          <div className="bg-slate-900 text-white text-xs rounded-lg px-3 py-2 whitespace-nowrap shadow-lg min-w-max">
-            <div className="font-semibold">{room.topic}</div>
-            <div className="flex items-center mt-1 text-slate-300">
-              <Users className="w-3 h-3 mr-1" />
+        {/* Enhanced tooltip with better glass morphism */}
+        <div className="absolute top-24 left-1/2 transform -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-all duration-300 z-20 group-hover:translate-y-1">
+          <div className="glass-panel-elevated px-4 py-3 whitespace-nowrap shadow-2xl shadow-black/15 min-w-max">
+            <div className="font-semibold text-slate-800 text-sm">{room.topic}</div>
+            <div className="flex items-center mt-2 text-xs text-slate-600">
+              <Users className="w-3 h-3 mr-1.5" />
               <span>{room.participants} joined</span>
               {room.isLive && (
                 <>
-                  <div className="w-1 h-1 bg-green-400 rounded-full mx-2"></div>
-                  <span className="text-green-400">Live</span>
+                  <div className="w-1 h-1 bg-green-500 rounded-full mx-2 animate-pulse"></div>
+                  <span className="text-green-600 font-medium">Live</span>
                 </>
               )}
             </div>
-            {/* Arrow */}
-            <div className="absolute -top-1 left-1/2 transform -translate-x-1/2 w-2 h-2 bg-slate-900 rotate-45"></div>
+            {/* Enhanced arrow with glass effect */}
+            <div className="absolute -top-2 left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-b-4 border-transparent border-b-white/80"></div>
           </div>
         </div>
       </div>
 
-      {/* Title below */}
-      <div className="mt-2 text-center">
-        <div className="text-xs font-medium text-slate-700 truncate w-20">
+      {/* Enhanced title with better typography */}
+      <div className="mt-3 text-center">
+        <div className="text-sm font-semibold text-slate-700 truncate w-20">
           {room.title}
         </div>
       </div>
