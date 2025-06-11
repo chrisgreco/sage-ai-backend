@@ -24,24 +24,23 @@ const ParticipantSlot: React.FC<ParticipantSlotProps> = ({
   onToggleAudio
 }) => {
   const getSlotClasses = () => {
-    let baseClasses = 'participant-slot w-full';
+    let baseClasses = 'glass-panel p-3 w-full';
     
     if (type === 'agent') {
-      baseClasses = 'agent-slot w-full';
-      if (isActive) baseClasses += ' active';
+      if (isActive) baseClasses += ' ring-2 ring-liquid-400';
     } else {
-      if (isActive) baseClasses += ' active';
-      if (isSpeaking) baseClasses += ' speaking';
+      if (isActive) baseClasses += ' ring-2 ring-blue-400';
+      if (isSpeaking) baseClasses += ' ring-2 ring-green-400';
     }
     
     return baseClasses;
   };
 
   const getStatusColor = () => {
-    if (type === 'agent') return isActive ? 'text-purple-600' : 'text-purple-400';
+    if (type === 'agent') return isActive ? 'text-liquid-700' : 'text-content-muted';
     if (isSpeaking) return 'text-green-600';
     if (isActive) return 'text-blue-600';
-    return 'text-gray-400';
+    return 'text-content-muted';
   };
 
   const getTypeLabel = () => {
@@ -64,11 +63,11 @@ const ParticipantSlot: React.FC<ParticipantSlotProps> = ({
           {/* Avatar/Icon */}
           <div className={`w-12 h-12 rounded-full glass-panel flex items-center justify-center ${getStatusColor()}`}>
             {type === 'agent' ? (
-              <div className="w-6 h-6 bg-gradient-to-br from-purple-500 to-blue-600 rounded-full flex items-center justify-center">
+              <div className="w-6 h-6 bg-gradient-to-br from-liquid-500 to-liquid-600 rounded-full flex items-center justify-center">
                 <span className="text-white text-xs font-bold">AI</span>
               </div>
             ) : (
-              <div className={`w-6 h-6 rounded-full ${isConnected ? 'bg-green-500' : 'bg-gray-300'}`} />
+              <div className={`w-6 h-6 rounded-full ${isConnected ? 'bg-green-500' : 'bg-content-muted'}`} />
             )}
           </div>
           
@@ -112,7 +111,7 @@ const ParticipantSlot: React.FC<ParticipantSlotProps> = ({
               className={`p-2 rounded-lg transition-all duration-200 hover:scale-105 ${
                 isActive 
                   ? 'glass-button bg-blue-100 text-blue-600 hover:bg-blue-200' 
-                  : 'glass-button bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  : 'glass-button bg-content-muted/20 text-content-muted hover:bg-content-muted/30'
               }`}
             >
               {isActive ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}

@@ -98,9 +98,9 @@ const AIModerationPanel: React.FC<AIModerationPanelProps> = ({
     <TooltipProvider>
       <div className="space-y-4">
         {/* AI Status */}
-        <div className="glass-panel p-4">
+        <div>
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-lg font-semibold text-content-primary">
+            <h3 className="text-sm font-semibold text-content-primary">
               AI Moderation
             </h3>
             <div className={`flex items-center space-x-2 text-sm ${
@@ -131,7 +131,7 @@ const AIModerationPanel: React.FC<AIModerationPanelProps> = ({
           )}
 
           {activeAgent && (
-            <div className="text-sm text-blue-600 mb-3 p-2 bg-blue-50 rounded">
+            <div className="text-sm text-liquid-700 mb-3 p-2 glass-panel">
               {activeAgent} is moderating...
             </div>
           )}
@@ -143,7 +143,7 @@ const AIModerationPanel: React.FC<AIModerationPanelProps> = ({
           )}
           
           {/* Debug info */}
-          <div className="text-xs text-content-muted mt-2 p-2 bg-gray-50 rounded">
+          <div className="text-xs text-content-muted mt-2 p-2 glass-panel">
             WebRTC: {isWebRTCConnected ? 'Connected' : 'Disconnected'} | 
             AI: {aiConnected ? 'Connected' : aiConnecting ? 'Connecting' : 'Offline'} | 
             Transcript entries: {transcript.length}
@@ -151,13 +151,13 @@ const AIModerationPanel: React.FC<AIModerationPanelProps> = ({
         </div>
 
         {/* AI Moderators */}
-        <div className="glass-panel p-4">
-          <h3 className="text-lg font-semibold text-content-primary mb-3">
+        <div>
+          <h3 className="text-sm font-semibold text-content-primary mb-3">
             AI Moderators
           </h3>
           <div className="space-y-3">
             {agents.map((agent) => (
-              <div key={agent.name} className="agent-slot">
+              <div key={agent.name} className="glass-panel p-3">
                 <div className="flex items-center justify-between mb-1">
                   <div>
                     <p className="text-sm font-medium text-content-primary">
@@ -172,7 +172,7 @@ const AIModerationPanel: React.FC<AIModerationPanelProps> = ({
                         className={`p-1 rounded transition-colors ${
                           agent.active 
                             ? 'text-green-600 hover:bg-green-50' 
-                            : 'text-gray-400 hover:bg-gray-50'
+                            : 'text-content-muted hover:bg-content-muted/10'
                         }`}
                       >
                         {agent.active ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
@@ -192,11 +192,11 @@ const AIModerationPanel: React.FC<AIModerationPanelProps> = ({
         </div>
 
         {/* Live Transcript */}
-        <div className="glass-panel p-4">
-          <h3 className="text-lg font-semibold text-content-primary mb-3">
+        <div>
+          <h3 className="text-sm font-semibold text-content-primary mb-3">
             Live Transcript
           </h3>
-          <div className="space-y-2 max-h-60 overflow-y-auto">
+          <div className="glass-panel p-3 space-y-2 max-h-60 overflow-y-auto">
             {transcript.length === 0 ? (
               <p className="text-sm text-content-muted italic">
                 {isWebRTCConnected && aiConnected 
@@ -209,7 +209,7 @@ const AIModerationPanel: React.FC<AIModerationPanelProps> = ({
                 <div key={index} className="text-sm">
                   <span className={`font-medium ${
                     entry.speaker.includes('AI') || agents.some(a => a.name === entry.speaker)
-                      ? 'text-blue-600' 
+                      ? 'text-liquid-700' 
                       : 'text-content-primary'
                   }`}>
                     {entry.speaker}:
