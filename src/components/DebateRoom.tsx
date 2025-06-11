@@ -91,11 +91,7 @@ const DebateRoom: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
           {/* Main Audio Room */}
           <div className="lg:col-span-3">
-            <div className="glass-panel p-4" style={{
-              background: 'linear-gradient(135deg, rgba(203, 213, 225, 0.08) 0%, rgba(255, 255, 255, 0.85) 30%, rgba(148, 163, 184, 0.06) 100%)',
-              backdropFilter: 'blur(35px) saturate(2.2)',
-              border: '1px solid rgba(255, 255, 255, 0.6)',
-            }}>
+            <div className="glass-panel p-4">
               <WebRTCAudioRoom 
                 roomId={id || 'demo'} 
                 onLeave={handleLeaveRoom}
@@ -107,11 +103,7 @@ const DebateRoom: React.FC = () => {
 
           {/* AI Moderation Sidebar */}
           <div className="space-y-4">
-            <div className="glass-panel p-4" style={{
-              background: 'linear-gradient(135deg, rgba(203, 213, 225, 0.08) 0%, rgba(255, 255, 255, 0.85) 30%, rgba(148, 163, 184, 0.06) 100%)',
-              backdropFilter: 'blur(35px) saturate(2.2)',
-              border: '1px solid rgba(255, 255, 255, 0.6)',
-            }}>
+            <div className="glass-panel p-4">
               <AIModerationPanel 
                 roomId={id || 'demo'} 
                 isWebRTCConnected={isWebRTCConnected}
@@ -120,11 +112,7 @@ const DebateRoom: React.FC = () => {
             </div>
 
             {/* Debate Rules Panel */}
-            <div className="glass-panel p-4" style={{
-              background: 'linear-gradient(135deg, rgba(203, 213, 225, 0.08) 0%, rgba(255, 255, 255, 0.85) 30%, rgba(148, 163, 184, 0.06) 100%)',
-              backdropFilter: 'blur(35px) saturate(2.2)',
-              border: '1px solid rgba(255, 255, 255, 0.6)',
-            }}>
+            <div className="glass-panel p-4">
               <h3 className="text-sm font-semibold text-content-primary mb-3">
                 Debate Rules
               </h3>
