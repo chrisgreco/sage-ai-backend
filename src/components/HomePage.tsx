@@ -96,14 +96,41 @@ const HomePage: React.FC = () => {
       {/* Main Content Container */}
       <div className="max-w-md mx-auto md:max-w-4xl px-4">
         
-        {/* Enhanced Stories Section */}
+        {/* Enhanced Stories Section with flowing aesthetic */}
         <div className="mb-8">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-xl font-semibold text-content-primary">Live Debates</h2>
-            <div className="glass-panel px-3 py-1.5 liquid-morph">
-              <div className="flex items-center space-x-2 text-sm text-content-secondary">
-                <div className="w-2 h-2 bg-gradient-to-r from-green-400 to-emerald-500 animate-pulse shadow-lg shadow-green-400/30 organic-pulse"></div>
-                <span className="font-medium">{featuredRooms.filter(room => room.isLive).length} live</span>
+          {/* Flowing header container */}
+          <div className="relative mb-6">
+            <div className="glass-panel p-6 liquid-morph" style={{
+              background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(255, 255, 255, 0.85) 30%, rgba(147, 51, 234, 0.06) 100%)',
+              backdropFilter: 'blur(20px) saturate(1.8)',
+              border: '1px solid rgba(255, 255, 255, 0.6)',
+            }}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-4">
+                  <div className="relative">
+                    <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 shadow-lg shadow-blue-500/25 icon-container">
+                      <div className="w-full h-full backdrop-blur-sm flex items-center justify-center border-2 border-white/60 icon-container"
+                           style={{ 
+                             background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.7) 100%)',
+                           }}>
+                        <div className="w-3 h-3 bg-gradient-to-r from-green-400 to-emerald-500 animate-pulse shadow-lg shadow-green-400/30 organic-pulse"></div>
+                      </div>
+                    </div>
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-content-primary">Live Debates</h2>
+                    <p className="text-sm text-content-secondary font-medium">Real-time AI moderated discussions</p>
+                  </div>
+                </div>
+                <div className="glass-panel px-4 py-2 liquid-morph" style={{
+                  background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.12) 0%, rgba(255, 255, 255, 0.8) 100%)',
+                  border: '1px solid rgba(34, 197, 94, 0.3)',
+                }}>
+                  <div className="flex items-center space-x-2 text-sm">
+                    <div className="w-2 h-2 bg-gradient-to-r from-green-400 to-emerald-500 animate-pulse shadow-lg shadow-green-400/30 organic-pulse"></div>
+                    <span className="font-semibold text-green-700">{featuredRooms.filter(room => room.isLive).length} live now</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -112,19 +139,17 @@ const HomePage: React.FC = () => {
             {/* Enhanced Start Debate Story with organic shape */}
             <div className="flex-shrink-0 cursor-pointer group" onClick={handleStartDebate}>
               <div className="relative story-circle">
-                <div className="w-20 h-20 bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-700 p-1 shadow-2xl shadow-blue-500/25 icon-container"
-                     style={{ borderRadius: '50% 45% 55% 50%' }}>
+                <div className="w-20 h-20 bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-700 p-1 shadow-2xl shadow-blue-500/25 icon-container">
                   <div className="w-full h-full backdrop-blur-sm flex items-center justify-center border-2 border-white/50 group-hover:scale-105 transition-all duration-500 icon-container"
                        style={{ 
                          background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 100%)',
-                         borderRadius: '50% 45% 55% 50%'
                        }}>
                     <Play className="w-7 h-7 text-slate-800 group-hover:text-blue-600 transition-colors duration-300" />
                   </div>
                 </div>
               </div>
               <div className="mt-3 text-center">
-                <div className="text-sm font-semibold text-slate-700 truncate w-20">
+                <div className="text-sm font-semibold text-content-primary truncate w-20">
                   Start
                 </div>
               </div>
