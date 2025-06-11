@@ -13,7 +13,7 @@ const DebateRoom: React.FC = () => {
   const [isWebRTCConnected, setIsWebRTCConnected] = useState(false);
   
   // Create a ref to store the AI moderation callback
-  const aiModerationRef = useRef<((audioData: Float32Array) => void) | null>(null);
+  const aiModerationCallbackRef = useRef<((audioData: Float32Array) => void) | null>(null);
 
   const handleLeaveRoom = () => {
     navigate('/');
@@ -21,9 +21,13 @@ const DebateRoom: React.FC = () => {
 
   const handleAudioData = (audioData: Float32Array) => {
     // Forward audio data to AI moderation if available
-    if (aiModerationRef.current) {
-      aiModerationRef.current(audioData);
+    if (aiModerationCallbackRef.current) {
+      aiModerationCallbackRef.current(audioData);
     }
+  };
+
+  const handleAIModerationReady = (callback: (audioData: Float32Array) => void) => {
+    aiModerationCallbackRef.current = callback;
   };
 
   return (
@@ -76,9 +80,7 @@ const DebateRoom: React.FC = () => {
             <AIModerationPanel 
               roomId={id || 'demo'} 
               isWebRTCConnected={isWebRTCConnected}
-              onAudioData={(callback) => {
-                aiModerationRef.current = callback;
-              }}
+              onAudioData={handleAIModerationReady}
             />
 
             {/* Debate Rules Panel */}

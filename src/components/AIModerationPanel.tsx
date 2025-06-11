@@ -6,7 +6,7 @@ import { useAIModeration } from '@/hooks/useAIModeration';
 interface AIModerationPanelProps {
   roomId: string;
   isWebRTCConnected?: boolean;
-  onAudioData?: (audioData: Float32Array) => void;
+  onAudioData?: (callback: (audioData: Float32Array) => void) => void;
 }
 
 const AIModerationPanel: React.FC<AIModerationPanelProps> = ({ 
@@ -47,7 +47,6 @@ const AIModerationPanel: React.FC<AIModerationPanelProps> = ({
     }
   ]);
 
-  // Always call useAIModeration hook - never conditionally
   const {
     aiConnected,
     aiConnecting,
@@ -61,10 +60,10 @@ const AIModerationPanel: React.FC<AIModerationPanelProps> = ({
     agents
   });
 
-  // Set up the audio callback when AI connection is ready
+  // Set up the audio callback when AI connection is ready and callback is provided
   React.useEffect(() => {
-    if (onAudioData && aiConnected) {
-      // This will be called from the parent component when audio data is available
+    if (onAudioData && aiConnected && sendAudioToAI) {
+      onAudioData(sendAudioToAI);
     }
   }, [onAudioData, aiConnected, sendAudioToAI]);
 
