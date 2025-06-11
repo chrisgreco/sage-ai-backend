@@ -1,8 +1,9 @@
 
 import React, { useEffect } from 'react';
-import { Mic, MicOff, PhoneOff, Users } from 'lucide-react';
+import { Mic, MicOff, PhoneOff, Users, Brain } from 'lucide-react';
 import { useWebRTCRoom } from '@/hooks/useWebRTCRoom';
 import { useAuth } from '@/hooks/useAuth';
+import { useAIModeration } from '@/hooks/useAIModeration';
 
 interface WebRTCAudioRoomProps {
   roomId: string;
@@ -11,6 +12,46 @@ interface WebRTCAudioRoomProps {
 
 const WebRTCAudioRoom: React.FC<WebRTCAudioRoomProps> = ({ roomId, onLeave }) => {
   const { user } = useAuth();
+  
+  // Default AI agents configuration
+  const defaultAgents = [
+    { 
+      name: 'Socrates', 
+      role: 'Clarifier', 
+      active: true,
+      persona: 'Ask clarifying questions when assumptions are made'
+    },
+    { 
+      name: 'Solon', 
+      role: 'Rule Enforcer', 
+      active: true,
+      persona: 'Enforce debate rules and fair turn-taking'
+    },
+    { 
+      name: 'Buddha', 
+      role: 'Peacekeeper', 
+      active: true,
+      persona: 'Monitor tone and diffuse conflict'
+    },
+    { 
+      name: 'Hermes', 
+      role: 'Summarizer', 
+      active: false,
+      persona: 'Provide summaries and transitions'
+    },
+    { 
+      name: 'Aristotle', 
+      role: 'Fact-Checker', 
+      active: true,
+      persona: 'Request sources for factual claims'
+    }
+  ];
+
+  const { sendAudioToAI, aiConnected, aiConnecting } = useAIModeration({
+    roomId,
+    isConnected: false, // Will be updated when WebRTC connects
+    agents: defaultAgents
+  });
   
   const {
     isConnected,
@@ -23,7 +64,8 @@ const WebRTCAudioRoom: React.FC<WebRTCAudioRoomProps> = ({ roomId, onLeave }) =>
     toggleMicrophone
   } = useWebRTCRoom({
     roomName: roomId,
-    participantName: user?.email || 'Anonymous'
+    participantName: user?.email || 'Anonymous',
+    onAudioData: sendAudioToAI // Pass audio to AI moderation
   });
 
   // Only attempt connection once when component mounts
@@ -63,9 +105,20 @@ const WebRTCAudioRoom: React.FC<WebRTCAudioRoomProps> = ({ roomId, onLeave }) =>
             {isConnected ? `Connected to ${roomId}` : 'Disconnected'}
           </p>
         </div>
-        <div className="flex items-center space-x-2 text-sm text-content-muted">
-          <Users className="w-4 h-4" />
-          <span>{participants.length + (isConnected ? 1 : 0)} participants</span>
+        <div className="flex items-center space-x-4">
+          {/* AI Status Indicator */}
+          <div className={`flex items-center space-x-1 text-xs ${
+            aiConnected ? 'text-green-600' : aiConnecting ? 'text-yellow-600' : 'text-gray-400'
+          }`}>
+            <Brain className="w-4 h-4" />
+            <span>AI</span>
+          </div>
+          
+          {/* Participant Count */}
+          <div className="flex items-center space-x-2 text-sm text-content-muted">
+            <Users className="w-4 h-4" />
+            <span>{participants.length + (isConnected ? 1 : 0)} participants</span>
+          </div>
         </div>
       </div>
 

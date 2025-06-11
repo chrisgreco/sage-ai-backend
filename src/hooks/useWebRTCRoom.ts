@@ -17,9 +17,10 @@ interface UseWebRTCRoomProps {
   roomName: string;
   participantName: string;
   serverUrl?: string;
+  onAudioData?: (audioData: Float32Array) => void;
 }
 
-export const useWebRTCRoom = ({ roomName, participantName }: UseWebRTCRoomProps) => {
+export const useWebRTCRoom = ({ roomName, participantName, onAudioData }: UseWebRTCRoomProps) => {
   const [room] = useState(() => new Room());
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -28,6 +29,8 @@ export const useWebRTCRoom = ({ roomName, participantName }: UseWebRTCRoomProps)
   const [localAudioTrack, setLocalAudioTrack] = useState<LocalTrack | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hasAttemptedConnection, setHasAttemptedConnection] = useState(false);
+  const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
+  const [processor, setProcessor] = useState<ScriptProcessorNode | null>(null);
 
   // Update participants when room state changes
   useEffect(() => {
@@ -70,6 +73,33 @@ export const useWebRTCRoom = ({ roomName, participantName }: UseWebRTCRoomProps)
       room.removeAllListeners();
     };
   }, [room]);
+
+  const setupAudioCapture = useCallback(async (track: LocalTrack) => {
+    if (!onAudioData) return;
+
+    try {
+      // Create audio context for capturing microphone data
+      const ctx = new AudioContext({ sampleRate: 24000 });
+      const stream = new MediaStream([track.mediaStreamTrack]);
+      const source = ctx.createMediaStreamSource(stream);
+      const proc = ctx.createScriptProcessor(4096, 1, 1);
+
+      proc.onaudioprocess = (event) => {
+        const inputData = event.inputBuffer.getChannelData(0);
+        onAudioData(new Float32Array(inputData));
+      };
+
+      source.connect(proc);
+      proc.connect(ctx.destination);
+
+      setAudioContext(ctx);
+      setProcessor(proc);
+      
+      console.log('Audio capture setup complete');
+    } catch (err) {
+      console.error('Failed to setup audio capture:', err);
+    }
+  }, [onAudioData]);
 
   const connectToRoom = useCallback(async () => {
     // Prevent multiple connection attempts
@@ -117,6 +147,17 @@ export const useWebRTCRoom = ({ roomName, participantName }: UseWebRTCRoomProps)
 
   const disconnectFromRoom = useCallback(() => {
     console.log('Disconnecting from room...');
+    
+    // Clean up audio capture
+    if (processor) {
+      processor.disconnect();
+      setProcessor(null);
+    }
+    if (audioContext) {
+      audioContext.close();
+      setAudioContext(null);
+    }
+    
     room.disconnect();
     if (localAudioTrack) {
       localAudioTrack.stop();
@@ -124,7 +165,7 @@ export const useWebRTCRoom = ({ roomName, participantName }: UseWebRTCRoomProps)
     }
     setIsMicrophoneEnabled(false);
     setHasAttemptedConnection(false); // Reset for potential reconnection
-  }, [room, localAudioTrack]);
+  }, [room, localAudioTrack, processor, audioContext]);
 
   const toggleMicrophone = useCallback(async () => {
     if (!isConnected) {
@@ -147,13 +188,17 @@ export const useWebRTCRoom = ({ roomName, participantName }: UseWebRTCRoomProps)
         await room.localParticipant.publishTrack(audioTrack);
         setLocalAudioTrack(audioTrack);
         setIsMicrophoneEnabled(true);
+        
+        // Setup audio capture for AI
+        await setupAudioCapture(audioTrack);
+        
         console.log('Microphone enabled');
       }
     } catch (err) {
       console.error('Failed to toggle microphone:', err);
       setError(err instanceof Error ? err.message : 'Failed to toggle microphone');
     }
-  }, [room, isMicrophoneEnabled, localAudioTrack, isConnected]);
+  }, [room, isMicrophoneEnabled, localAudioTrack, isConnected, setupAudioCapture]);
 
   return {
     room,

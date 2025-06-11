@@ -4,6 +4,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Settings } from 'lucide-react';
 import SageLogo from './SageLogo';
 import WebRTCAudioRoom from './WebRTCAudioRoom';
+import AIModerationPanel from './AIModerationPanel';
 
 const DebateRoom: React.FC = () => {
   const { id } = useParams<{ id: string }>();
@@ -48,47 +49,19 @@ const DebateRoom: React.FC = () => {
       </div>
 
       {/* Main Content */}
-      <div className="max-w-4xl mx-auto px-4">
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="max-w-6xl mx-auto px-4">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Main Audio Room */}
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-3">
             <WebRTCAudioRoom 
               roomId={id || 'demo'} 
               onLeave={handleLeaveRoom}
             />
           </div>
 
-          {/* Sidebar */}
+          {/* AI Moderation Sidebar */}
           <div className="space-y-4">
-            {/* AI Moderators Panel */}
-            <div className="glass-panel p-4">
-              <h3 className="text-lg font-semibold text-content-primary mb-3">
-                AI Moderators
-              </h3>
-              <div className="space-y-3">
-                {[
-                  { name: 'Socrates', role: 'Clarifier', active: true },
-                  { name: 'Solon', role: 'Rule Enforcer', active: true },
-                  { name: 'Buddha', role: 'Peacekeeper', active: true },
-                  { name: 'Hermes', role: 'Summarizer', active: false },
-                  { name: 'Aristotle', role: 'Fact-Checker', active: true }
-                ].map((agent) => (
-                  <div key={agent.name} className="agent-slot">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium text-content-primary">
-                          {agent.name}
-                        </p>
-                        <p className="text-xs text-content-muted">{agent.role}</p>
-                      </div>
-                      <div className={`w-2 h-2 rounded-full ${
-                        agent.active ? 'bg-green-500' : 'bg-gray-300'
-                      }`} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <AIModerationPanel roomId={id || 'demo'} />
 
             {/* Debate Rules Panel */}
             <div className="glass-panel p-4">
