@@ -18,7 +18,7 @@ const HomePage: React.FC = () => {
       participants: 47,
       isLive: true,
       category: 'Technology',
-      gradient: 'from-blue-500 to-purple-600'
+      gradient: 'from-slate-500 to-gray-600'
     },
     {
       id: 2,
@@ -27,7 +27,7 @@ const HomePage: React.FC = () => {
       participants: 23,
       isLive: true,
       category: 'Environment',
-      gradient: 'from-green-500 to-teal-600'
+      gradient: 'from-gray-500 to-slate-600'
     },
     {
       id: 3,
@@ -36,7 +36,7 @@ const HomePage: React.FC = () => {
       participants: 15,
       isLive: false,
       category: 'Philosophy',
-      gradient: 'from-purple-500 to-pink-600'
+      gradient: 'from-zinc-500 to-gray-600'
     },
     {
       id: 4,
@@ -45,7 +45,7 @@ const HomePage: React.FC = () => {
       participants: 31,
       isLive: true,
       category: 'Economics',
-      gradient: 'from-yellow-500 to-orange-600'
+      gradient: 'from-neutral-500 to-slate-600'
     },
     {
       id: 5,
@@ -54,7 +54,7 @@ const HomePage: React.FC = () => {
       participants: 8,
       isLive: false,
       category: 'Politics',
-      gradient: 'from-red-500 to-pink-600'
+      gradient: 'from-gray-500 to-zinc-600'
     },
     {
       id: 6,
@@ -63,7 +63,7 @@ const HomePage: React.FC = () => {
       participants: 19,
       isLive: true,
       category: 'Science',
-      gradient: 'from-indigo-500 to-blue-600'
+      gradient: 'from-slate-500 to-neutral-600'
     }
   ]);
 
@@ -73,12 +73,12 @@ const HomePage: React.FC = () => {
 
   return (
     <div className="min-h-screen relative overflow-hidden">
-      {/* Enhanced Background with organic floating elements */}
+      {/* Enhanced Background with silver floating elements */}
       <div className="fixed inset-0 -z-10">
-        <div className="absolute inset-0 bg-gradient-to-br from-blue-50/90 via-white/80 to-purple-50/90"></div>
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-gradient-to-r from-blue-400/20 to-purple-400/20 blur-3xl floating-element"></div>
-        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-gradient-to-r from-pink-400/20 to-orange-400/20 blur-3xl floating-element" style={{ animationDelay: '-3s' }}></div>
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-72 h-72 bg-gradient-to-r from-teal-400/15 to-cyan-400/15 blur-3xl floating-element" style={{ animationDelay: '-1.5s' }}></div>
+        <div className="absolute inset-0 bg-gradient-to-br from-slate-50/90 via-white/80 to-gray-50/90"></div>
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-gradient-to-r from-slate-400/20 to-gray-400/20 blur-3xl floating-element"></div>
+        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-gradient-to-r from-zinc-400/20 to-neutral-400/20 blur-3xl floating-element" style={{ animationDelay: '-3s' }}></div>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-72 h-72 bg-gradient-to-r from-gray-400/15 to-slate-400/15 blur-3xl floating-element" style={{ animationDelay: '-1.5s' }}></div>
       </div>
 
       {/* Enhanced iOS-style Header with improved mobile spacing */}
@@ -96,19 +96,19 @@ const HomePage: React.FC = () => {
       {/* Main Content Container */}
       <div className="max-w-md mx-auto md:max-w-4xl px-4">
         
-        {/* Enhanced Stories Section with flowing aesthetic */}
+        {/* Enhanced Stories Section with silver aesthetic */}
         <div className="mb-8">
-          {/* Flowing header container */}
+          {/* Silver-themed header container */}
           <div className="relative mb-6">
             <div className="glass-panel p-6 liquid-morph" style={{
-              background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.08) 0%, rgba(255, 255, 255, 0.85) 30%, rgba(147, 51, 234, 0.06) 100%)',
+              background: 'linear-gradient(135deg, rgba(148, 163, 184, 0.08) 0%, rgba(255, 255, 255, 0.85) 30%, rgba(100, 116, 139, 0.06) 100%)',
               backdropFilter: 'blur(20px) saturate(1.8)',
               border: '1px solid rgba(255, 255, 255, 0.6)',
             }}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center space-x-4">
                   <div className="relative">
-                    <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 shadow-lg shadow-blue-500/25 icon-container">
+                    <div className="w-12 h-12 bg-gradient-to-br from-slate-500 to-gray-600 shadow-lg shadow-slate-500/25 icon-container">
                       <div className="w-full h-full backdrop-blur-sm flex items-center justify-center border-2 border-white/60 icon-container"
                            style={{ 
                              background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.7) 100%)',
@@ -118,8 +118,8 @@ const HomePage: React.FC = () => {
                     </div>
                   </div>
                   <div>
-                    <h2 className="text-xl font-bold text-content-primary">Live Debates</h2>
-                    <p className="text-sm text-content-secondary font-medium">Real-time AI moderated discussions</p>
+                    <h2 className="text-xl font-bold text-slate-800">Live Debates</h2>
+                    <p className="text-sm text-slate-600 font-medium">Real-time AI moderated discussions</p>
                   </div>
                 </div>
                 <div className="glass-panel px-4 py-2 liquid-morph" style={{
@@ -136,15 +136,15 @@ const HomePage: React.FC = () => {
           </div>
           
           <div className="flex space-x-6 overflow-x-auto pb-6 scrollbar-hide px-3">
-            {/* Enhanced Start Debate Story with organic shape and flowing animation */}
+            {/* Enhanced Start Debate Story with silver theme */}
             <div className="flex-shrink-0 cursor-pointer group" onClick={handleStartDebate}>
               <div className="relative story-circle">
-                <div className="w-20 h-20 bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-700 p-1 shadow-2xl shadow-blue-500/25 icon-container liquid-morph">
+                <div className="w-20 h-20 bg-gradient-to-br from-slate-600 via-gray-600 to-zinc-700 p-1 shadow-2xl shadow-slate-500/25 icon-container liquid-morph">
                   <div className="w-full h-full backdrop-blur-sm flex items-center justify-center border-2 border-white/50 group-hover:scale-105 transition-all duration-500 icon-container liquid-morph"
                        style={{ 
                          background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 100%)',
                        }}>
-                    <Play className="w-7 h-7 text-slate-800 group-hover:text-blue-600 transition-colors duration-300" />
+                    <Play className="w-7 h-7 text-slate-800 group-hover:text-slate-600 transition-colors duration-300" />
                   </div>
                 </div>
               </div>
@@ -162,22 +162,28 @@ const HomePage: React.FC = () => {
           </div>
         </div>
 
-        {/* Enhanced Main Feed Area */}
+        {/* Enhanced Main Feed Area with silver theme */}
         <div className="space-y-8">
-          {/* Enhanced Hero Section with organic glass */}
+          {/* Enhanced Hero Section with silver aesthetic and better text contrast */}
           <div className="glass-panel p-8 text-center scale-in liquid-morph">
             <div className="relative">
-              <h1 className="text-4xl md:text-5xl font-bold text-gradient mb-4 leading-tight">
+              <h1 className="text-4xl md:text-5xl font-bold mb-4 leading-tight"
+                  style={{
+                    background: 'linear-gradient(135deg, #475569 0%, #64748b 50%, #334155 100%)',
+                    WebkitBackgroundClip: 'text',
+                    WebkitTextFillColor: 'transparent',
+                    backgroundClip: 'text'
+                  }}>
                 Civil Discourse, Powered by AI
               </h1>
-              <p className="text-lg text-content-secondary mb-8 max-w-xl mx-auto leading-relaxed">
+              <p className="text-lg text-slate-700 mb-8 max-w-xl mx-auto leading-relaxed font-medium">
                 Join thoughtful debates moderated by ancient wisdom. 
                 Socrates, Aristotle, and Buddha guide meaningful conversations.
               </p>
 
               <button 
                 onClick={handleStartDebate}
-                className="glass-button text-lg px-8 py-4 bg-gradient-to-r from-blue-600 via-purple-600 to-indigo-600 text-white hover:shadow-2xl hover:shadow-blue-500/25 transition-all duration-500 hover:scale-105 w-full md:w-auto font-semibold"
+                className="glass-button text-lg px-8 py-4 bg-gradient-to-r from-slate-600 via-gray-600 to-zinc-600 text-white hover:shadow-2xl hover:shadow-slate-500/25 transition-all duration-500 hover:scale-105 w-full md:w-auto font-semibold"
                 style={{ borderRadius: '28px 20px 32px 18px' }}
               >
                 <div className="flex items-center justify-center space-x-3">
@@ -188,15 +194,15 @@ const HomePage: React.FC = () => {
             </div>
           </div>
 
-          {/* Enhanced Categories Grid with organic shapes */}
+          {/* Enhanced Categories Grid with silver aesthetic */}
           <div className="glass-panel p-8 liquid-morph">
-            <h2 className="text-xl font-semibold text-content-primary mb-6">Explore Topics</h2>
+            <h2 className="text-xl font-semibold text-slate-800 mb-6">Explore Topics</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               {['Philosophy', 'Technology', 'Politics', 'Science', 'Ethics', 'Economics'].map((category) => (
                 <div key={category} className="group cursor-pointer">
                   <div className="glass-panel p-6 hover:bg-white/80 transition-all duration-500 hover:scale-105 hover:shadow-xl hover:shadow-black/10 liquid-morph">
-                    <h3 className="font-semibold text-content-primary mb-2 text-base">{category}</h3>
-                    <div className="flex items-center text-sm text-content-secondary">
+                    <h3 className="font-semibold text-slate-800 mb-2 text-base">{category}</h3>
+                    <div className="flex items-center text-sm text-slate-600">
                       <Users className="w-4 h-4 mr-2" />
                       <span>{Math.floor(Math.random() * 50) + 10} debates</span>
                     </div>
@@ -208,11 +214,11 @@ const HomePage: React.FC = () => {
         </div>
       </div>
 
-      {/* Floating ambient particles with organic shapes */}
+      {/* Floating ambient particles with silver aesthetic */}
       <div className="fixed inset-0 pointer-events-none -z-5">
-        <div className="absolute top-1/3 left-1/6 w-2 h-2 bg-blue-400/30 animate-pulse organic-pulse" style={{ animationDelay: '0s' }}></div>
-        <div className="absolute top-2/3 right-1/4 w-1.5 h-1.5 bg-purple-400/30 animate-pulse organic-pulse" style={{ animationDelay: '2s' }}></div>
-        <div className="absolute bottom-1/3 left-1/3 w-1 h-1 bg-pink-400/30 animate-pulse organic-pulse" style={{ animationDelay: '4s' }}></div>
+        <div className="absolute top-1/3 left-1/6 w-2 h-2 bg-slate-400/30 animate-pulse organic-pulse" style={{ animationDelay: '0s' }}></div>
+        <div className="absolute top-2/3 right-1/4 w-1.5 h-1.5 bg-gray-400/30 animate-pulse organic-pulse" style={{ animationDelay: '2s' }}></div>
+        <div className="absolute bottom-1/3 left-1/3 w-1 h-1 bg-zinc-400/30 animate-pulse organic-pulse" style={{ animationDelay: '4s' }}></div>
       </div>
     </div>
   );
