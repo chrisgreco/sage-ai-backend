@@ -95,7 +95,10 @@
   }
 
   body {
-    @apply bg-background text-foreground font-sans;
+    @apply bg-background text-foreground;
+    font-family: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.4;
     background: linear-gradient(135deg, 
       hsl(210 100% 97%) 0%, 
       hsl(220 100% 98%) 25%, 
@@ -221,21 +224,21 @@
 }
 
 @layer components {
-  /* Enhanced Modern Glass Components with Organic Shapes */
+  /* Enhanced iOS-style Glass Components with stronger blur */
   .glass-panel {
     @apply relative overflow-hidden;
     background: linear-gradient(135deg, 
-      rgba(255, 255, 255, 0.85) 0%, 
-      rgba(255, 255, 255, 0.65) 50%, 
-      rgba(255, 255, 255, 0.75) 100%);
-    backdrop-filter: blur(20px) saturate(1.8);
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    border-radius: 32px 24px 40px 20px;
+      rgba(255, 255, 255, 0.75) 0%, 
+      rgba(255, 255, 255, 0.55) 50%, 
+      rgba(255, 255, 255, 0.65) 100%);
+    backdrop-filter: blur(25px) saturate(1.8) brightness(1.1);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 20px 18px 22px 16px;
     box-shadow: 
-      0 8px 32px rgba(0, 0, 0, 0.06),
-      0 2px 8px rgba(0, 0, 0, 0.02),
-      inset 0 1px 0 rgba(255, 255, 255, 0.7),
-      inset 0 -1px 0 rgba(255, 255, 255, 0.3);
+      0 6px 24px rgba(0, 0, 0, 0.04),
+      0 1px 6px rgba(0, 0, 0, 0.02),
+      inset 0 1px 0 rgba(255, 255, 255, 0.6),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.25);
   }
   
   .glass-panel::before {
@@ -244,62 +247,62 @@
     top: 0;
     left: 0;
     right: 0;
-    height: 2px;
+    height: 1.5px;
     background: linear-gradient(90deg, 
       transparent 0%, 
-      rgba(255, 255, 255, 0.8) 20%,
-      rgba(255, 255, 255, 0.9) 50%, 
-      rgba(255, 255, 255, 0.8) 80%,
+      rgba(255, 255, 255, 0.7) 20%,
+      rgba(255, 255, 255, 0.8) 50%, 
+      rgba(255, 255, 255, 0.7) 80%,
       transparent 100%);
-    border-radius: 32px 24px 0 0;
+    border-radius: 20px 18px 0 0;
   }
   
   .glass-panel-elevated {
     @apply relative overflow-hidden;
     background: linear-gradient(135deg, 
-      rgba(255, 255, 255, 0.92) 0%, 
-      rgba(255, 255, 255, 0.78) 50%, 
-      rgba(255, 255, 255, 0.88) 100%);
-    backdrop-filter: blur(24px) saturate(2);
-    border: 1.5px solid rgba(255, 255, 255, 0.5);
-    border-radius: 36px 28px 44px 24px;
+      rgba(255, 255, 255, 0.85) 0%, 
+      rgba(255, 255, 255, 0.68) 50%, 
+      rgba(255, 255, 255, 0.78) 100%);
+    backdrop-filter: blur(30px) saturate(2) brightness(1.15);
+    border: 1.5px solid rgba(255, 255, 255, 0.4);
+    border-radius: 24px 20px 26px 18px;
     box-shadow: 
-      0 16px 40px rgba(0, 0, 0, 0.08),
-      0 4px 12px rgba(0, 0, 0, 0.04),
-      inset 0 2px 0 rgba(255, 255, 255, 0.8),
-      inset 0 -2px 0 rgba(255, 255, 255, 0.4);
+      0 10px 32px rgba(0, 0, 0, 0.06),
+      0 2px 8px rgba(0, 0, 0, 0.03),
+      inset 0 1.5px 0 rgba(255, 255, 255, 0.7),
+      inset 0 -1.5px 0 rgba(255, 255, 255, 0.35);
   }
   
   .glass-button {
     @apply relative overflow-hidden transition-all duration-500;
     background: linear-gradient(135deg, 
-      rgba(255, 255, 255, 0.7) 0%, 
-      rgba(255, 255, 255, 0.5) 100%);
-    backdrop-filter: blur(16px) saturate(1.5);
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    border-radius: 24px 18px 28px 16px;
+      rgba(255, 255, 255, 0.65) 0%, 
+      rgba(255, 255, 255, 0.45) 100%);
+    backdrop-filter: blur(20px) saturate(1.5) brightness(1.05);
+    border: 1px solid rgba(255, 255, 255, 0.35);
+    border-radius: 18px 14px 20px 12px;
     box-shadow: 
-      0 4px 16px rgba(0, 0, 0, 0.04),
-      inset 0 1px 0 rgba(255, 255, 255, 0.6);
+      0 3px 12px rgba(0, 0, 0, 0.03),
+      inset 0 1px 0 rgba(255, 255, 255, 0.5);
   }
 
   .glass-button:hover {
     background: linear-gradient(135deg, 
-      rgba(255, 255, 255, 0.8) 0%, 
-      rgba(255, 255, 255, 0.6) 100%);
-    border-color: rgba(255, 255, 255, 0.6);
+      rgba(255, 255, 255, 0.75) 0%, 
+      rgba(255, 255, 255, 0.55) 100%);
+    border-color: rgba(255, 255, 255, 0.5);
     box-shadow: 
-      0 8px 24px rgba(0, 0, 0, 0.06),
-      inset 0 1px 0 rgba(255, 255, 255, 0.8);
-    transform: scale(1.02) translateY(-1px);
-    border-radius: 28px 20px 32px 18px;
+      0 6px 18px rgba(0, 0, 0, 0.045),
+      inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    transform: scale(1.02) translateY(-0.5px);
+    border-radius: 20px 16px 22px 14px;
   }
 
   .glass-button:active {
     transform: scale(0.98) translateY(0px);
     box-shadow: 
-      0 2px 8px rgba(0, 0, 0, 0.04),
-      inset 0 1px 0 rgba(255, 255, 255, 0.5);
+      0 1px 6px rgba(0, 0, 0, 0.03),
+      inset 0 1px 0 rgba(255, 255, 255, 0.4);
   }
 
   .glass-button::before {
@@ -311,7 +314,7 @@
     height: 100%;
     background: linear-gradient(90deg, 
       transparent 0%, 
-      rgba(255, 255, 255, 0.4) 50%, 
+      rgba(255, 255, 255, 0.3) 50%, 
       transparent 100%);
     transition: left 0.6s ease;
   }
@@ -471,19 +474,19 @@
   /* Mobile-first responsive improvements */
   @media (max-width: 768px) {
     .glass-panel {
-      border-radius: 24px 18px 28px 16px;
+      border-radius: 16px 14px 18px 12px;
     }
     
     .glass-panel-elevated {
-      border-radius: 28px 20px 32px 18px;
+      border-radius: 18px 16px 20px 14px;
     }
 
     .glass-button {
-      border-radius: 20px 16px 24px 14px;
+      border-radius: 14px 12px 16px 10px;
     }
 
     .glass-button:hover {
-      border-radius: 24px 18px 28px 16px;
+      border-radius: 16px 14px 18px 12px;
     }
   }
 }

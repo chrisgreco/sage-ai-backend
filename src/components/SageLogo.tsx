@@ -8,22 +8,22 @@ interface SageLogoProps {
 
 const SageLogo: React.FC<SageLogoProps> = ({ size = 'md', className = '' }) => {
   const sizeClasses = {
-    sm: 'w-8 h-8',
-    md: 'w-12 h-12',
-    lg: 'w-16 h-16',
-    xl: 'w-24 h-24'
+    sm: 'w-7 h-7',
+    md: 'w-10 h-10',
+    lg: 'w-14 h-14',
+    xl: 'w-20 h-20'
   };
 
   const textSizeClasses = {
-    sm: 'text-lg',
-    md: 'text-2xl',
-    lg: 'text-3xl',
-    xl: 'text-5xl'
+    sm: 'text-base',
+    md: 'text-xl',
+    lg: 'text-2xl',
+    xl: 'text-4xl'
   };
 
   return (
-    <div className={`flex items-center space-x-3 ${className}`}>
-      {/* Organic Triangle Logo with liquid glass effect */}
+    <div className={`flex items-center space-x-2.5 ${className}`}>
+      {/* Refined Triangle Logo with new silver tones */}
       <div className={`${sizeClasses[size]} relative icon-container`}>
         <svg
           viewBox="0 0 100 100"
@@ -31,17 +31,17 @@ const SageLogo: React.FC<SageLogoProps> = ({ size = 'md', className = '' }) => {
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
         >
-          {/* Enhanced gradients with organic feel */}
           <defs>
             <linearGradient id="triangleGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="currentColor" stopOpacity="0.95"/>
-              <stop offset="50%" stopColor="currentColor" stopOpacity="0.8"/>
-              <stop offset="100%" stopColor="currentColor" stopOpacity="0.85"/>
+              <stop offset="0%" stopColor="#e2e8f0" stopOpacity="0.95"/>
+              <stop offset="30%" stopColor="#f1f5f9" stopOpacity="0.9"/>
+              <stop offset="70%" stopColor="#cbd5e1" stopOpacity="0.85"/>
+              <stop offset="100%" stopColor="#94a3b8" stopOpacity="0.9"/>
             </linearGradient>
             <filter id="glassFilter">
-              <feGaussianBlur in="SourceGraphic" stdDeviation="0.5"/>
-              <feOffset dx="0" dy="1" result="offset"/>
-              <feFlood floodColor="rgba(255,255,255,0.3)"/>
+              <feGaussianBlur in="SourceGraphic" stdDeviation="0.3"/>
+              <feOffset dx="0" dy="0.5" result="offset"/>
+              <feFlood floodColor="rgba(255,255,255,0.4)"/>
               <feComposite in2="offset" operator="in"/>
               <feMerge>
                 <feMergeNode/>
@@ -50,46 +50,46 @@ const SageLogo: React.FC<SageLogoProps> = ({ size = 'md', className = '' }) => {
             </filter>
           </defs>
           
-          {/* Outer triangle with organic curves */}
+          {/* Refined triangle with new silver gradients */}
           <path
-            d="M50 8 C52 8, 54 9, 55 11 L85 72 C86 74, 85 76, 83 77 L17 77 C15 76, 14 74, 15 72 L45 11 C46 9, 48 8, 50 8 Z"
+            d="M50 10 C51.5 10, 52.5 10.5, 53 12 L82 68 C82.5 69.5, 82 70.5, 80.5 71 L19.5 71 C18 70.5, 17.5 69.5, 18 68 L47 12 C47.5 10.5, 48.5 10, 50 10 Z"
             fill="url(#triangleGradient)"
-            className="text-content-primary drop-shadow-lg"
             filter="url(#glassFilter)"
           />
           
-          {/* Inner triangle (negative space) with softer curves */}
+          {/* Refined inner triangle */}
           <path
-            d="M50 22 C51 22, 52 23, 52.5 24 L70 58 C70.5 59, 70 60, 69 60 L31 60 C30 60, 29.5 59, 30 58 L47.5 24 C48 23, 49 22, 50 22 Z"
-            fill="white"
-            className="opacity-90"
-            style={{ filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.1))' }}
+            d="M50 24 C50.8 24, 51.2 24.3, 51.5 25 L68 56 C68.3 56.7, 68 57.2, 67.2 57.3 L32.8 57.3 C32 57.2, 31.7 56.7, 32 56 L48.5 25 C48.8 24.3, 49.2 24, 50 24 Z"
+            fill="rgba(255,255,255,0.85)"
+            style={{ filter: 'drop-shadow(0 0.5px 1px rgba(0,0,0,0.08))' }}
           />
           
-          {/* Top accent line with organic curve */}
+          {/* Refined accent line */}
           <path
-            d="M32 35 C40 34, 60 34, 68 35"
-            stroke="currentColor"
-            strokeWidth="3"
+            d="M34 36 C42 35.5, 58 35.5, 66 36"
+            stroke="#cbd5e1"
+            strokeWidth="2"
             strokeLinecap="round"
-            className="text-content-primary opacity-75"
-            style={{ filter: 'drop-shadow(0 1px 1px rgba(255,255,255,0.5))' }}
+            style={{ filter: 'drop-shadow(0 0.5px 0.5px rgba(255,255,255,0.4))' }}
           />
           
-          {/* Subtle highlight for glass effect */}
+          {/* Subtle highlight */}
           <path
-            d="M50 12 L48 15 L52 15 Z"
-            fill="rgba(255,255,255,0.6)"
-            className="opacity-80"
+            d="M50 14 L48.5 16 L51.5 16 Z"
+            fill="rgba(255,255,255,0.5)"
           />
         </svg>
       </div>
       
-      {/* SAGE Text with enhanced styling */}
-      <span className={`font-bold tracking-tight text-gradient ${textSizeClasses[size]}`}
+      {/* SAGE Text with new silver styling */}
+      <span className={`font-medium tracking-wide ${textSizeClasses[size]}`}
             style={{ 
-              filter: 'drop-shadow(0 1px 2px rgba(0,0,0,0.1))',
-              letterSpacing: '0.02em'
+              background: 'linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 30%, #94a3b8 70%, #64748b 100%)',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+              backgroundClip: 'text',
+              filter: 'drop-shadow(0 0.5px 1px rgba(0,0,0,0.08))',
+              letterSpacing: '0.015em'
             }}>
         SAGE
       </span>

@@ -1,3 +1,4 @@
+
 import type { Config } from "tailwindcss";
 
 export default {
@@ -84,8 +85,19 @@ export default {
 				sm: 'calc(var(--radius) - 4px)'
 			},
 			fontFamily: {
-				sans: ['SF Pro Display', '-apple-system', 'BlinkMacSystemFont', 'system-ui', 'sans-serif'],
+				sans: ['-apple-system', 'BlinkMacSystemFont', 'system-ui', 'Segoe UI', 'Roboto', 'Helvetica Neue', 'Arial', 'sans-serif'],
 				mono: ['SF Mono', 'Monaco', 'Consolas', 'monospace'],
+			},
+			fontSize: {
+				'xs': ['0.75rem', { lineHeight: '1rem' }],
+				'sm': ['0.875rem', { lineHeight: '1.25rem' }],
+				'base': ['0.9375rem', { lineHeight: '1.375rem' }],
+				'lg': ['1.0625rem', { lineHeight: '1.5rem' }],
+				'xl': ['1.1875rem', { lineHeight: '1.625rem' }],
+				'2xl': ['1.4375rem', { lineHeight: '1.875rem' }],
+				'3xl': ['1.75rem', { lineHeight: '2.125rem' }],
+				'4xl': ['2.125rem', { lineHeight: '2.5rem' }],
+				'5xl': ['2.75rem', { lineHeight: '3.25rem' }],
 			},
 			scale: {
 				'102': '1.02',
