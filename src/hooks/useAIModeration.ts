@@ -23,8 +23,6 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
   const [error, setError] = useState<string | null>(null);
   
   const wsRef = useRef<WebSocket | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
 
   // Connect to AI moderation when WebRTC is connected
   useEffect(() => {
@@ -43,17 +41,17 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
       setError(null);
       console.log('Connecting to AI moderation...');
 
-      // Connect to our OpenAI Realtime relay
-      const projectId = 'zpfouxphwgtqhgalzyqk';
-      const wsUrl = `wss://${projectId}.functions.supabase.co/openai-realtime-relay`;
+      // Connect to our OpenAI Realtime relay using the correct WebSocket URL
+      const wsUrl = `wss://zpfouxphwgtqhgalzyqk.supabase.co/functions/v1/openai-realtime-relay`;
       
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log('AI moderation connected');
+        console.log('AI moderation WebSocket connected');
         setAiConnected(true);
         setAiConnecting(false);
+        setError(null);
       };
 
       ws.onmessage = (event) => {
@@ -65,15 +63,18 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
         }
       };
 
-      ws.onclose = () => {
-        console.log('AI moderation disconnected');
+      ws.onclose = (event) => {
+        console.log('AI moderation WebSocket disconnected:', event.code, event.reason);
         setAiConnected(false);
         setAiConnecting(false);
+        if (event.code !== 1000) { // Not a normal closure
+          setError('AI connection lost unexpectedly');
+        }
       };
 
       ws.onerror = (error) => {
         console.error('AI WebSocket error:', error);
-        setError('Failed to connect to AI moderation');
+        setError('Failed to connect to AI moderation service');
         setAiConnecting(false);
       };
 
@@ -125,10 +126,27 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
       
       case 'input_audio_buffer.speech_started':
         console.log('User started speaking');
+        // Add user speech indicator
+        setTranscript(prev => [
+          ...prev,
+          { speaker: 'You', text: '(speaking...)', timestamp: new Date() }
+        ]);
         break;
       
       case 'input_audio_buffer.speech_stopped':
         console.log('User stopped speaking, AI analyzing...');
+        // Remove the "speaking..." indicator
+        setTranscript(prev => prev.filter(entry => entry.text !== '(speaking...)'));
+        break;
+
+      case 'conversation.item.input_audio_transcription.completed':
+        if (message.transcript) {
+          // Add user's completed transcript
+          setTranscript(prev => [
+            ...prev.filter(entry => entry.text !== '(speaking...)'),
+            { speaker: 'You', text: message.transcript, timestamp: new Date() }
+          ]);
+        }
         break;
 
       case 'error':
@@ -203,7 +221,10 @@ Keep interventions brief (1-2 sentences), polite, and focused on your specific r
   };
 
   const sendAudioToAI = useCallback((audioData: Float32Array) => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      console.warn('WebSocket not ready, skipping audio data');
+      return;
+    }
 
     // Convert Float32Array to base64 PCM16
     const int16Array = new Int16Array(audioData.length);
@@ -234,16 +255,6 @@ Keep interventions brief (1-2 sentences), polite, and focused on your specific r
   const disconnectFromAI = useCallback(() => {
     console.log('Disconnecting from AI moderation...');
     
-    if (processorRef.current) {
-      processorRef.current.disconnect();
-      processorRef.current = null;
-    }
-    
-    if (audioContextRef.current) {
-      audioContextRef.current.close();
-      audioContextRef.current = null;
-    }
-    
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;
@@ -251,6 +262,7 @@ Keep interventions brief (1-2 sentences), polite, and focused on your specific r
     
     setAiConnected(false);
     setActiveAgent(null);
+    setError(null);
   }, []);
 
   // Cleanup on unmount

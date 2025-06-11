@@ -47,12 +47,6 @@ const WebRTCAudioRoom: React.FC<WebRTCAudioRoomProps> = ({ roomId, onLeave }) =>
     }
   ];
 
-  const { sendAudioToAI, aiConnected, aiConnecting } = useAIModeration({
-    roomId,
-    isConnected: false, // Will be updated when WebRTC connects
-    agents: defaultAgents
-  });
-  
   const {
     isConnected,
     isConnecting,
@@ -65,7 +59,13 @@ const WebRTCAudioRoom: React.FC<WebRTCAudioRoomProps> = ({ roomId, onLeave }) =>
   } = useWebRTCRoom({
     roomName: roomId,
     participantName: user?.email || 'Anonymous',
-    onAudioData: sendAudioToAI // Pass audio to AI moderation
+    onAudioData: undefined // Will be set after AI connection
+  });
+
+  const { sendAudioToAI, aiConnected, aiConnecting, error: aiError } = useAIModeration({
+    roomId,
+    isConnected, // Pass WebRTC connection state
+    agents: defaultAgents
   });
 
   // Only attempt connection once when component mounts
@@ -121,6 +121,17 @@ const WebRTCAudioRoom: React.FC<WebRTCAudioRoomProps> = ({ roomId, onLeave }) =>
           </div>
         </div>
       </div>
+
+      {/* Error Messages */}
+      {(error || aiError) && (
+        <div className="mb-4 p-3 rounded-lg bg-red-100 border border-red-200">
+          <p className="text-sm text-red-700">
+            {error && `Audio: ${error}`}
+            {error && aiError && ' | '}
+            {aiError && `AI: ${aiError}`}
+          </p>
+        </div>
+      )}
 
       {/* Participants Grid */}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
@@ -188,12 +199,6 @@ const WebRTCAudioRoom: React.FC<WebRTCAudioRoomProps> = ({ roomId, onLeave }) =>
           <PhoneOff className="w-5 h-5" />
         </button>
       </div>
-
-      {error && (
-        <div className="mt-4 p-3 rounded-lg bg-red-100 border border-red-200">
-          <p className="text-sm text-red-700">{error}</p>
-        </div>
-      )}
     </div>
   );
 };
