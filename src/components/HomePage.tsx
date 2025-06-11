@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Play, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -72,9 +73,9 @@ const HomePage: React.FC = () => {
 
   return (
     <div className="min-h-screen relative overflow-hidden">
-      {/* Thinner, sleeker header with smaller font sizes */}
-      <div className="glass-panel-elevated sticky top-0 z-50 mx-2 md:mx-3 mt-1.5 md:mt-2 mb-2 md:mb-3 fade-in-up">
-        <div className="max-w-md mx-auto md:max-w-4xl px-2.5 md:px-4 py-1 md:py-1.5">
+      {/* Even thinner header with smaller font sizes */}
+      <div className="glass-panel-elevated sticky top-0 z-50 mx-2 md:mx-3 mt-1 md:mt-1.5 mb-2 md:mb-3 fade-in-up">
+        <div className="max-w-md mx-auto md:max-w-4xl px-2.5 md:px-4 py-0.5 md:py-1">
           <div className="flex items-center justify-between">
             <SageLogo size="sm" className="md:w-auto" />
             <div className="flex items-center space-x-1.5 md:space-x-2">
@@ -177,7 +178,7 @@ const HomePage: React.FC = () => {
 
               <button 
                 onClick={handleStartDebate}
-                className="glass-button text-sm px-4 py-2 bg-gradient-to-r from-liquid-500 via-liquid-600 to-liquid-700 text-white hover:shadow-xl hover:shadow-liquid-500/25 transition-all duration-500 hover:scale-105 w-full md:w-auto font-medium"
+                className="glass-button text-sm px-4 py-2 bg-gradient-to-r from-liquid-500 via-liquid-600 to-liquid-700 text-content-inverse hover:shadow-xl hover:shadow-liquid-500/25 transition-all duration-500 hover:scale-105 w-full md:w-auto font-medium"
                 style={{ borderRadius: '16px 12px 18px 10px' }}
               >
                 <div className="flex items-center justify-center space-x-1.5">
