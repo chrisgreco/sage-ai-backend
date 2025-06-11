@@ -171,36 +171,71 @@
     }
   }
 
-  /* Liquid glass morphing animation */
+  /* Organic liquid glass morphing animation */
   @keyframes liquidMorph {
+    0% {
+      border-radius: 32px 24px 40px 20px;
+      transform: scale(1) rotate(0deg);
+    }
+    25% {
+      border-radius: 28px 36px 24px 32px;
+      transform: scale(1.01) rotate(0.3deg);
+    }
+    50% {
+      border-radius: 40px 20px 32px 28px;
+      transform: scale(0.99) rotate(-0.2deg);
+    }
+    75% {
+      border-radius: 24px 32px 36px 24px;
+      transform: scale(1.005) rotate(0.1deg);
+    }
+    100% {
+      border-radius: 32px 24px 40px 20px;
+      transform: scale(1) rotate(0deg);
+    }
+  }
+
+  /* Organic shape morphing for icons */
+  @keyframes organicPulse {
     0%, 100% {
-      border-radius: 24px;
+      border-radius: 50% 40% 60% 45%;
       transform: scale(1) rotate(0deg);
     }
     33% {
-      border-radius: 32px 24px 28px 20px;
-      transform: scale(1.01) rotate(0.5deg);
+      border-radius: 45% 55% 50% 60%;
+      transform: scale(1.02) rotate(1deg);
     }
     66% {
-      border-radius: 20px 32px 24px 28px;
-      transform: scale(0.99) rotate(-0.5deg);
+      border-radius: 60% 45% 55% 50%;
+      transform: scale(0.98) rotate(-0.5deg);
     }
   }
 
   .liquid-morph {
-    animation: liquidMorph 8s ease-in-out infinite;
+    animation: liquidMorph 12s ease-in-out infinite;
+  }
+
+  .organic-pulse {
+    animation: organicPulse 8s ease-in-out infinite;
   }
 }
 
 @layer components {
-  /* Enhanced Modern Glass Components */
+  /* Enhanced Modern Glass Components with Organic Shapes */
   .glass-panel {
-    @apply bg-white/70 backdrop-blur-xl border border-white/30 rounded-3xl shadow-2xl shadow-black/5
-           relative overflow-hidden;
+    @apply relative overflow-hidden;
     background: linear-gradient(135deg, 
-      rgba(255, 255, 255, 0.8) 0%, 
-      rgba(255, 255, 255, 0.6) 50%, 
-      rgba(255, 255, 255, 0.7) 100%);
+      rgba(255, 255, 255, 0.85) 0%, 
+      rgba(255, 255, 255, 0.65) 50%, 
+      rgba(255, 255, 255, 0.75) 100%);
+    backdrop-filter: blur(20px) saturate(1.8);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 32px 24px 40px 20px;
+    box-shadow: 
+      0 8px 32px rgba(0, 0, 0, 0.06),
+      0 2px 8px rgba(0, 0, 0, 0.02),
+      inset 0 1px 0 rgba(255, 255, 255, 0.7),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.3);
   }
   
   .glass-panel::before {
@@ -209,33 +244,62 @@
     top: 0;
     left: 0;
     right: 0;
-    height: 1px;
+    height: 2px;
     background: linear-gradient(90deg, 
       transparent 0%, 
-      rgba(255, 255, 255, 0.6) 50%, 
+      rgba(255, 255, 255, 0.8) 20%,
+      rgba(255, 255, 255, 0.9) 50%, 
+      rgba(255, 255, 255, 0.8) 80%,
       transparent 100%);
+    border-radius: 32px 24px 0 0;
   }
   
   .glass-panel-elevated {
-    @apply bg-white/80 backdrop-blur-2xl border border-white/40 rounded-3xl shadow-2xl shadow-black/10
-           relative overflow-hidden;
+    @apply relative overflow-hidden;
     background: linear-gradient(135deg, 
-      rgba(255, 255, 255, 0.9) 0%, 
-      rgba(255, 255, 255, 0.75) 50%, 
-      rgba(255, 255, 255, 0.85) 100%);
+      rgba(255, 255, 255, 0.92) 0%, 
+      rgba(255, 255, 255, 0.78) 50%, 
+      rgba(255, 255, 255, 0.88) 100%);
+    backdrop-filter: blur(24px) saturate(2);
+    border: 1.5px solid rgba(255, 255, 255, 0.5);
+    border-radius: 36px 28px 44px 24px;
     box-shadow: 
-      0 8px 32px rgba(0, 0, 0, 0.1),
-      0 2px 8px rgba(0, 0, 0, 0.05),
-      inset 0 1px 0 rgba(255, 255, 255, 0.6);
+      0 16px 40px rgba(0, 0, 0, 0.08),
+      0 4px 12px rgba(0, 0, 0, 0.04),
+      inset 0 2px 0 rgba(255, 255, 255, 0.8),
+      inset 0 -2px 0 rgba(255, 255, 255, 0.4);
   }
   
   .glass-button {
-    @apply bg-white/50 backdrop-blur-md border border-white/30 rounded-2xl px-4 py-3
-           transition-all duration-300 hover:bg-white/70 hover:border-white/50 
-           hover:shadow-lg hover:shadow-black/5 active:scale-95 relative overflow-hidden;
+    @apply relative overflow-hidden transition-all duration-500;
     background: linear-gradient(135deg, 
-      rgba(255, 255, 255, 0.6) 0%, 
-      rgba(255, 255, 255, 0.4) 100%);
+      rgba(255, 255, 255, 0.7) 0%, 
+      rgba(255, 255, 255, 0.5) 100%);
+    backdrop-filter: blur(16px) saturate(1.5);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 24px 18px 28px 16px;
+    box-shadow: 
+      0 4px 16px rgba(0, 0, 0, 0.04),
+      inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  }
+
+  .glass-button:hover {
+    background: linear-gradient(135deg, 
+      rgba(255, 255, 255, 0.8) 0%, 
+      rgba(255, 255, 255, 0.6) 100%);
+    border-color: rgba(255, 255, 255, 0.6);
+    box-shadow: 
+      0 8px 24px rgba(0, 0, 0, 0.06),
+      inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    transform: scale(1.02) translateY(-1px);
+    border-radius: 28px 20px 32px 18px;
+  }
+
+  .glass-button:active {
+    transform: scale(0.98) translateY(0px);
+    box-shadow: 
+      0 2px 8px rgba(0, 0, 0, 0.04),
+      inset 0 1px 0 rgba(255, 255, 255, 0.5);
   }
 
   .glass-button::before {
@@ -247,9 +311,9 @@
     height: 100%;
     background: linear-gradient(90deg, 
       transparent 0%, 
-      rgba(255, 255, 255, 0.3) 50%, 
+      rgba(255, 255, 255, 0.4) 50%, 
       transparent 100%);
-    transition: left 0.5s ease;
+    transition: left 0.6s ease;
   }
 
   .glass-button:hover::before {
@@ -257,55 +321,85 @@
   }
 
   .glass-input {
-    @apply bg-white/50 backdrop-blur-md border border-white/30 rounded-xl
-           focus:bg-white/70 focus:border-white/50 transition-all duration-300
-           shadow-inner;
+    @apply transition-all duration-300 shadow-inner;
+    background: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 20px 16px 24px 14px;
+  }
+
+  .glass-input:focus {
+    background: rgba(255, 255, 255, 0.75);
+    border-color: rgba(255, 255, 255, 0.6);
+    border-radius: 24px 18px 28px 16px;
   }
   
   /* Enhanced Debate Room Specific Styles */
   .participant-slot {
-    @apply p-4 rounded-2xl bg-white/60 backdrop-blur-lg border border-white/30 
-           shadow-lg shadow-black/5 transition-all duration-300 relative overflow-hidden;
+    @apply p-4 transition-all duration-500 relative overflow-hidden;
     background: linear-gradient(135deg, 
-      rgba(255, 255, 255, 0.7) 0%, 
-      rgba(255, 255, 255, 0.5) 100%);
+      rgba(255, 255, 255, 0.75) 0%, 
+      rgba(255, 255, 255, 0.55) 100%);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 28px 22px 32px 18px;
+    box-shadow: 
+      0 6px 20px rgba(0, 0, 0, 0.05),
+      inset 0 1px 0 rgba(255, 255, 255, 0.6);
   }
 
   .participant-slot.active {
-    @apply border-blue-300/60 shadow-xl shadow-blue-500/10;
+    border-color: rgba(59, 130, 246, 0.6);
+    box-shadow: 
+      0 8px 32px rgba(59, 130, 246, 0.1),
+      inset 0 1px 0 rgba(255, 255, 255, 0.7);
     background: linear-gradient(135deg, 
-      rgba(59, 130, 246, 0.1) 0%, 
-      rgba(255, 255, 255, 0.7) 50%, 
-      rgba(59, 130, 246, 0.05) 100%);
+      rgba(59, 130, 246, 0.12) 0%, 
+      rgba(255, 255, 255, 0.75) 50%, 
+      rgba(59, 130, 246, 0.08) 100%);
+    border-radius: 32px 24px 36px 20px;
   }
 
   .participant-slot.speaking {
-    @apply border-green-300/60 shadow-xl shadow-green-500/15;
+    border-color: rgba(34, 197, 94, 0.6);
+    box-shadow: 
+      0 12px 40px rgba(34, 197, 94, 0.15),
+      inset 0 1px 0 rgba(255, 255, 255, 0.8);
     background: linear-gradient(135deg, 
-      rgba(34, 197, 94, 0.1) 0%, 
-      rgba(255, 255, 255, 0.7) 50%, 
-      rgba(34, 197, 94, 0.05) 100%);
-    animation: pulse-glow 2s ease-in-out infinite;
+      rgba(34, 197, 94, 0.15) 0%, 
+      rgba(255, 255, 255, 0.8) 50%, 
+      rgba(34, 197, 94, 0.1) 100%);
+    animation: organicPulse 3s ease-in-out infinite;
+    border-radius: 36px 26px 40px 22px;
   }
 
   .agent-slot {
-    @apply p-4 rounded-2xl bg-white/60 backdrop-blur-lg border border-white/30 
-           shadow-lg shadow-black/5 transition-all duration-300 relative overflow-hidden;
+    @apply p-4 transition-all duration-500 relative overflow-hidden;
     background: linear-gradient(135deg, 
-      rgba(147, 51, 234, 0.05) 0%, 
-      rgba(255, 255, 255, 0.7) 50%, 
-      rgba(147, 51, 234, 0.03) 100%);
+      rgba(147, 51, 234, 0.08) 0%, 
+      rgba(255, 255, 255, 0.75) 50%, 
+      rgba(147, 51, 234, 0.05) 100%);
+    backdrop-filter: blur(16px);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 26px 20px 30px 16px;
+    box-shadow: 
+      0 6px 20px rgba(0, 0, 0, 0.05),
+      inset 0 1px 0 rgba(255, 255, 255, 0.6);
   }
 
   .agent-slot.active {
-    @apply border-purple-300/60 shadow-xl shadow-purple-500/15;
+    border-color: rgba(147, 51, 234, 0.6);
+    box-shadow: 
+      0 10px 36px rgba(147, 51, 234, 0.15),
+      inset 0 1px 0 rgba(255, 255, 255, 0.7);
     background: linear-gradient(135deg, 
-      rgba(147, 51, 234, 0.15) 0%, 
+      rgba(147, 51, 234, 0.18) 0%, 
       rgba(255, 255, 255, 0.8) 50%, 
-      rgba(147, 51, 234, 0.1) 100%);
+      rgba(147, 51, 234, 0.12) 100%);
+    border-radius: 30px 22px 34px 18px;
   }
 
-  /* Story circles with enhanced glass effect */
+  /* Story circles with enhanced organic glass effect */
   .story-circle {
     @apply relative;
   }
@@ -313,45 +407,83 @@
   .story-circle::before {
     content: '';
     position: absolute;
-    inset: -2px;
-    border-radius: 50%;
-    padding: 2px;
+    inset: -3px;
+    padding: 3px;
     background: linear-gradient(135deg, 
-      rgba(255, 255, 255, 0.6) 0%, 
-      rgba(255, 255, 255, 0.2) 50%, 
-      rgba(255, 255, 255, 0.4) 100%);
+      rgba(255, 255, 255, 0.7) 0%, 
+      rgba(255, 255, 255, 0.3) 50%, 
+      rgba(255, 255, 255, 0.5) 100%);
     -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     -webkit-mask-composite: xor;
     mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     mask-composite: exclude;
+    border-radius: 50% 45% 55% 50%;
+    animation: organicPulse 10s ease-in-out infinite;
+  }
+
+  /* Enhanced icon containers with organic shapes */
+  .icon-container {
+    @apply relative overflow-hidden transition-all duration-500;
+    background: linear-gradient(135deg, 
+      rgba(255, 255, 255, 0.8) 0%, 
+      rgba(255, 255, 255, 0.6) 100%);
+    backdrop-filter: blur(16px) saturate(1.8);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: 50% 45% 55% 50%;
+    box-shadow: 
+      0 6px 20px rgba(0, 0, 0, 0.04),
+      inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  }
+
+  .icon-container:hover {
+    border-radius: 55% 50% 45% 60%;
+    transform: scale(1.05) rotate(2deg);
+    box-shadow: 
+      0 8px 28px rgba(0, 0, 0, 0.06),
+      inset 0 1px 0 rgba(255, 255, 255, 0.8);
   }
 
   /* Enhanced floating elements */
   .floating-element {
-    animation: float 6s ease-in-out infinite;
+    animation: float 8s ease-in-out infinite;
+    border-radius: 50% 40% 60% 45%;
   }
 
   @keyframes float {
     0%, 100% {
-      transform: translateY(0px) rotate(0deg);
+      transform: translateY(0px) rotate(0deg) scale(1);
+      border-radius: 50% 40% 60% 45%;
+    }
+    25% {
+      transform: translateY(-8px) rotate(1deg) scale(1.02);
+      border-radius: 45% 55% 50% 60%;
     }
     50% {
-      transform: translateY(-10px) rotate(1deg);
+      transform: translateY(-12px) rotate(0deg) scale(1);
+      border-radius: 60% 45% 55% 50%;
+    }
+    75% {
+      transform: translateY(-6px) rotate(-0.5deg) scale(0.98);
+      border-radius: 50% 60% 45% 55%;
     }
   }
 
   /* Mobile-first responsive improvements */
   @media (max-width: 768px) {
     .glass-panel {
-      @apply rounded-2xl;
+      border-radius: 24px 18px 28px 16px;
     }
     
     .glass-panel-elevated {
-      @apply rounded-2xl;
+      border-radius: 28px 20px 32px 18px;
     }
 
     .glass-button {
-      @apply rounded-xl;
+      border-radius: 20px 16px 24px 14px;
+    }
+
+    .glass-button:hover {
+      border-radius: 24px 18px 28px 16px;
     }
   }
 }
