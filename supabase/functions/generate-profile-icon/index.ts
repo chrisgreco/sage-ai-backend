@@ -55,6 +55,8 @@ serve(async (req) => {
     
     const prompt = `Create a ${variation} ${baseTheme}, designed as a profile avatar. Style: clean, professional, suitable for a debate platform. Colors: sage green, gold, marble white. Circular composition, high contrast, simple but elegant. Ancient Greek philosophy theme.`;
 
+    console.log('Making request to OpenAI with prompt:', prompt);
+
     const response = await fetch('https://api.openai.com/v1/images/generations', {
       method: 'POST',
       headers: {
@@ -62,17 +64,19 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-image-1',
+        model: 'dall-e-3',
         prompt: prompt,
+        n: 1,
         size: '1024x1024',
-        quality: 'high',
-        output_format: 'png',
-        background: 'transparent'
+        quality: 'standard',
+        response_format: 'b64_json'
       }),
     });
 
     if (!response.ok) {
-      throw new Error(`OpenAI API error: ${response.statusText}`);
+      const errorText = await response.text();
+      console.error('OpenAI API error:', response.status, errorText);
+      throw new Error(`OpenAI API error: ${response.statusText} - ${errorText}`);
     }
 
     const data = await response.json();
@@ -94,6 +98,7 @@ serve(async (req) => {
       });
 
     if (uploadError) {
+      console.error('Upload error:', uploadError);
       throw new Error(`Upload error: ${uploadError.message}`);
     }
 
@@ -110,6 +115,8 @@ serve(async (req) => {
     if (updateError) {
       console.error('Profile update error:', updateError);
     }
+
+    console.log('Successfully generated and stored profile icon:', publicUrl);
 
     return new Response(
       JSON.stringify({ avatar_url: publicUrl }),
