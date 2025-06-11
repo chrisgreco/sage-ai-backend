@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from 'react';
 import { 
   Room, 
@@ -6,6 +5,7 @@ import {
   Track, 
   RemoteParticipant, 
   RemoteTrackPublication,
+  RemoteTrack,
   AudioTrack,
   LocalTrack,
   createLocalAudioTrack
@@ -44,10 +44,10 @@ export const useWebRTCRoom = ({ roomName, participantName, serverUrl = 'wss://sa
       setIsConnecting(false);
     });
 
-    // Handle incoming audio tracks
-    room.on(RoomEvent.TrackSubscribed, (track: RemoteTrackPublication, participant: RemoteParticipant) => {
+    // Handle incoming audio tracks - fixed parameter order
+    room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
       if (track.kind === Track.Kind.Audio) {
-        const audioElement = track.audioTrack?.attach();
+        const audioElement = track.attach();
         if (audioElement) {
           document.body.appendChild(audioElement);
         }
