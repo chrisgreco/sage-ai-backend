@@ -1,133 +1,36 @@
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import type { UseAIModerationProps, UseAIModerationReturn, TranscriptEntry } from '@/types/aiModeration';
+import { useAIWebSocket } from './useAIWebSocket';
+import { determineActiveAgent, encodeAudioForAI } from '@/utils/aiModerationUtils';
 
-interface AIAgent {
-  name: string;
-  role: string;
-  active: boolean;
-  persona: string;
-}
-
-interface UseAIModerationProps {
-  roomId: string;
-  isConnected: boolean;
-  agents: AIAgent[];
-}
-
-export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModerationProps) => {
+export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModerationProps): UseAIModerationReturn => {
   const [aiConnected, setAiConnected] = useState(false);
   const [aiConnecting, setAiConnecting] = useState(false);
   const [activeAgent, setActiveAgent] = useState<string | null>(null);
-  const [transcript, setTranscript] = useState<Array<{ speaker: string; text: string; timestamp: Date }>>([]);
+  const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const [error, setError] = useState<string | null>(null);
-  
-  const wsRef = useRef<WebSocket | null>(null);
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const sessionConfiguredRef = useRef(false);
 
-  // Connect to AI moderation when WebRTC is connected
-  useEffect(() => {
-    if (isConnected && !aiConnected && !aiConnecting) {
-      connectToAI();
-    } else if (!isConnected && (aiConnected || aiConnecting)) {
-      disconnectFromAI();
-    }
-  }, [isConnected]);
-
-  const connectToAI = useCallback(async () => {
-    if (aiConnecting || aiConnected) return;
-
-    try {
-      setAiConnecting(true);
-      setError(null);
-      sessionConfiguredRef.current = false;
-      console.log('Connecting to AI moderation...');
-
-      // Use the correct WebSocket URL - direct to Supabase edge function
-      const wsUrl = `wss://zpfouxphwgtqhgalzyqk.supabase.co/functions/v1/openai-realtime-relay`;
-      
-      console.log('Connecting to WebSocket URL:', wsUrl);
-      const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
-
-      ws.onopen = () => {
-        console.log('AI moderation WebSocket connected successfully');
-        setAiConnected(true);
-        setAiConnecting(false);
-        setError(null);
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const message = JSON.parse(event.data);
-          console.log('AI message received:', message.type, message);
-          handleAIMessage(message);
-        } catch (err) {
-          console.error('Error parsing AI message:', err);
-        }
-      };
-
-      ws.onclose = (event) => {
-        console.log('AI moderation WebSocket disconnected:', event.code, event.reason);
-        setAiConnected(false);
-        setAiConnecting(false);
-        sessionConfiguredRef.current = false;
-        
-        if (event.code !== 1000) { // Not a normal closure
-          setError('AI connection lost unexpectedly');
-          
-          // Attempt to reconnect after a delay if we were previously connected
-          if (isConnected) {
-            console.log('Attempting to reconnect in 3 seconds...');
-            reconnectTimeoutRef.current = setTimeout(() => {
-              connectToAI();
-            }, 3000);
-          }
-        }
-      };
-
-      ws.onerror = (error) => {
-        console.error('AI WebSocket error:', error);
-        setError('Failed to connect to AI moderation service');
-        setAiConnecting(false);
-      };
-
-    } catch (err) {
-      console.error('Error connecting to AI:', err);
-      setError(err instanceof Error ? err.message : 'AI connection failed');
-      setAiConnecting(false);
-    }
-  }, [aiConnecting, aiConnected, isConnected]);
+  const handleConnectionChange = useCallback((connected: boolean, connecting: boolean) => {
+    setAiConnected(connected);
+    setAiConnecting(connecting);
+  }, []);
 
   const handleAIMessage = useCallback((message: any) => {
     switch (message.type) {
-      case 'session.created':
-        console.log('AI session created, configuring...');
-        configureSession();
-        break;
-      
-      case 'session.updated':
-        console.log('AI session configured successfully');
-        sessionConfiguredRef.current = true;
-        break;
-      
       case 'response.audio_transcript.delta':
         if (message.delta) {
-          // AI is speaking
-          const agentName = determineActiveAgent(message);
+          const agentName = determineActiveAgent(agents, message);
           setActiveAgent(agentName);
           
-          // Add to transcript
           setTranscript(prev => {
             const lastEntry = prev[prev.length - 1];
             if (lastEntry && lastEntry.speaker === agentName) {
-              // Append to existing entry
               return [
                 ...prev.slice(0, -1),
                 { ...lastEntry, text: lastEntry.text + message.delta }
               ];
             } else {
-              // New entry
               return [
                 ...prev,
                 { speaker: agentName, text: message.delta, timestamp: new Date() }
@@ -152,7 +55,6 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
       case 'conversation.item.input_audio_transcription.completed':
         if (message.transcript) {
           console.log('User transcript completed:', message.transcript);
-          // Add user's completed transcript
           setTranscript(prev => [
             ...prev,
             { speaker: 'You', text: message.transcript, timestamp: new Date() }
@@ -166,143 +68,60 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
         break;
         
       default:
-        // Log other message types for debugging
         console.log('Unhandled AI message type:', message.type);
     }
-  }, []);
-
-  const configureSession = useCallback(() => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      console.warn('WebSocket not ready for session configuration');
-      return;
-    }
-
-    // Get active agents' instructions
-    const activeAgents = agents.filter(agent => agent.active);
-    const instructions = generateModerationInstructions(activeAgents);
-
-    const sessionUpdate = {
-      type: 'session.update',
-      session: {
-        modalities: ['text', 'audio'],
-        instructions,
-        voice: 'alloy',
-        input_audio_format: 'pcm16',
-        output_audio_format: 'pcm16',
-        input_audio_transcription: {
-          model: 'whisper-1'
-        },
-        turn_detection: {
-          type: 'server_vad',
-          threshold: 0.5,
-          prefix_padding_ms: 300,
-          silence_duration_ms: 1000
-        },
-        temperature: 0.8,
-        max_response_output_tokens: 'inf'
-      }
-    };
-
-    console.log('Configuring AI session:', sessionUpdate);
-    wsRef.current.send(JSON.stringify(sessionUpdate));
   }, [agents]);
 
-  const generateModerationInstructions = (activeAgents: AIAgent[]): string => {
-    const agentDescriptions = activeAgents.map(agent => 
-      `${agent.name} (${agent.role}): ${agent.persona}`
-    ).join('\n');
+  const { connect, disconnect, sendMessage, isSessionConfigured } = useAIWebSocket({
+    onMessage: handleAIMessage,
+    onConnectionChange: handleConnectionChange,
+    onError: setError,
+    agents
+  });
 
-    return `You are part of a multi-agent AI moderation system for live voice debates. 
-
-Active moderators:
-${agentDescriptions}
-
-Your role depends on your assigned persona. Only speak when your specific moderation criteria are met:
-- Socrates: Ask clarifying questions when assumptions are made
-- Solon: Enforce rules when violations occur (interruptions, personal attacks)
-- Buddha: Intervene when tone becomes aggressive or hostile
-- Hermes: Summarize key points during natural breaks
-- Aristotle: Request sources for factual claims
-
-Keep interventions brief (1-2 sentences), polite, and focused on your specific role. Only one agent should speak at a time.
-
-The user is in a live debate. Listen carefully and only interject when necessary according to your role.`;
-  };
-
-  const determineActiveAgent = (message: any): string => {
-    // For now, rotate between agents or use a simple mapping
-    // In a full implementation, this would be more sophisticated
-    const activeAgentsList = agents.filter(a => a.active);
-    if (activeAgentsList.length === 0) return 'AI Moderator';
-    
-    // Simple rotation for demo - in production this would be smarter
-    const index = Math.floor(Math.random() * activeAgentsList.length);
-    return activeAgentsList[index].name;
-  };
+  // Connect to AI moderation when WebRTC is connected
+  useEffect(() => {
+    if (isConnected && !aiConnected && !aiConnecting) {
+      connect();
+    } else if (!isConnected && (aiConnected || aiConnecting)) {
+      disconnect();
+    }
+  }, [isConnected, aiConnected, aiConnecting, connect, disconnect]);
 
   const sendAudioToAI = useCallback((audioData: Float32Array) => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN || !sessionConfiguredRef.current) {
-      console.warn('WebSocket not ready or session not configured, skipping audio data');
+    if (!isSessionConfigured()) {
+      console.warn('Session not configured, skipping audio data');
       return;
     }
 
     try {
-      // Convert Float32Array to base64 PCM16
-      const int16Array = new Int16Array(audioData.length);
-      for (let i = 0; i < audioData.length; i++) {
-        const s = Math.max(-1, Math.min(1, audioData[i]));
-        int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-      }
-
-      const uint8Array = new Uint8Array(int16Array.buffer);
-      let binary = '';
-      const chunkSize = 0x8000;
-      
-      for (let i = 0; i < uint8Array.length; i += chunkSize) {
-        const chunk = uint8Array.subarray(i, Math.min(i + chunkSize, uint8Array.length));
-        binary += String.fromCharCode.apply(null, Array.from(chunk));
-      }
-      
-      const base64Audio = btoa(binary);
-
+      const base64Audio = encodeAudioForAI(audioData);
       const audioMessage = {
         type: 'input_audio_buffer.append',
         audio: base64Audio
       };
-
-      wsRef.current.send(JSON.stringify(audioMessage));
+      sendMessage(audioMessage);
     } catch (err) {
       console.error('Error sending audio to AI:', err);
     }
-  }, []);
+  }, [sendMessage, isSessionConfigured]);
+
+  const connectToAI = useCallback(() => {
+    if (!aiConnecting && !aiConnected) {
+      connect();
+    }
+  }, [aiConnecting, aiConnected, connect]);
 
   const disconnectFromAI = useCallback(() => {
-    console.log('Disconnecting from AI moderation...');
-    
-    // Clear reconnect timeout
-    if (reconnectTimeoutRef.current) {
-      clearTimeout(reconnectTimeoutRef.current);
-      reconnectTimeoutRef.current = null;
-    }
-    
-    if (wsRef.current) {
-      wsRef.current.close(1000, 'Normal closure');
-      wsRef.current = null;
-    }
-    
-    setAiConnected(false);
-    setAiConnecting(false);
-    setActiveAgent(null);
-    setError(null);
-    sessionConfiguredRef.current = false;
-  }, []);
+    disconnect();
+  }, [disconnect]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      disconnectFromAI();
+      disconnect();
     };
-  }, [disconnectFromAI]);
+  }, [disconnect]);
 
   return {
     aiConnected,
