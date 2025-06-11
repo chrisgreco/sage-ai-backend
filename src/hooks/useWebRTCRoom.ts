@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from 'react';
 import { 
   Room, 
@@ -10,6 +11,7 @@ import {
   LocalTrack,
   createLocalAudioTrack
 } from 'livekit-client';
+import { supabase } from '@/integrations/supabase/client';
 
 interface UseWebRTCRoomProps {
   roomName: string;
@@ -59,17 +61,27 @@ export const useWebRTCRoom = ({ roomName, participantName, serverUrl = 'wss://sa
     };
   }, [room]);
 
-  const connectToRoom = useCallback(async (token: string) => {
+  const connectToRoom = useCallback(async () => {
     try {
       setIsConnecting(true);
       setError(null);
-      await room.connect(serverUrl, token);
+
+      // Get LiveKit token from our edge function
+      const { data, error: tokenError } = await supabase.functions.invoke('generate-livekit-token', {
+        body: { roomId: roomName }
+      });
+
+      if (tokenError || !data?.token) {
+        throw new Error(tokenError?.message || 'Failed to get room token');
+      }
+
+      await room.connect(data.serverUrl || serverUrl, data.token);
     } catch (err) {
       console.error('Failed to connect to room:', err);
       setError(err instanceof Error ? err.message : 'Failed to connect to room');
       setIsConnecting(false);
     }
-  }, [room, serverUrl]);
+  }, [room, roomName, serverUrl]);
 
   const disconnectFromRoom = useCallback(() => {
     room.disconnect();

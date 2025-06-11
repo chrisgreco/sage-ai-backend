@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { Mic, MicOff, Phone, PhoneOff, Users } from 'lucide-react';
+import React, { useEffect } from 'react';
+import { Mic, MicOff, PhoneOff, Users } from 'lucide-react';
 import { useWebRTCRoom } from '@/hooks/useWebRTCRoom';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -11,8 +11,6 @@ interface WebRTCAudioRoomProps {
 
 const WebRTCAudioRoom: React.FC<WebRTCAudioRoomProps> = ({ roomId, onLeave }) => {
   const { user } = useAuth();
-  const [token, setToken] = useState<string>('');
-  const [needsToken, setNeedsToken] = useState(true);
   
   const {
     isConnected,
@@ -28,58 +26,25 @@ const WebRTCAudioRoom: React.FC<WebRTCAudioRoomProps> = ({ roomId, onLeave }) =>
     participantName: user?.email || 'Anonymous'
   });
 
-  const handleJoinRoom = async () => {
-    if (!token.trim()) {
-      alert('Please enter a valid room token');
-      return;
+  // Auto-connect when component mounts
+  useEffect(() => {
+    if (!isConnected && !isConnecting) {
+      connectToRoom();
     }
-    
-    await connectToRoom(token);
-    setNeedsToken(false);
-  };
+  }, [connectToRoom, isConnected, isConnecting]);
 
   const handleLeaveRoom = () => {
     disconnectFromRoom();
-    setNeedsToken(true);
-    setToken('');
     onLeave?.();
   };
 
-  if (needsToken && !isConnected) {
+  if (isConnecting) {
     return (
-      <div className="glass-panel p-6 max-w-md mx-auto">
-        <div className="text-center mb-6">
-          <h2 className="text-xl font-semibold text-content-primary mb-2">Join Audio Room</h2>
-          <p className="text-sm text-content-secondary">Enter your room token to join the debate</p>
-        </div>
-        
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-content-primary mb-2">
-              Room Token
-            </label>
-            <input
-              type="text"
-              value={token}
-              onChange={(e) => setToken(e.target.value)}
-              placeholder="Enter LiveKit room token"
-              className="glass-input w-full px-3 py-2 text-content-primary placeholder-content-muted"
-            />
-          </div>
-          
-          {error && (
-            <div className="p-3 rounded-lg bg-red-100 border border-red-200">
-              <p className="text-sm text-red-700">{error}</p>
-            </div>
-          )}
-          
-          <button
-            onClick={handleJoinRoom}
-            disabled={isConnecting}
-            className="glass-button w-full bg-gradient-to-r from-blue-600 to-purple-600 text-white font-medium py-3 disabled:opacity-50"
-          >
-            {isConnecting ? 'Connecting...' : 'Join Room'}
-          </button>
+      <div className="glass-panel p-6 max-w-2xl mx-auto">
+        <div className="text-center">
+          <div className="animate-spin w-8 h-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+          <h2 className="text-xl font-semibold text-content-primary mb-2">Connecting to Room</h2>
+          <p className="text-sm text-content-secondary">Setting up audio connection...</p>
         </div>
       </div>
     );
@@ -92,7 +57,7 @@ const WebRTCAudioRoom: React.FC<WebRTCAudioRoomProps> = ({ roomId, onLeave }) =>
         <div>
           <h2 className="text-xl font-semibold text-content-primary">Audio Room</h2>
           <p className="text-sm text-content-secondary">
-            {isConnected ? `Connected to ${roomId}` : 'Connecting...'}
+            {isConnected ? `Connected to ${roomId}` : 'Disconnected'}
           </p>
         </div>
         <div className="flex items-center space-x-2 text-sm text-content-muted">
