@@ -73,12 +73,12 @@ const HomePage: React.FC = () => {
 
   return (
     <div className="min-h-screen relative overflow-hidden">
-      {/* Header */}
-      <div className="glass-panel-elevated sticky top-0 z-50 mx-3 md:mx-4 mt-2 md:mt-3 mb-3 md:mb-4 fade-in-up liquid-morph">
-        <div className="max-w-md mx-auto md:max-w-4xl px-3 md:px-5 py-2 md:py-2.5">
+      {/* Thinner, sleeker header */}
+      <div className="glass-panel-elevated sticky top-0 z-50 mx-2 md:mx-3 mt-1.5 md:mt-2 mb-2 md:mb-3 fade-in-up">
+        <div className="max-w-md mx-auto md:max-w-4xl px-2.5 md:px-4 py-1.5 md:py-2">
           <div className="flex items-center justify-between">
             <SageLogo size="sm" className="md:w-auto" />
-            <div className="flex items-center space-x-2 md:space-x-3">
+            <div className="flex items-center space-x-1.5 md:space-x-2">
               {user && <UserMenu />}
             </div>
           </div>
@@ -86,39 +86,39 @@ const HomePage: React.FC = () => {
       </div>
 
       {/* Main Content Container */}
-      <div className="max-w-md mx-auto md:max-w-4xl px-3">
+      <div className="max-w-md mx-auto md:max-w-4xl px-2.5">
         
-        {/* Stories Section */}
-        <div className="mb-5">
-          <div className="relative mb-3">
-            <div className="glass-panel p-3 liquid-morph" style={{
-              background: 'linear-gradient(135deg, rgba(203, 213, 225, 0.06) 0%, rgba(255, 255, 255, 0.8) 30%, rgba(148, 163, 184, 0.04) 100%)',
-              backdropFilter: 'blur(25px) saturate(1.8)',
-              border: '1px solid rgba(255, 255, 255, 0.5)',
+        {/* Stories Section - Only Live Debates have flowing effect */}
+        <div className="mb-4">
+          <div className="relative mb-2.5">
+            <div className="glass-panel p-2.5 liquid-morph" style={{
+              background: 'linear-gradient(135deg, rgba(203, 213, 225, 0.08) 0%, rgba(255, 255, 255, 0.85) 30%, rgba(148, 163, 184, 0.06) 100%)',
+              backdropFilter: 'blur(35px) saturate(2.2)',
+              border: '1px solid rgba(255, 255, 255, 0.6)',
             }}>
               <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2.5">
+                <div className="flex items-center space-x-2">
                   <div className="relative">
-                    <div className="w-8 h-8 bg-gradient-to-br from-silver-400 to-silver-600 shadow-lg shadow-silver-500/20 icon-container">
-                      <div className="w-full h-full backdrop-blur-sm flex items-center justify-center border-2 border-white/50 icon-container"
+                    <div className="w-7 h-7 bg-gradient-to-br from-liquid-400 to-liquid-600 shadow-lg shadow-liquid-500/25 icon-container">
+                      <div className="w-full h-full backdrop-blur-sm flex items-center justify-center border-2 border-white/60 icon-container"
                            style={{ 
-                             background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.85) 0%, rgba(255, 255, 255, 0.65) 100%)',
+                             background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.7) 100%)',
                            }}>
-                        <div className="w-2 h-2 bg-gradient-to-r from-green-400 to-emerald-500 animate-pulse shadow-lg shadow-green-400/25 organic-pulse"></div>
+                        <div className="w-1.5 h-1.5 bg-gradient-to-r from-green-400 to-emerald-500 animate-pulse shadow-lg shadow-green-400/30 organic-pulse"></div>
                       </div>
                     </div>
                   </div>
                   <div>
-                    <h2 className="text-base font-semibold text-silver-800">Live Debates</h2>
-                    <p className="text-xs text-silver-600 font-medium">Real-time AI moderated discussions</p>
+                    <h2 className="text-sm font-semibold text-liquid-800">Live Debates</h2>
+                    <p className="text-xs text-liquid-600 font-medium">Real-time AI moderated discussions</p>
                   </div>
                 </div>
-                <div className="glass-panel px-2.5 py-1 liquid-morph" style={{
-                  background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(255, 255, 255, 0.75) 100%)',
-                  border: '1px solid rgba(34, 197, 94, 0.25)',
+                <div className="glass-panel px-2 py-0.5" style={{
+                  background: 'linear-gradient(135deg, rgba(34, 197, 94, 0.12) 0%, rgba(255, 255, 255, 0.8) 100%)',
+                  border: '1px solid rgba(34, 197, 94, 0.3)',
                 }}>
                   <div className="flex items-center space-x-1 text-xs">
-                    <div className="w-1 h-1 bg-gradient-to-r from-green-400 to-emerald-500 animate-pulse shadow-lg shadow-green-400/25 organic-pulse"></div>
+                    <div className="w-1 h-1 bg-gradient-to-r from-green-400 to-emerald-500 animate-pulse shadow-lg shadow-green-400/30 organic-pulse"></div>
                     <span className="font-medium text-green-700">{featuredRooms.filter(room => room.isLive).length} live now</span>
                   </div>
                 </div>
@@ -126,21 +126,21 @@ const HomePage: React.FC = () => {
             </div>
           </div>
           
-          <div className="flex space-x-3 overflow-x-auto pb-3 scrollbar-hide px-2">
+          <div className="flex space-x-2.5 overflow-x-auto pb-2.5 scrollbar-hide px-1.5">
             {/* Start Debate Story */}
             <div className="flex-shrink-0 cursor-pointer group" onClick={handleStartDebate}>
               <div className="relative story-circle">
-                <div className="w-14 h-14 bg-gradient-to-br from-silver-500 via-silver-600 to-silver-700 p-1 shadow-xl shadow-silver-500/20 icon-container liquid-morph">
-                  <div className="w-full h-full backdrop-blur-sm flex items-center justify-center border-2 border-white/40 group-hover:scale-105 transition-all duration-500 icon-container liquid-morph"
+                <div className="w-12 h-12 bg-gradient-to-br from-liquid-500 via-liquid-600 to-liquid-700 p-0.5 shadow-xl shadow-liquid-500/25 icon-container">
+                  <div className="w-full h-full backdrop-blur-sm flex items-center justify-center border-2 border-white/50 group-hover:scale-105 transition-all duration-500 icon-container"
                        style={{ 
                          background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.8) 100%)',
                        }}>
-                    <Play className="w-4 h-4 text-silver-800 group-hover:text-silver-600 transition-colors duration-300" />
+                    <Play className="w-3.5 h-3.5 text-liquid-800 group-hover:text-liquid-600 transition-colors duration-300" />
                   </div>
                 </div>
               </div>
-              <div className="mt-1.5 text-center">
-                <div className="text-xs font-medium text-content-primary truncate w-14">
+              <div className="mt-1 text-center">
+                <div className="text-xs font-medium text-content-primary truncate w-12">
                   Start
                 </div>
               </div>
@@ -154,11 +154,11 @@ const HomePage: React.FC = () => {
         </div>
 
         {/* Main Feed Area */}
-        <div className="space-y-5">
+        <div className="space-y-4">
           {/* Hero Section */}
-          <div className="glass-panel p-5 text-center scale-in liquid-morph">
+          <div className="glass-panel p-4 text-center scale-in">
             <div className="relative">
-              <h1 className="text-2xl md:text-3xl font-semibold mb-2.5 leading-tight"
+              <h1 className="text-xl md:text-2xl font-semibold mb-2 leading-tight"
                   style={{
                     background: 'linear-gradient(135deg, #475569 0%, #64748b 50%, #94a3b8 100%)',
                     WebkitBackgroundClip: 'text',
@@ -167,18 +167,18 @@ const HomePage: React.FC = () => {
                   }}>
                 Civil Discourse, Powered by AI
               </h1>
-              <p className="text-sm text-silver-700 mb-5 max-w-xl mx-auto leading-relaxed font-medium">
+              <p className="text-sm text-liquid-700 mb-4 max-w-xl mx-auto leading-relaxed font-medium">
                 Join thoughtful debates moderated by ancient wisdom. 
                 Socrates, Aristotle, and Buddha guide meaningful conversations.
               </p>
 
               <button 
                 onClick={handleStartDebate}
-                className="glass-button text-sm px-5 py-2.5 bg-gradient-to-r from-silver-500 via-silver-600 to-silver-700 text-white hover:shadow-xl hover:shadow-silver-500/20 transition-all duration-500 hover:scale-105 w-full md:w-auto font-medium"
-                style={{ borderRadius: '18px 14px 20px 12px' }}
+                className="glass-button text-sm px-4 py-2 bg-gradient-to-r from-liquid-500 via-liquid-600 to-liquid-700 text-white hover:shadow-xl hover:shadow-liquid-500/25 transition-all duration-500 hover:scale-105 w-full md:w-auto font-medium"
+                style={{ borderRadius: '16px 12px 18px 10px' }}
               >
-                <div className="flex items-center justify-center space-x-2">
-                  <Play className="w-3.5 h-3.5" />
+                <div className="flex items-center justify-center space-x-1.5">
+                  <Play className="w-3 h-3" />
                   <span>Start a Debate</span>
                 </div>
               </button>
@@ -186,15 +186,15 @@ const HomePage: React.FC = () => {
           </div>
 
           {/* Categories Grid */}
-          <div className="glass-panel p-5 liquid-morph">
-            <h2 className="text-base font-semibold text-silver-800 mb-3">Explore Topics</h2>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-2.5">
+          <div className="glass-panel p-4">
+            <h2 className="text-sm font-semibold text-liquid-800 mb-2.5">Explore Topics</h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
               {['Philosophy', 'Technology', 'Politics', 'Science', 'Ethics', 'Economics'].map((category) => (
                 <div key={category} className="group cursor-pointer">
-                  <div className="glass-panel p-3 hover:bg-white/75 transition-all duration-500 hover:scale-105 hover:shadow-lg hover:shadow-black/8 liquid-morph">
-                    <h3 className="font-medium text-silver-800 mb-1 text-xs">{category}</h3>
-                    <div className="flex items-center text-xs text-silver-600">
-                      <Users className="w-2.5 h-2.5 mr-1" />
+                  <div className="glass-panel p-2.5 hover:bg-white/85 transition-all duration-500 hover:scale-105 hover:shadow-lg hover:shadow-black/10">
+                    <h3 className="font-medium text-liquid-800 mb-0.5 text-xs">{category}</h3>
+                    <div className="flex items-center text-xs text-liquid-600">
+                      <Users className="w-2 h-2 mr-0.5" />
                       <span>{Math.floor(Math.random() * 50) + 10} debates</span>
                     </div>
                   </div>

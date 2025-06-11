@@ -97,52 +97,47 @@
   body {
     @apply bg-background text-foreground;
     font-family: -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    font-size: 14px;
-    line-height: 1.4;
+    font-size: 13px;
+    line-height: 1.3;
     min-height: 100vh;
     position: relative;
     
-    /* Flowing gradient background inspired by the reference image */
+    /* Minimalist liquid silver/platinum gradient background */
     background: linear-gradient(135deg, 
       #f8fafc 0%,
-      #e2e8f0 8%,
-      #f1f5f9 15%,
-      #e0f2fe 22%,
-      #ecfdf5 30%,
-      #fef3e2 38%,
-      #f0f9ff 45%,
-      #f3e8ff 52%,
-      #fdf4ff 60%,
-      #f0fdfa 68%,
-      #f0f9ff 75%,
-      #e0f2fe 82%,
-      #f1f5f9 90%,
+      #f1f5f9 12%,
+      #e2e8f0 25%,
+      #cbd5e1 38%,
+      #e2e8f0 50%,
+      #f1f5f9 62%,
+      #f8fafc 75%,
+      #f0f4f8 88%,
       #f8fafc 100%
     );
-    background-size: 400% 400%;
-    animation: flowingGradient 20s ease-in-out infinite;
+    background-size: 300% 300%;
+    animation: silverFlow 25s ease-in-out infinite;
   }
 
   /* Mobile optimizations */
   @media (max-width: 768px) {
     body {
-      font-size: 13px;
+      font-size: 12px;
     }
   }
 }
 
-@keyframes flowingGradient {
+@keyframes silverFlow {
   0%, 100% {
     background-position: 0% 50%;
   }
   25% {
-    background-position: 100% 80%;
+    background-position: 100% 75%;
   }
   50% {
-    background-position: 100% 20%;
+    background-position: 100% 25%;
   }
   75% {
-    background-position: 0% 80%;
+    background-position: 0% 75%;
   }
 }
 
@@ -178,7 +173,7 @@
   /* Enhanced mobile touch improvements */
   @media (max-width: 768px) {
     .glass-button {
-      min-height: 44px;
+      min-height: 40px;
     }
   }
 
@@ -204,26 +199,26 @@
     }
   }
 
-  /* Organic liquid glass morphing animation */
+  /* Organic liquid glass morphing animation - only for live debates */
   @keyframes liquidMorph {
     0% {
-      border-radius: 32px 24px 40px 20px;
+      border-radius: 28px 20px 32px 16px;
       transform: scale(1) rotate(0deg);
     }
     25% {
-      border-radius: 28px 36px 24px 32px;
-      transform: scale(1.01) rotate(0.3deg);
+      border-radius: 24px 30px 20px 26px;
+      transform: scale(1.005) rotate(0.2deg);
     }
     50% {
-      border-radius: 40px 20px 32px 28px;
-      transform: scale(0.99) rotate(-0.2deg);
+      border-radius: 32px 16px 26px 22px;
+      transform: scale(0.998) rotate(-0.1deg);
     }
     75% {
-      border-radius: 24px 32px 36px 24px;
-      transform: scale(1.005) rotate(0.1deg);
+      border-radius: 20px 26px 30px 18px;
+      transform: scale(1.002) rotate(0.1deg);
     }
     100% {
-      border-radius: 32px 24px 40px 20px;
+      border-radius: 28px 20px 32px 16px;
       transform: scale(1) rotate(0deg);
     }
   }
@@ -236,20 +231,20 @@
     }
     33% {
       border-radius: 45% 55% 50% 60%;
-      transform: scale(1.02) rotate(1deg);
+      transform: scale(1.015) rotate(0.8deg);
     }
     66% {
       border-radius: 60% 45% 55% 50%;
-      transform: scale(0.98) rotate(-0.5deg);
+      transform: scale(0.985) rotate(-0.4deg);
     }
   }
 
   .liquid-morph {
-    animation: liquidMorph 12s ease-in-out infinite;
+    animation: liquidMorph 10s ease-in-out infinite;
   }
 
   .organic-pulse {
-    animation: organicPulse 8s ease-in-out infinite;
+    animation: organicPulse 6s ease-in-out infinite;
   }
 }
 
@@ -258,17 +253,17 @@
   .glass-panel {
     @apply relative overflow-hidden;
     background: linear-gradient(135deg, 
-      rgba(255, 255, 255, 0.75) 0%, 
-      rgba(255, 255, 255, 0.55) 50%, 
-      rgba(255, 255, 255, 0.65) 100%);
-    backdrop-filter: blur(25px) saturate(1.8) brightness(1.1);
-    border: 1px solid rgba(255, 255, 255, 0.35);
-    border-radius: 18px 16px 20px 14px;
+      rgba(255, 255, 255, 0.85) 0%, 
+      rgba(255, 255, 255, 0.65) 50%, 
+      rgba(255, 255, 255, 0.75) 100%);
+    backdrop-filter: blur(35px) saturate(2.2) brightness(1.15);
+    border: 1px solid rgba(255, 255, 255, 0.45);
+    border-radius: 16px 14px 18px 12px;
     box-shadow: 
-      0 6px 24px rgba(0, 0, 0, 0.04),
-      0 1px 6px rgba(0, 0, 0, 0.02),
-      inset 0 1px 0 rgba(255, 255, 255, 0.6),
-      inset 0 -1px 0 rgba(255, 255, 255, 0.25);
+      0 8px 32px rgba(0, 0, 0, 0.06),
+      0 2px 8px rgba(0, 0, 0, 0.03),
+      inset 0 1px 0 rgba(255, 255, 255, 0.7),
+      inset 0 -1px 0 rgba(255, 255, 255, 0.35);
   }
   
   .glass-panel::before {
@@ -280,59 +275,59 @@
     height: 1.5px;
     background: linear-gradient(90deg, 
       transparent 0%, 
-      rgba(255, 255, 255, 0.7) 20%,
-      rgba(255, 255, 255, 0.8) 50%, 
-      rgba(255, 255, 255, 0.7) 80%,
+      rgba(255, 255, 255, 0.8) 20%,
+      rgba(255, 255, 255, 0.9) 50%, 
+      rgba(255, 255, 255, 0.8) 80%,
       transparent 100%);
-    border-radius: 18px 16px 0 0;
+    border-radius: 16px 14px 0 0;
   }
   
   .glass-panel-elevated {
     @apply relative overflow-hidden;
     background: linear-gradient(135deg, 
-      rgba(255, 255, 255, 0.85) 0%, 
-      rgba(255, 255, 255, 0.68) 50%, 
-      rgba(255, 255, 255, 0.78) 100%);
-    backdrop-filter: blur(30px) saturate(2) brightness(1.15);
-    border: 1.5px solid rgba(255, 255, 255, 0.4);
-    border-radius: 22px 18px 24px 16px;
+      rgba(255, 255, 255, 0.9) 0%, 
+      rgba(255, 255, 255, 0.7) 50%, 
+      rgba(255, 255, 255, 0.85) 100%);
+    backdrop-filter: blur(40px) saturate(2.5) brightness(1.2);
+    border: 1.5px solid rgba(255, 255, 255, 0.5);
+    border-radius: 18px 15px 20px 13px;
     box-shadow: 
-      0 10px 32px rgba(0, 0, 0, 0.06),
-      0 2px 8px rgba(0, 0, 0, 0.03),
-      inset 0 1.5px 0 rgba(255, 255, 255, 0.7),
-      inset 0 -1.5px 0 rgba(255, 255, 255, 0.35);
+      0 12px 40px rgba(0, 0, 0, 0.08),
+      0 3px 12px rgba(0, 0, 0, 0.04),
+      inset 0 1.5px 0 rgba(255, 255, 255, 0.8),
+      inset 0 -1.5px 0 rgba(255, 255, 255, 0.4);
   }
   
   .glass-button {
     @apply relative overflow-hidden transition-all duration-500;
     background: linear-gradient(135deg, 
-      rgba(255, 255, 255, 0.65) 0%, 
-      rgba(255, 255, 255, 0.45) 100%);
-    backdrop-filter: blur(20px) saturate(1.5) brightness(1.05);
-    border: 1px solid rgba(255, 255, 255, 0.35);
-    border-radius: 16px 12px 18px 10px;
+      rgba(255, 255, 255, 0.75) 0%, 
+      rgba(255, 255, 255, 0.55) 100%);
+    backdrop-filter: blur(30px) saturate(1.8) brightness(1.1);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 14px 10px 16px 8px;
     box-shadow: 
-      0 3px 12px rgba(0, 0, 0, 0.03),
-      inset 0 1px 0 rgba(255, 255, 255, 0.5);
+      0 4px 16px rgba(0, 0, 0, 0.04),
+      inset 0 1px 0 rgba(255, 255, 255, 0.6);
   }
 
   .glass-button:hover {
     background: linear-gradient(135deg, 
-      rgba(255, 255, 255, 0.75) 0%, 
-      rgba(255, 255, 255, 0.55) 100%);
-    border-color: rgba(255, 255, 255, 0.5);
+      rgba(255, 255, 255, 0.85) 0%, 
+      rgba(255, 255, 255, 0.65) 100%);
+    border-color: rgba(255, 255, 255, 0.6);
     box-shadow: 
-      0 6px 18px rgba(0, 0, 0, 0.045),
-      inset 0 1px 0 rgba(255, 255, 255, 0.7);
-    transform: scale(1.02) translateY(-0.5px);
-    border-radius: 18px 14px 20px 12px;
+      0 8px 24px rgba(0, 0, 0, 0.06),
+      inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    transform: scale(1.015) translateY(-0.5px);
+    border-radius: 16px 12px 18px 10px;
   }
 
   .glass-button:active {
-    transform: scale(0.98) translateY(0px);
+    transform: scale(0.985) translateY(0px);
     box-shadow: 
-      0 1px 6px rgba(0, 0, 0, 0.03),
-      inset 0 1px 0 rgba(255, 255, 255, 0.4);
+      0 2px 8px rgba(0, 0, 0, 0.04),
+      inset 0 1px 0 rgba(255, 255, 255, 0.5);
   }
 
   .glass-button::before {
@@ -344,7 +339,7 @@
     height: 100%;
     background: linear-gradient(90deg, 
       transparent 0%, 
-      rgba(255, 255, 255, 0.3) 50%, 
+      rgba(255, 255, 255, 0.4) 50%, 
       transparent 100%);
     transition: left 0.6s ease;
   }
@@ -355,81 +350,81 @@
 
   .glass-input {
     @apply transition-all duration-300 shadow-inner;
-    background: rgba(255, 255, 255, 0.6);
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    border-radius: 18px 14px 22px 12px;
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: 16px 12px 18px 10px;
   }
 
   .glass-input:focus {
-    background: rgba(255, 255, 255, 0.75);
-    border-color: rgba(255, 255, 255, 0.6);
-    border-radius: 22px 16px 26px 14px;
+    background: rgba(255, 255, 255, 0.85);
+    border-color: rgba(255, 255, 255, 0.7);
+    border-radius: 18px 14px 20px 12px;
   }
   
   /* Enhanced Debate Room Specific Styles */
   .participant-slot {
-    @apply p-3 transition-all duration-500 relative overflow-hidden;
+    @apply p-2.5 transition-all duration-500 relative overflow-hidden;
     background: linear-gradient(135deg, 
-      rgba(255, 255, 255, 0.75) 0%, 
-      rgba(255, 255, 255, 0.55) 100%);
-    backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    border-radius: 26px 20px 30px 16px;
+      rgba(255, 255, 255, 0.8) 0%, 
+      rgba(255, 255, 255, 0.6) 100%);
+    backdrop-filter: blur(25px);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: 22px 16px 26px 12px;
     box-shadow: 
-      0 6px 20px rgba(0, 0, 0, 0.05),
-      inset 0 1px 0 rgba(255, 255, 255, 0.6);
+      0 8px 28px rgba(0, 0, 0, 0.06),
+      inset 0 1px 0 rgba(255, 255, 255, 0.7);
   }
 
   .participant-slot.active {
-    border-color: rgba(59, 130, 246, 0.6);
+    border-color: rgba(59, 130, 246, 0.7);
     box-shadow: 
-      0 8px 32px rgba(59, 130, 246, 0.1),
-      inset 0 1px 0 rgba(255, 255, 255, 0.7);
+      0 12px 40px rgba(59, 130, 246, 0.12),
+      inset 0 1px 0 rgba(255, 255, 255, 0.8);
     background: linear-gradient(135deg, 
-      rgba(59, 130, 246, 0.12) 0%, 
-      rgba(255, 255, 255, 0.75) 50%, 
-      rgba(59, 130, 246, 0.08) 100%);
-    border-radius: 30px 22px 34px 18px;
+      rgba(59, 130, 246, 0.15) 0%, 
+      rgba(255, 255, 255, 0.85) 50%, 
+      rgba(59, 130, 246, 0.1) 100%);
+    border-radius: 26px 18px 30px 14px;
   }
 
   .participant-slot.speaking {
-    border-color: rgba(34, 197, 94, 0.6);
+    border-color: rgba(34, 197, 94, 0.7);
     box-shadow: 
-      0 12px 40px rgba(34, 197, 94, 0.15),
-      inset 0 1px 0 rgba(255, 255, 255, 0.8);
+      0 16px 48px rgba(34, 197, 94, 0.18),
+      inset 0 1px 0 rgba(255, 255, 255, 0.9);
     background: linear-gradient(135deg, 
-      rgba(34, 197, 94, 0.15) 0%, 
-      rgba(255, 255, 255, 0.8) 50%, 
-      rgba(34, 197, 94, 0.1) 100%);
+      rgba(34, 197, 94, 0.18) 0%, 
+      rgba(255, 255, 255, 0.9) 50%, 
+      rgba(34, 197, 94, 0.12) 100%);
     animation: organicPulse 3s ease-in-out infinite;
-    border-radius: 34px 24px 38px 20px;
+    border-radius: 30px 20px 34px 16px;
   }
 
   .agent-slot {
-    @apply p-3 transition-all duration-500 relative overflow-hidden;
+    @apply p-2.5 transition-all duration-500 relative overflow-hidden;
     background: linear-gradient(135deg, 
-      rgba(147, 51, 234, 0.08) 0%, 
-      rgba(255, 255, 255, 0.75) 50%, 
-      rgba(147, 51, 234, 0.05) 100%);
-    backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.4);
-    border-radius: 24px 18px 28px 14px;
+      rgba(147, 51, 234, 0.1) 0%, 
+      rgba(255, 255, 255, 0.8) 50%, 
+      rgba(147, 51, 234, 0.06) 100%);
+    backdrop-filter: blur(25px);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    border-radius: 20px 14px 24px 10px;
     box-shadow: 
-      0 6px 20px rgba(0, 0, 0, 0.05),
-      inset 0 1px 0 rgba(255, 255, 255, 0.6);
+      0 8px 28px rgba(0, 0, 0, 0.06),
+      inset 0 1px 0 rgba(255, 255, 255, 0.7);
   }
 
   .agent-slot.active {
-    border-color: rgba(147, 51, 234, 0.6);
+    border-color: rgba(147, 51, 234, 0.7);
     box-shadow: 
-      0 10px 36px rgba(147, 51, 234, 0.15),
-      inset 0 1px 0 rgba(255, 255, 255, 0.7);
+      0 14px 44px rgba(147, 51, 234, 0.18),
+      inset 0 1px 0 rgba(255, 255, 255, 0.8);
     background: linear-gradient(135deg, 
-      rgba(147, 51, 234, 0.18) 0%, 
-      rgba(255, 255, 255, 0.8) 50%, 
-      rgba(147, 51, 234, 0.12) 100%);
-    border-radius: 28px 20px 32px 16px;
+      rgba(147, 51, 234, 0.22) 0%, 
+      rgba(255, 255, 255, 0.9) 50%, 
+      rgba(147, 51, 234, 0.15) 100%);
+    border-radius: 24px 16px 28px 12px;
   }
 
   /* Story circles with enhanced organic glass effect */
@@ -440,40 +435,40 @@
   .story-circle::before {
     content: '';
     position: absolute;
-    inset: -3px;
-    padding: 3px;
+    inset: -2px;
+    padding: 2px;
     background: linear-gradient(135deg, 
-      rgba(255, 255, 255, 0.7) 0%, 
-      rgba(255, 255, 255, 0.3) 50%, 
-      rgba(255, 255, 255, 0.5) 100%);
+      rgba(255, 255, 255, 0.8) 0%, 
+      rgba(255, 255, 255, 0.4) 50%, 
+      rgba(255, 255, 255, 0.6) 100%);
     -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     -webkit-mask-composite: xor;
     mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
     mask-composite: exclude;
     border-radius: 50% 45% 55% 50%;
-    animation: organicPulse 10s ease-in-out infinite;
+    animation: organicPulse 8s ease-in-out infinite;
   }
 
   /* Enhanced icon containers with organic shapes */
   .icon-container {
     @apply relative overflow-hidden transition-all duration-500;
     background: linear-gradient(135deg, 
-      rgba(255, 255, 255, 0.8) 0%, 
-      rgba(255, 255, 255, 0.6) 100%);
-    backdrop-filter: blur(16px) saturate(1.8);
-    border: 1px solid rgba(255, 255, 255, 0.5);
+      rgba(255, 255, 255, 0.85) 0%, 
+      rgba(255, 255, 255, 0.65) 100%);
+    backdrop-filter: blur(25px) saturate(2);
+    border: 1px solid rgba(255, 255, 255, 0.6);
     border-radius: 50% 45% 55% 50%;
     box-shadow: 
-      0 6px 20px rgba(0, 0, 0, 0.04),
-      inset 0 1px 0 rgba(255, 255, 255, 0.7);
+      0 8px 28px rgba(0, 0, 0, 0.05),
+      inset 0 1px 0 rgba(255, 255, 255, 0.8);
   }
 
   .icon-container:hover {
     border-radius: 55% 50% 45% 60%;
-    transform: scale(1.05) rotate(2deg);
+    transform: scale(1.04) rotate(1.5deg);
     box-shadow: 
-      0 8px 28px rgba(0, 0, 0, 0.06),
-      inset 0 1px 0 rgba(255, 255, 255, 0.8);
+      0 12px 36px rgba(0, 0, 0, 0.08),
+      inset 0 1px 0 rgba(255, 255, 255, 0.9);
   }
 
   /* Enhanced floating elements */
@@ -488,15 +483,15 @@
       border-radius: 50% 40% 60% 45%;
     }
     25% {
-      transform: translateY(-8px) rotate(1deg) scale(1.02);
+      transform: translateY(-6px) rotate(0.8deg) scale(1.015);
       border-radius: 45% 55% 50% 60%;
     }
     50% {
-      transform: translateY(-12px) rotate(0deg) scale(1);
+      transform: translateY(-10px) rotate(0deg) scale(1);
       border-radius: 60% 45% 55% 50%;
     }
     75% {
-      transform: translateY(-6px) rotate(-0.5deg) scale(0.98);
+      transform: translateY(-4px) rotate(-0.4deg) scale(0.985);
       border-radius: 50% 60% 45% 55%;
     }
   }
@@ -504,19 +499,19 @@
   /* Mobile-first responsive improvements */
   @media (max-width: 768px) {
     .glass-panel {
-      border-radius: 14px 12px 16px 10px;
+      border-radius: 12px 10px 14px 8px;
     }
     
     .glass-panel-elevated {
-      border-radius: 16px 14px 18px 12px;
+      border-radius: 14px 12px 16px 10px;
     }
 
     .glass-button {
-      border-radius: 12px 10px 14px 8px;
+      border-radius: 10px 8px 12px 6px;
     }
 
     .glass-button:hover {
-      border-radius: 14px 12px 16px 10px;
+      border-radius: 12px 10px 14px 8px;
     }
   }
 }
