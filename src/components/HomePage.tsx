@@ -1,4 +1,5 @@
 
+
 import React, { useState } from 'react';
 import { Play, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -126,7 +127,7 @@ const HomePage: React.FC = () => {
             </div>
           </div>
           
-          <div className="flex space-x-2.5 overflow-x-auto pb-2.5 scrollbar-hide px-1.5">
+          <div className="flex items-center space-x-2.5 overflow-x-auto pb-2.5 scrollbar-hide px-1.5">
             {/* Start Debate Story */}
             <div className="flex-shrink-0 cursor-pointer group" onClick={handleStartDebate}>
               <div className="relative story-circle">
@@ -178,7 +179,7 @@ const HomePage: React.FC = () => {
 
               <button 
                 onClick={handleStartDebate}
-                className="glass-button text-sm px-4 py-2 bg-gradient-to-r from-liquid-500 via-liquid-600 to-liquid-700 text-content-inverse hover:shadow-xl hover:shadow-liquid-500/25 transition-all duration-500 hover:scale-105 w-full md:w-auto font-medium"
+                className="glass-button text-sm px-4 py-2 bg-gradient-to-r from-liquid-500 via-liquid-600 to-liquid-700 text-white hover:shadow-xl hover:shadow-liquid-500/25 transition-all duration-500 hover:scale-105 w-full md:w-auto font-medium"
                 style={{ borderRadius: '16px 12px 18px 10px' }}
               >
                 <div className="flex items-center justify-center space-x-1.5">
@@ -217,3 +218,4 @@ const HomePage: React.FC = () => {
 };
 
 export default HomePage;
+
