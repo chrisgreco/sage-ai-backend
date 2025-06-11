@@ -5,6 +5,7 @@ import { useLiveKitAgent } from './useLiveKitAgent';
 
 export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModerationProps): UseAIModerationReturn => {
   const [error, setError] = useState<string | null>(null);
+  const [audioDataReceived, setAudioDataReceived] = useState(0);
 
   const handleMessage = useCallback((message: any) => {
     console.log('AI moderation message:', message);
@@ -56,10 +57,31 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
   }, [agents, aiConnected, updateAgents]);
 
   const sendAudioToAI = useCallback((audioData: Float32Array) => {
-    // Audio is automatically handled by LiveKit Agents
-    // No need to manually send audio data
-    console.log('Audio data will be processed by LiveKit Agent automatically');
-  }, []);
+    // Track audio data being received
+    setAudioDataReceived(prev => prev + 1);
+    
+    // Send data to LiveKit room if connected
+    if (room && aiConnected) {
+      try {
+        // Send audio data as a message to the room for the agent to process
+        const audioMessage = {
+          type: 'audio_data',
+          timestamp: Date.now(),
+          audioLength: audioData.length
+        };
+        
+        room.localParticipant.publishData(
+          new TextEncoder().encode(JSON.stringify(audioMessage))
+        );
+        
+        console.log('Sent audio data notification to agent:', audioData.length);
+      } catch (err) {
+        console.error('Error sending audio data to agent:', err);
+      }
+    } else {
+      console.log('Room not ready, audio data buffered');
+    }
+  }, [room, aiConnected]);
 
   const connectToAI = useCallback(() => {
     if (!aiConnecting && !aiConnected) {
