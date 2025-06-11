@@ -1,5 +1,3 @@
-
-
 import React, { useState } from 'react';
 import { Play, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -179,8 +177,11 @@ const HomePage: React.FC = () => {
 
               <button 
                 onClick={handleStartDebate}
-                className="glass-button text-sm px-4 py-2 bg-gradient-to-r from-liquid-500 via-liquid-600 to-liquid-700 text-white hover:shadow-xl hover:shadow-liquid-500/25 transition-all duration-500 hover:scale-105 w-full md:w-auto font-medium"
-                style={{ borderRadius: '16px 12px 18px 10px' }}
+                className="glass-button text-sm px-4 py-2 text-white hover:shadow-xl transition-all duration-500 hover:scale-105 w-full md:w-auto font-medium"
+                style={{ 
+                  borderRadius: '16px 12px 18px 10px',
+                  background: 'linear-gradient(135deg, #475569 0%, #64748b 50%, #94a3b8 100%)'
+                }}
               >
                 <div className="flex items-center justify-center space-x-1.5">
                   <Play className="w-3 h-3" />
@@ -218,4 +219,3 @@ const HomePage: React.FC = () => {
 };
 
 export default HomePage;
-

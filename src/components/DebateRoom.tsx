@@ -58,75 +58,91 @@ const DebateRoom: React.FC = () => {
   }, [lastAudioTimestamp]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-      {/* Header */}
-      <div className="glass-panel-elevated sticky top-0 z-50 px-4 py-3 mb-6">
-        <div className="max-w-4xl mx-auto">
+    <div className="min-h-screen relative overflow-hidden">
+      {/* Header with homepage styling */}
+      <div className="glass-panel-elevated sticky top-0 z-50 mx-2 md:mx-3 mt-1 md:mt-1.5 mb-2 md:mb-3 fade-in-up">
+        <div className="max-w-md mx-auto md:max-w-4xl px-2.5 md:px-4 py-0.5 md:py-1">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-3">
               <button
                 onClick={handleLeaveRoom}
-                className="glass-button p-2 hover:bg-white/60"
+                className="glass-button p-1.5 hover:bg-white/60"
               >
-                <ArrowLeft className="w-5 h-5 text-content-primary" />
+                <ArrowLeft className="w-4 h-4 text-content-primary" />
               </button>
               <SageLogo size="sm" />
               <div>
-                <h1 className="text-lg font-semibold text-content-primary">
+                <h1 className="text-sm md:text-base font-semibold text-content-primary">
                   Debate Room {id}
                 </h1>
-                <p className="text-sm text-content-secondary">
+                <p className="text-xs text-content-secondary">
                   AI-Moderated Discussion
                 </p>
               </div>
             </div>
             <button
               onClick={() => setShowSettings(!showSettings)}
-              className="glass-button p-2 hover:bg-white/60"
+              className="glass-button p-1.5 hover:bg-white/60"
             >
-              <Settings className="w-5 h-5 text-content-primary" />
+              <Settings className="w-4 h-4 text-content-primary" />
             </button>
           </div>
         </div>
       </div>
 
       {/* Main Content */}
-      <div className="max-w-6xl mx-auto px-4">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <div className="max-w-md mx-auto md:max-w-6xl px-2.5 md:px-4">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
           {/* Main Audio Room */}
           <div className="lg:col-span-3">
-            <WebRTCAudioRoom 
-              roomId={id || 'demo'} 
-              onLeave={handleLeaveRoom}
-              onAudioData={handleAudioData}
-              onConnectionChange={handleWebRTCConnectionChange}
-            />
+            <div className="glass-panel p-4" style={{
+              background: 'linear-gradient(135deg, rgba(203, 213, 225, 0.08) 0%, rgba(255, 255, 255, 0.85) 30%, rgba(148, 163, 184, 0.06) 100%)',
+              backdropFilter: 'blur(35px) saturate(2.2)',
+              border: '1px solid rgba(255, 255, 255, 0.6)',
+            }}>
+              <WebRTCAudioRoom 
+                roomId={id || 'demo'} 
+                onLeave={handleLeaveRoom}
+                onAudioData={handleAudioData}
+                onConnectionChange={handleWebRTCConnectionChange}
+              />
+            </div>
           </div>
 
           {/* AI Moderation Sidebar */}
           <div className="space-y-4">
-            <AIModerationPanel 
-              roomId={id || 'demo'} 
-              isWebRTCConnected={isWebRTCConnected}
-              onAudioData={handleAIModerationReady}
-            />
+            <div className="glass-panel p-4" style={{
+              background: 'linear-gradient(135deg, rgba(203, 213, 225, 0.08) 0%, rgba(255, 255, 255, 0.85) 30%, rgba(148, 163, 184, 0.06) 100%)',
+              backdropFilter: 'blur(35px) saturate(2.2)',
+              border: '1px solid rgba(255, 255, 255, 0.6)',
+            }}>
+              <AIModerationPanel 
+                roomId={id || 'demo'} 
+                isWebRTCConnected={isWebRTCConnected}
+                onAudioData={handleAIModerationReady}
+              />
+            </div>
 
             {/* Debate Rules Panel */}
-            <div className="glass-panel p-4">
-              <h3 className="text-lg font-semibold text-content-primary mb-3">
+            <div className="glass-panel p-4" style={{
+              background: 'linear-gradient(135deg, rgba(203, 213, 225, 0.08) 0%, rgba(255, 255, 255, 0.85) 30%, rgba(148, 163, 184, 0.06) 100%)',
+              backdropFilter: 'blur(35px) saturate(2.2)',
+              border: '1px solid rgba(255, 255, 255, 0.6)',
+            }}>
+              <h3 className="text-sm font-semibold text-content-primary mb-3">
                 Debate Rules
               </h3>
               <div className="space-y-2">
-                <div className="text-sm text-content-secondary">
+                <div className="text-xs text-content-secondary">
                   • No personal attacks
                 </div>
-                <div className="text-sm text-content-secondary">
+                <div className="text-xs text-content-secondary">
                   • Provide sources for claims
                 </div>
-                <div className="text-sm text-content-secondary">
+                <div className="text-xs text-content-secondary">
                   • Respect speaking turns
                 </div>
-                <div className="text-sm text-content-secondary">
+                <div className="text-xs text-content-secondary">
                   • Stay on topic
                 </div>
               </div>
