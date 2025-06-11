@@ -1,6 +1,6 @@
-
 import React, { useState } from 'react';
 import { Play, Users } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
 import SageLogo from './SageLogo';
 import UserMenu from './UserMenu';
@@ -8,6 +8,7 @@ import DebateStoryCircle from './DebateStoryCircle';
 
 const HomePage: React.FC = () => {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [featuredRooms] = useState([
     {
       id: 1,
@@ -65,6 +66,12 @@ const HomePage: React.FC = () => {
     }
   ]);
 
+  const handleStartDebate = () => {
+    // For now, navigate to a demo debate room
+    // Later this can be enhanced to show room creation modal
+    navigate('/debate/demo');
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
       {/* Header */}
@@ -92,7 +99,10 @@ const HomePage: React.FC = () => {
           </p>
 
           {/* CTA Button */}
-          <button className="glass-button text-lg px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:shadow-xl transition-all duration-300 hover:scale-105">
+          <button 
+            onClick={handleStartDebate}
+            className="glass-button text-lg px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:shadow-xl transition-all duration-300 hover:scale-105"
+          >
             <div className="flex items-center space-x-2">
               <Play className="w-5 h-5" />
               <span>Start a Debate</span>
