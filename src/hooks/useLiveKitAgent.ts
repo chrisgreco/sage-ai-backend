@@ -3,7 +3,6 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { 
   Room, 
   RoomEvent, 
-  DataReceived,
   RemoteParticipant,
   LocalParticipant 
 } from 'livekit-client';
