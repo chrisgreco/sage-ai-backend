@@ -62,30 +62,30 @@ const AuthForm: React.FC<AuthFormProps> = ({ mode, onToggleMode }) => {
   };
 
   return (
-    <div className="glass-panel-elevated p-8 w-full max-w-md mx-auto">
-      <div className="text-center mb-6">
-        <h2 className="text-2xl font-bold text-gradient mb-2">
+    <div className="backdrop-blur-md bg-white/80 border border-slate-200/50 rounded-2xl shadow-2xl shadow-slate-900/10 p-8 w-full max-w-md mx-auto">
+      <div className="text-center mb-8">
+        <h2 className="text-3xl font-bold bg-gradient-to-r from-slate-700 via-gray-800 to-slate-600 bg-clip-text text-transparent mb-3">
           {mode === 'login' ? 'Welcome Back' : 'Join Sage'}
         </h2>
-        <p className="text-content-secondary">
+        <p className="text-slate-600">
           {mode === 'login' 
             ? 'Sign in to continue your debates' 
             : 'Create your account to start debating'}
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-6">
         {mode === 'signup' && (
           <div className="space-y-2">
-            <label className="text-sm font-medium text-content-primary">Display Name</label>
+            <label className="text-sm font-medium text-slate-700">Display Name</label>
             <div className="relative">
-              <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-content-muted w-4 h-4" />
+              <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
               <Input
                 type="text"
                 placeholder="Your display name"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
-                className="pl-10 glass-input"
+                className="pl-11 h-12 border-slate-200 bg-white/60 backdrop-blur-sm focus:border-slate-400 focus:ring-slate-400/20 text-slate-800 placeholder:text-slate-400"
                 required
               />
             </div>
@@ -93,38 +93,38 @@ const AuthForm: React.FC<AuthFormProps> = ({ mode, onToggleMode }) => {
         )}
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-content-primary">Email</label>
+          <label className="text-sm font-medium text-slate-700">Email</label>
           <div className="relative">
-            <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-content-muted w-4 h-4" />
+            <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
             <Input
               type="email"
               placeholder="your.email@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="pl-10 glass-input"
+              className="pl-11 h-12 border-slate-200 bg-white/60 backdrop-blur-sm focus:border-slate-400 focus:ring-slate-400/20 text-slate-800 placeholder:text-slate-400"
               required
             />
           </div>
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-content-primary">Password</label>
+          <label className="text-sm font-medium text-slate-700">Password</label>
           <div className="relative">
-            <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-content-muted w-4 h-4" />
+            <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
             <Input
               type={showPassword ? "text" : "password"}
               placeholder="Enter your password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="pl-10 pr-10 glass-input"
+              className="pl-11 pr-12 h-12 border-slate-200 bg-white/60 backdrop-blur-sm focus:border-slate-400 focus:ring-slate-400/20 text-slate-800 placeholder:text-slate-400"
               required
             />
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-content-muted hover:text-content-primary transition-colors"
+              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
             >
-              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
             </button>
           </div>
         </div>
@@ -132,17 +132,24 @@ const AuthForm: React.FC<AuthFormProps> = ({ mode, onToggleMode }) => {
         <Button
           type="submit"
           disabled={loading}
-          className="w-full glass-button bg-gradient-to-r from-purple-500 to-blue-600 text-white font-medium py-3 hover:from-purple-600 hover:to-blue-700 transition-all duration-200"
+          className="w-full h-12 bg-gradient-to-r from-slate-600 via-gray-700 to-slate-600 hover:from-slate-700 hover:via-gray-800 hover:to-slate-700 text-white font-semibold rounded-xl shadow-lg shadow-slate-900/25 hover:shadow-xl hover:shadow-slate-900/30 transition-all duration-300 transform hover:scale-105"
         >
-          {loading ? 'Please wait...' : (mode === 'login' ? 'Sign In' : 'Create Account')}
+          {loading ? (
+            <div className="flex items-center space-x-2">
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+              <span>Please wait...</span>
+            </div>
+          ) : (
+            mode === 'login' ? 'Sign In' : 'Create Account'
+          )}
         </Button>
       </form>
 
-      <div className="mt-6 text-center">
+      <div className="mt-8 text-center">
         <button
           type="button"
           onClick={onToggleMode}
-          className="text-content-secondary hover:text-content-primary transition-colors"
+          className="text-slate-600 hover:text-slate-800 transition-colors font-medium"
         >
           {mode === 'login' 
             ? "Don't have an account? Sign up" 
