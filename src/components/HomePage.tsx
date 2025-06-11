@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Play, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -74,74 +75,94 @@ const HomePage: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">
-      {/* Header */}
-      <div className="glass-panel-elevated p-6 mb-8 fade-in-up">
-        <div className="max-w-7xl mx-auto">
+      {/* Instagram-style Header */}
+      <div className="glass-panel-elevated sticky top-0 z-50 px-4 py-3 mb-4 fade-in-up">
+        <div className="max-w-md mx-auto md:max-w-4xl">
           <div className="flex items-center justify-between">
-            <SageLogo size="lg" />
-            <div className="flex items-center space-x-4">
+            <SageLogo size="md" />
+            <div className="flex items-center space-x-3">
               {user && <UserMenu />}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="max-w-4xl mx-auto px-6">
-        {/* Hero Section */}
-        <div className="text-center mb-12">
-          <h1 className="text-5xl font-bold text-gradient mb-4">
-            Civil Discourse, Powered by AI
-          </h1>
-          <p className="text-xl text-content-secondary mb-8 max-w-2xl mx-auto">
-            Join thoughtful debates moderated by ancient wisdom. 
-            Socrates, Aristotle, and Buddha guide meaningful conversations.
-          </p>
-
-          {/* CTA Button */}
-          <button 
-            onClick={handleStartDebate}
-            className="glass-button text-lg px-8 py-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:shadow-xl transition-all duration-300 hover:scale-105"
-          >
-            <div className="flex items-center space-x-2">
-              <Play className="w-5 h-5" />
-              <span>Start a Debate</span>
-            </div>
-          </button>
-        </div>
-
-        {/* Live Debates Stories */}
-        <div className="glass-panel p-8 mb-8 scale-in">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-semibold text-content-primary">Live Debates</h2>
+      {/* Main Content Container */}
+      <div className="max-w-md mx-auto md:max-w-4xl px-4">
+        
+        {/* Stories Section */}
+        <div className="mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-content-primary">Live Debates</h2>
             <div className="flex items-center space-x-2 text-sm text-content-muted">
               <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <span>{featuredRooms.filter(room => room.isLive).length} active</span>
+              <span>{featuredRooms.filter(room => room.isLive).length} live</span>
             </div>
           </div>
           
-          <div className="flex space-x-4 overflow-x-auto pb-4 scrollbar-hide">
+          <div className="flex space-x-4 overflow-x-auto pb-4 scrollbar-hide px-2">
+            {/* Start Debate Story */}
+            <div className="flex-shrink-0 cursor-pointer group" onClick={handleStartDebate}>
+              <div className="relative">
+                <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-600 to-purple-600 p-0.5">
+                  <div className="w-full h-full rounded-full bg-white/90 backdrop-blur-sm flex items-center justify-center">
+                    <Play className="w-6 h-6 text-slate-800" />
+                  </div>
+                </div>
+              </div>
+              <div className="mt-2 text-center">
+                <div className="text-xs font-medium text-slate-700 truncate w-20">
+                  Start
+                </div>
+              </div>
+            </div>
+
+            {/* Debate Room Stories */}
             {featuredRooms.map((room) => (
               <DebateStoryCircle key={room.id} room={room} />
             ))}
           </div>
         </div>
 
-        {/* Featured Categories */}
-        <div className="glass-panel p-8">
-          <h2 className="text-2xl font-semibold text-content-primary mb-6">Explore Topics</h2>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-            {['Philosophy', 'Technology', 'Politics', 'Science', 'Ethics', 'Economics'].map((category) => (
-              <div key={category} className="group cursor-pointer">
-                <div className="glass-panel p-6 hover:bg-white/60 transition-all duration-300 hover:scale-105">
-                  <h3 className="font-semibold text-content-primary mb-2">{category}</h3>
-                  <div className="flex items-center text-sm text-content-secondary">
-                    <Users className="w-4 h-4 mr-1" />
-                    <span>{Math.floor(Math.random() * 50) + 10} debates</span>
+        {/* Main Feed Area */}
+        <div className="space-y-6">
+          {/* Hero Section */}
+          <div className="glass-panel p-6 text-center scale-in">
+            <h1 className="text-3xl md:text-4xl font-bold text-gradient mb-3">
+              Civil Discourse, Powered by AI
+            </h1>
+            <p className="text-base text-content-secondary mb-6 max-w-md mx-auto">
+              Join thoughtful debates moderated by ancient wisdom. 
+              Socrates, Aristotle, and Buddha guide meaningful conversations.
+            </p>
+
+            <button 
+              onClick={handleStartDebate}
+              className="glass-button text-base px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:shadow-xl transition-all duration-300 hover:scale-105 w-full md:w-auto"
+            >
+              <div className="flex items-center justify-center space-x-2">
+                <Play className="w-4 h-4" />
+                <span>Start a Debate</span>
+              </div>
+            </button>
+          </div>
+
+          {/* Categories Grid */}
+          <div className="glass-panel p-6">
+            <h2 className="text-lg font-semibold text-content-primary mb-4">Explore Topics</h2>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {['Philosophy', 'Technology', 'Politics', 'Science', 'Ethics', 'Economics'].map((category) => (
+                <div key={category} className="group cursor-pointer">
+                  <div className="glass-panel p-4 hover:bg-white/60 transition-all duration-300 hover:scale-105">
+                    <h3 className="font-medium text-content-primary mb-1 text-sm">{category}</h3>
+                    <div className="flex items-center text-xs text-content-secondary">
+                      <Users className="w-3 h-3 mr-1" />
+                      <span>{Math.floor(Math.random() * 50) + 10} debates</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
           </div>
         </div>
       </div>

@@ -93,6 +93,13 @@
   body {
     @apply bg-background text-foreground font-sans;
   }
+
+  /* Mobile optimizations */
+  @media (max-width: 768px) {
+    body {
+      font-size: 14px;
+    }
+  }
 }
 
 @layer utilities {
@@ -121,6 +128,13 @@
   
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
+  }
+
+  /* Mobile touch improvements */
+  @media (max-width: 768px) {
+    .glass-button {
+      min-height: 44px; /* Apple's recommended touch target size */
+    }
   }
 
   @keyframes fadeInUp {
@@ -186,5 +200,16 @@
 
   .agent-slot.active {
     @apply border-purple-300/50 shadow-md bg-white/60;
+  }
+
+  /* Mobile-first responsive improvements */
+  @media (max-width: 768px) {
+    .glass-panel {
+      @apply rounded-xl;
+    }
+    
+    .glass-panel-elevated {
+      @apply rounded-xl;
+    }
   }
 }
