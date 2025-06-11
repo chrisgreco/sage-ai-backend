@@ -27,7 +27,7 @@ const ParticipantSlot: React.FC<ParticipantSlotProps> = ({
     let baseClasses = 'glass-panel p-3 w-full';
     
     if (type === 'agent') {
-      if (isActive) baseClasses += ' ring-2 ring-liquid-400';
+      if (isActive) baseClasses += ' ring-2 ring-silver-400';
     } else {
       if (isActive) baseClasses += ' ring-2 ring-blue-400';
       if (isSpeaking) baseClasses += ' ring-2 ring-green-400';
@@ -37,7 +37,7 @@ const ParticipantSlot: React.FC<ParticipantSlotProps> = ({
   };
 
   const getStatusColor = () => {
-    if (type === 'agent') return isActive ? 'text-liquid-700' : 'text-content-muted';
+    if (type === 'agent') return isActive ? 'text-silver-700' : 'text-content-muted';
     if (isSpeaking) return 'text-green-600';
     if (isActive) return 'text-blue-600';
     return 'text-content-muted';
@@ -63,7 +63,7 @@ const ParticipantSlot: React.FC<ParticipantSlotProps> = ({
           {/* Avatar/Icon */}
           <div className={`w-12 h-12 rounded-full glass-panel flex items-center justify-center ${getStatusColor()}`}>
             {type === 'agent' ? (
-              <div className="w-6 h-6 bg-gradient-to-br from-liquid-500 to-liquid-600 rounded-full flex items-center justify-center">
+              <div className="w-6 h-6 bg-gradient-to-br from-silver-500 to-silver-600 rounded-full flex items-center justify-center">
                 <span className="text-white text-xs font-bold">AI</span>
               </div>
             ) : (
