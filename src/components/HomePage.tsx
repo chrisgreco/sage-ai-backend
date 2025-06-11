@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Play, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -73,9 +72,9 @@ const HomePage: React.FC = () => {
 
   return (
     <div className="min-h-screen relative overflow-hidden">
-      {/* Thinner, sleeker header */}
+      {/* Thinner, sleeker header with smaller font sizes */}
       <div className="glass-panel-elevated sticky top-0 z-50 mx-2 md:mx-3 mt-1.5 md:mt-2 mb-2 md:mb-3 fade-in-up">
-        <div className="max-w-md mx-auto md:max-w-4xl px-2.5 md:px-4 py-1.5 md:py-2">
+        <div className="max-w-md mx-auto md:max-w-4xl px-2.5 md:px-4 py-1 md:py-1.5">
           <div className="flex items-center justify-between">
             <SageLogo size="sm" className="md:w-auto" />
             <div className="flex items-center space-x-1.5 md:space-x-2">
@@ -155,8 +154,12 @@ const HomePage: React.FC = () => {
 
         {/* Main Feed Area */}
         <div className="space-y-4">
-          {/* Hero Section */}
-          <div className="glass-panel p-4 text-center scale-in">
+          {/* Hero Section with enhanced blur effect */}
+          <div className="glass-panel p-4 text-center scale-in" style={{
+            background: 'linear-gradient(135deg, rgba(203, 213, 225, 0.08) 0%, rgba(255, 255, 255, 0.85) 30%, rgba(148, 163, 184, 0.06) 100%)',
+            backdropFilter: 'blur(35px) saturate(2.2)',
+            border: '1px solid rgba(255, 255, 255, 0.6)',
+          }}>
             <div className="relative">
               <h1 className="text-xl md:text-2xl font-semibold mb-2 leading-tight"
                   style={{
@@ -185,8 +188,12 @@ const HomePage: React.FC = () => {
             </div>
           </div>
 
-          {/* Categories Grid */}
-          <div className="glass-panel p-4">
+          {/* Categories Grid with enhanced blur effect */}
+          <div className="glass-panel p-4" style={{
+            background: 'linear-gradient(135deg, rgba(203, 213, 225, 0.08) 0%, rgba(255, 255, 255, 0.85) 30%, rgba(148, 163, 184, 0.06) 100%)',
+            backdropFilter: 'blur(35px) saturate(2.2)',
+            border: '1px solid rgba(255, 255, 255, 0.6)',
+          }}>
             <h2 className="text-sm font-semibold text-liquid-800 mb-2.5">Explore Topics</h2>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
               {['Philosophy', 'Technology', 'Politics', 'Science', 'Ethics', 'Economics'].map((category) => (
