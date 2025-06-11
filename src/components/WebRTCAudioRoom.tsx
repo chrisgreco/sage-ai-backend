@@ -3,49 +3,15 @@ import React, { useEffect } from 'react';
 import { Mic, MicOff, PhoneOff, Users, Brain } from 'lucide-react';
 import { useWebRTCRoom } from '@/hooks/useWebRTCRoom';
 import { useAuth } from '@/hooks/useAuth';
-import { useAIModeration } from '@/hooks/useAIModeration';
 
 interface WebRTCAudioRoomProps {
   roomId: string;
   onLeave?: () => void;
+  onAudioData?: (audioData: Float32Array) => void;
 }
 
-const WebRTCAudioRoom: React.FC<WebRTCAudioRoomProps> = ({ roomId, onLeave }) => {
+const WebRTCAudioRoom: React.FC<WebRTCAudioRoomProps> = ({ roomId, onLeave, onAudioData }) => {
   const { user } = useAuth();
-  
-  // Default AI agents configuration
-  const defaultAgents = [
-    { 
-      name: 'Socrates', 
-      role: 'Clarifier', 
-      active: true,
-      persona: 'Ask clarifying questions when assumptions are made'
-    },
-    { 
-      name: 'Solon', 
-      role: 'Rule Enforcer', 
-      active: true,
-      persona: 'Enforce debate rules and fair turn-taking'
-    },
-    { 
-      name: 'Buddha', 
-      role: 'Peacekeeper', 
-      active: true,
-      persona: 'Monitor tone and diffuse conflict'
-    },
-    { 
-      name: 'Hermes', 
-      role: 'Summarizer', 
-      active: false,
-      persona: 'Provide summaries and transitions'
-    },
-    { 
-      name: 'Aristotle', 
-      role: 'Fact-Checker', 
-      active: true,
-      persona: 'Request sources for factual claims'
-    }
-  ];
 
   const {
     isConnected,
@@ -59,13 +25,7 @@ const WebRTCAudioRoom: React.FC<WebRTCAudioRoomProps> = ({ roomId, onLeave }) =>
   } = useWebRTCRoom({
     roomName: roomId,
     participantName: user?.email || 'Anonymous',
-    onAudioData: undefined // Will be set after AI connection
-  });
-
-  const { sendAudioToAI, aiConnected, aiConnecting, error: aiError } = useAIModeration({
-    roomId,
-    isConnected, // Pass WebRTC connection state
-    agents: defaultAgents
+    onAudioData: onAudioData // Pass the audio callback through
   });
 
   // Only attempt connection once when component mounts
@@ -106,14 +66,6 @@ const WebRTCAudioRoom: React.FC<WebRTCAudioRoomProps> = ({ roomId, onLeave }) =>
           </p>
         </div>
         <div className="flex items-center space-x-4">
-          {/* AI Status Indicator */}
-          <div className={`flex items-center space-x-1 text-xs ${
-            aiConnected ? 'text-green-600' : aiConnecting ? 'text-yellow-600' : 'text-gray-400'
-          }`}>
-            <Brain className="w-4 h-4" />
-            <span>AI</span>
-          </div>
-          
           {/* Participant Count */}
           <div className="flex items-center space-x-2 text-sm text-content-muted">
             <Users className="w-4 h-4" />
@@ -123,12 +75,10 @@ const WebRTCAudioRoom: React.FC<WebRTCAudioRoomProps> = ({ roomId, onLeave }) =>
       </div>
 
       {/* Error Messages */}
-      {(error || aiError) && (
+      {error && (
         <div className="mb-4 p-3 rounded-lg bg-red-100 border border-red-200">
           <p className="text-sm text-red-700">
-            {error && `Audio: ${error}`}
-            {error && aiError && ' | '}
-            {aiError && `AI: ${aiError}`}
+            Audio: {error}
           </p>
         </div>
       )}

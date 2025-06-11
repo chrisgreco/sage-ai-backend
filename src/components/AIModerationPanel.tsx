@@ -5,9 +5,15 @@ import { useAIModeration } from '@/hooks/useAIModeration';
 
 interface AIModerationPanelProps {
   roomId: string;
+  isWebRTCConnected?: boolean;
+  onAudioData?: (audioData: Float32Array) => void;
 }
 
-const AIModerationPanel: React.FC<AIModerationPanelProps> = ({ roomId }) => {
+const AIModerationPanel: React.FC<AIModerationPanelProps> = ({ 
+  roomId, 
+  isWebRTCConnected = false,
+  onAudioData 
+}) => {
   const [agents, setAgents] = useState([
     { 
       name: 'Socrates', 
@@ -41,17 +47,26 @@ const AIModerationPanel: React.FC<AIModerationPanelProps> = ({ roomId }) => {
     }
   ]);
 
+  // Always call useAIModeration hook - never conditionally
   const {
     aiConnected,
     aiConnecting,
     activeAgent,
     transcript,
-    error
+    error,
+    sendAudioToAI
   } = useAIModeration({
     roomId,
-    isConnected: true, // This would come from WebRTC connection state
+    isConnected: isWebRTCConnected,
     agents
   });
+
+  // Set up the audio callback when AI connection is ready
+  React.useEffect(() => {
+    if (onAudioData && aiConnected) {
+      // This will be called from the parent component when audio data is available
+    }
+  }, [onAudioData, aiConnected, sendAudioToAI]);
 
   const toggleAgent = (agentName: string) => {
     setAgents(prev => prev.map(agent => 
@@ -74,20 +89,26 @@ const AIModerationPanel: React.FC<AIModerationPanelProps> = ({ roomId }) => {
           }`}>
             <Brain className="w-4 h-4" />
             <span>
-              {aiConnecting ? 'Connecting...' : aiConnected ? 'Active' : 'Offline'}
+              {aiConnecting ? 'Connecting...' : aiConnected ? 'Online' : 'Offline'}
             </span>
           </div>
         </div>
         
         {error && (
           <div className="text-sm text-red-600 mb-3 p-2 bg-red-50 rounded">
-            {error}
+            AI connection lost unexpectedly
           </div>
         )}
 
         {activeAgent && (
           <div className="text-sm text-blue-600 mb-3 p-2 bg-blue-50 rounded">
             {activeAgent} is moderating...
+          </div>
+        )}
+
+        {isWebRTCConnected && aiConnected && (
+          <div className="text-sm text-green-600 mb-3 p-2 bg-green-50 rounded">
+            Ready to moderate your debate
           </div>
         )}
       </div>
@@ -134,7 +155,10 @@ const AIModerationPanel: React.FC<AIModerationPanelProps> = ({ roomId }) => {
         <div className="space-y-2 max-h-60 overflow-y-auto">
           {transcript.length === 0 ? (
             <p className="text-sm text-content-muted italic">
-              Transcript will appear here during the debate...
+              {isWebRTCConnected && aiConnected 
+                ? "Start speaking to see transcript..."
+                : "Connect audio and AI to see transcript..."
+              }
             </p>
           ) : (
             transcript.map((entry, index) => (

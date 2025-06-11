@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Settings } from 'lucide-react';
 import SageLogo from './SageLogo';
@@ -10,9 +10,20 @@ const DebateRoom: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [showSettings, setShowSettings] = useState(false);
+  const [isWebRTCConnected, setIsWebRTCConnected] = useState(false);
+  
+  // Create a ref to store the AI moderation callback
+  const aiModerationRef = useRef<((audioData: Float32Array) => void) | null>(null);
 
   const handleLeaveRoom = () => {
     navigate('/');
+  };
+
+  const handleAudioData = (audioData: Float32Array) => {
+    // Forward audio data to AI moderation if available
+    if (aiModerationRef.current) {
+      aiModerationRef.current(audioData);
+    }
   };
 
   return (
@@ -56,12 +67,19 @@ const DebateRoom: React.FC = () => {
             <WebRTCAudioRoom 
               roomId={id || 'demo'} 
               onLeave={handleLeaveRoom}
+              onAudioData={handleAudioData}
             />
           </div>
 
           {/* AI Moderation Sidebar */}
           <div className="space-y-4">
-            <AIModerationPanel roomId={id || 'demo'} />
+            <AIModerationPanel 
+              roomId={id || 'demo'} 
+              isWebRTCConnected={isWebRTCConnected}
+              onAudioData={(callback) => {
+                aiModerationRef.current = callback;
+              }}
+            />
 
             {/* Debate Rules Panel */}
             <div className="glass-panel p-4">

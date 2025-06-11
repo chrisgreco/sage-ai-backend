@@ -1,6 +1,5 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { supabase } from '@/integrations/supabase/client';
 
 interface AIAgent {
   name: string;
@@ -23,12 +22,14 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
   const [error, setError] = useState<string | null>(null);
   
   const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const sessionConfiguredRef = useRef(false);
 
   // Connect to AI moderation when WebRTC is connected
   useEffect(() => {
     if (isConnected && !aiConnected && !aiConnecting) {
       connectToAI();
-    } else if (!isConnected && aiConnected) {
+    } else if (!isConnected && (aiConnected || aiConnecting)) {
       disconnectFromAI();
     }
   }, [isConnected]);
@@ -39,16 +40,17 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
     try {
       setAiConnecting(true);
       setError(null);
+      sessionConfiguredRef.current = false;
       console.log('Connecting to AI moderation...');
 
-      // Connect to our OpenAI Realtime relay using the correct WebSocket URL
+      // Use the correct WebSocket URL for our Supabase project
       const wsUrl = `wss://zpfouxphwgtqhgalzyqk.supabase.co/functions/v1/openai-realtime-relay`;
       
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log('AI moderation WebSocket connected');
+        console.log('AI moderation WebSocket connected successfully');
         setAiConnected(true);
         setAiConnecting(false);
         setError(null);
@@ -57,6 +59,7 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
       ws.onmessage = (event) => {
         try {
           const message = JSON.parse(event.data);
+          console.log('AI message received:', message.type, message);
           handleAIMessage(message);
         } catch (err) {
           console.error('Error parsing AI message:', err);
@@ -67,8 +70,18 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
         console.log('AI moderation WebSocket disconnected:', event.code, event.reason);
         setAiConnected(false);
         setAiConnecting(false);
+        sessionConfiguredRef.current = false;
+        
         if (event.code !== 1000) { // Not a normal closure
           setError('AI connection lost unexpectedly');
+          
+          // Attempt to reconnect after a delay if we were previously connected
+          if (isConnected) {
+            console.log('Attempting to reconnect in 3 seconds...');
+            reconnectTimeoutRef.current = setTimeout(() => {
+              connectToAI();
+            }, 3000);
+          }
         }
       };
 
@@ -83,15 +96,18 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
       setError(err instanceof Error ? err.message : 'AI connection failed');
       setAiConnecting(false);
     }
-  }, [aiConnecting, aiConnected]);
+  }, [aiConnecting, aiConnected, isConnected]);
 
   const handleAIMessage = useCallback((message: any) => {
-    console.log('AI message received:', message);
-
     switch (message.type) {
       case 'session.created':
         console.log('AI session created, configuring...');
         configureSession();
+        break;
+      
+      case 'session.updated':
+        console.log('AI session configured successfully');
+        sessionConfiguredRef.current = true;
         break;
       
       case 'response.audio_transcript.delta':
@@ -141,6 +157,7 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
 
       case 'conversation.item.input_audio_transcription.completed':
         if (message.transcript) {
+          console.log('User transcript completed:', message.transcript);
           // Add user's completed transcript
           setTranscript(prev => [
             ...prev.filter(entry => entry.text !== '(speaking...)'),
@@ -153,11 +170,18 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
         console.error('AI error:', message);
         setError(message.error?.message || 'AI error occurred');
         break;
+        
+      default:
+        // Log other message types for debugging
+        console.log('Unhandled AI message type:', message.type);
     }
   }, []);
 
   const configureSession = useCallback(() => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      console.warn('WebSocket not ready for session configuration');
+      return;
+    }
 
     // Get active agents' instructions
     const activeAgents = agents.filter(agent => agent.active);
@@ -206,7 +230,9 @@ Your role depends on your assigned persona. Only speak when your specific modera
 - Hermes: Summarize key points during natural breaks
 - Aristotle: Request sources for factual claims
 
-Keep interventions brief (1-2 sentences), polite, and focused on your specific role. Only one agent should speak at a time.`;
+Keep interventions brief (1-2 sentences), polite, and focused on your specific role. Only one agent should speak at a time.
+
+The user is in a live debate. Listen carefully and only interject when necessary according to your role.`;
   };
 
   const determineActiveAgent = (message: any): string => {
@@ -221,48 +247,60 @@ Keep interventions brief (1-2 sentences), polite, and focused on your specific r
   };
 
   const sendAudioToAI = useCallback((audioData: Float32Array) => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      console.warn('WebSocket not ready, skipping audio data');
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN || !sessionConfiguredRef.current) {
+      console.warn('WebSocket not ready or session not configured, skipping audio data');
       return;
     }
 
-    // Convert Float32Array to base64 PCM16
-    const int16Array = new Int16Array(audioData.length);
-    for (let i = 0; i < audioData.length; i++) {
-      const s = Math.max(-1, Math.min(1, audioData[i]));
-      int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+    try {
+      // Convert Float32Array to base64 PCM16
+      const int16Array = new Int16Array(audioData.length);
+      for (let i = 0; i < audioData.length; i++) {
+        const s = Math.max(-1, Math.min(1, audioData[i]));
+        int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
+      }
+
+      const uint8Array = new Uint8Array(int16Array.buffer);
+      let binary = '';
+      const chunkSize = 0x8000;
+      
+      for (let i = 0; i < uint8Array.length; i += chunkSize) {
+        const chunk = uint8Array.subarray(i, Math.min(i + chunkSize, uint8Array.length));
+        binary += String.fromCharCode.apply(null, Array.from(chunk));
+      }
+      
+      const base64Audio = btoa(binary);
+
+      const audioMessage = {
+        type: 'input_audio_buffer.append',
+        audio: base64Audio
+      };
+
+      wsRef.current.send(JSON.stringify(audioMessage));
+    } catch (err) {
+      console.error('Error sending audio to AI:', err);
     }
-
-    const uint8Array = new Uint8Array(int16Array.buffer);
-    let binary = '';
-    const chunkSize = 0x8000;
-    
-    for (let i = 0; i < uint8Array.length; i += chunkSize) {
-      const chunk = uint8Array.subarray(i, Math.min(i + chunkSize, uint8Array.length));
-      binary += String.fromCharCode.apply(null, Array.from(chunk));
-    }
-    
-    const base64Audio = btoa(binary);
-
-    const audioMessage = {
-      type: 'input_audio_buffer.append',
-      audio: base64Audio
-    };
-
-    wsRef.current.send(JSON.stringify(audioMessage));
   }, []);
 
   const disconnectFromAI = useCallback(() => {
     console.log('Disconnecting from AI moderation...');
     
+    // Clear reconnect timeout
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+      reconnectTimeoutRef.current = null;
+    }
+    
     if (wsRef.current) {
-      wsRef.current.close();
+      wsRef.current.close(1000, 'Normal closure');
       wsRef.current = null;
     }
     
     setAiConnected(false);
+    setAiConnecting(false);
     setActiveAgent(null);
     setError(null);
+    sessionConfiguredRef.current = false;
   }, []);
 
   // Cleanup on unmount
