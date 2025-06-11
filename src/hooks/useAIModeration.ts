@@ -8,7 +8,7 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
   const [audioDataReceived, setAudioDataReceived] = useState(0);
 
   const handleMessage = useCallback((message: any) => {
-    console.log('AI moderation message:', message);
+    console.log('AI moderation message received:', message);
     // Handle agent status updates, interventions, etc.
   }, []);
 
@@ -52,6 +52,7 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
   // Update agents when configuration changes
   useEffect(() => {
     if (aiConnected) {
+      console.log('Updating agents configuration:', agents.filter(a => a.active));
       updateAgents(agents);
     }
   }, [agents, aiConnected, updateAgents]);
@@ -63,23 +64,33 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
     // Send data to LiveKit room if connected
     if (room && aiConnected) {
       try {
-        // Send audio data as a message to the room for the agent to process
+        // Send more detailed audio data to the agent
         const audioMessage = {
           type: 'audio_data',
           timestamp: Date.now(),
-          audioLength: audioData.length
+          audioLength: audioData.length,
+          sampleRate: 24000, // Standard for most audio processing
+          channels: 1,
+          format: 'float32'
         };
         
         room.localParticipant.publishData(
           new TextEncoder().encode(JSON.stringify(audioMessage))
         );
         
-        console.log('Sent audio data notification to agent:', audioData.length);
+        console.log('Sent audio data notification to agent:', {
+          length: audioData.length,
+          timestamp: audioMessage.timestamp
+        });
       } catch (err) {
         console.error('Error sending audio data to agent:', err);
       }
     } else {
-      console.log('Room not ready, audio data buffered');
+      console.log('Room not ready for audio data, state:', { 
+        roomExists: !!room, 
+        aiConnected,
+        audioLength: audioData.length 
+      });
     }
   }, [room, aiConnected]);
 
@@ -87,6 +98,8 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
     if (!aiConnecting && !aiConnected) {
       console.log('Manual LiveKit Agent connection requested');
       connect();
+    } else {
+      console.log('Cannot connect - already connecting or connected:', { aiConnecting, aiConnected });
     }
   }, [aiConnecting, aiConnected, connect]);
 
@@ -94,6 +107,15 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
     console.log('Manual LiveKit Agent disconnection requested');
     disconnect();
   }, [disconnect]);
+
+  // Debug logging for transcript updates
+  useEffect(() => {
+    console.log('Transcript updated:', transcript.length, 'entries');
+    if (transcript.length > 0) {
+      const lastEntry = transcript[transcript.length - 1];
+      console.log('Latest transcript entry:', lastEntry);
+    }
+  }, [transcript]);
 
   return {
     aiConnected,

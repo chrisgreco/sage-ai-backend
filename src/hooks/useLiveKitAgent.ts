@@ -67,12 +67,20 @@ export const useLiveKitAgent = ({
         setIsConnected(true);
         setIsConnecting(false);
         onConnectionChange?.(true, false);
+        
+        // Add initial connection message
+        setTranscript(prev => [...prev, {
+          speaker: 'System',
+          text: 'Connected to AI moderation agents. Start speaking to see live transcription.',
+          timestamp: new Date()
+        }]);
       });
 
       room.on(RoomEvent.Disconnected, (reason) => {
         console.log('Disconnected from LiveKit Agent room:', reason);
         setIsConnected(false);
         setIsConnecting(false);
+        setActiveAgent(null);
         onConnectionChange?.(false, false);
       });
 
@@ -80,77 +88,106 @@ export const useLiveKitAgent = ({
       room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
         console.log('Track subscribed:', track.kind, participant.identity);
         
-        if (track.kind === Track.Kind.Audio && participant.identity.includes('agent')) {
-          console.log('Agent audio track subscribed');
-          // Agent is speaking
+        if (track.kind === Track.Kind.Audio) {
+          console.log('Agent audio track subscribed from:', participant.identity);
           setActiveAgent(participant.identity);
-          
-          // Add agent speech to transcript
-          setTranscript(prev => [...prev, {
-            speaker: participant.identity,
-            text: "Agent is speaking...",
-            timestamp: new Date()
-          }]);
         }
       });
 
       room.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
-        if (track.kind === Track.Kind.Audio && participant.identity.includes('agent')) {
+        if (track.kind === Track.Kind.Audio) {
           console.log('Agent stopped speaking');
           setActiveAgent(null);
         }
       });
 
+      // Enhanced data message handling
       room.on(RoomEvent.DataReceived, (payload: Uint8Array, participant?: RemoteParticipant) => {
         try {
           const message = JSON.parse(new TextDecoder().decode(payload));
-          console.log('Received data from agent:', message);
+          console.log('Received data from agent:', message, 'from participant:', participant?.identity);
           
-          if (message.type === 'moderation_status') {
-            // Update agent status
-            onMessage?.(message);
-          } else if (message.type === 'transcript') {
-            // Add to transcript
-            console.log('Adding transcript entry:', message);
-            setTranscript(prev => [...prev, {
-              speaker: message.speaker || 'User',
-              text: message.text || message.content,
-              timestamp: new Date()
-            }]);
-          } else if (message.type === 'agent_intervention') {
-            // Agent is speaking
-            console.log('Agent intervention:', message);
-            setActiveAgent(message.agent);
-            setTranscript(prev => [...prev, {
-              speaker: message.agent,
-              text: message.text,
-              timestamp: new Date()
-            }]);
-          } else if (message.type === 'user_speech') {
-            // User speech transcribed
-            console.log('User speech transcribed:', message);
-            setTranscript(prev => [...prev, {
-              speaker: 'You',
-              text: message.text,
-              timestamp: new Date()
-            }]);
+          // Handle different message types from the Python agent
+          switch (message.type) {
+            case 'moderation_status':
+              console.log('Moderation status update:', message);
+              onMessage?.(message);
+              break;
+              
+            case 'transcript':
+            case 'transcription':
+              console.log('Adding transcript entry:', message);
+              setTranscript(prev => [...prev, {
+                speaker: message.speaker || participant?.identity || 'User',
+                text: message.text || message.content || message.transcript,
+                timestamp: new Date()
+              }]);
+              break;
+              
+            case 'agent_intervention':
+            case 'agent_response':
+              console.log('Agent intervention:', message);
+              setActiveAgent(message.agent || participant?.identity || 'AI Agent');
+              setTranscript(prev => [...prev, {
+                speaker: message.agent || participant?.identity || 'AI Agent',
+                text: message.text || message.response,
+                timestamp: new Date()
+              }]);
+              break;
+              
+            case 'user_speech':
+            case 'speech_detected':
+              console.log('User speech detected:', message);
+              setTranscript(prev => [...prev, {
+                speaker: 'You',
+                text: message.text || message.transcript,
+                timestamp: new Date()
+              }]);
+              break;
+              
+            case 'system_message':
+              console.log('System message:', message);
+              setTranscript(prev => [...prev, {
+                speaker: 'System',
+                text: message.text || message.message,
+                timestamp: new Date()
+              }]);
+              break;
+              
+            default:
+              console.log('Unknown message type:', message.type, message);
+              // Try to extract any text content for display
+              if (message.text || message.content) {
+                setTranscript(prev => [...prev, {
+                  speaker: participant?.identity || 'Agent',
+                  text: message.text || message.content,
+                  timestamp: new Date()
+                }]);
+              }
           }
         } catch (err) {
-          console.error('Error parsing agent data:', err);
+          console.error('Error parsing agent data:', err, 'Raw payload:', new TextDecoder().decode(payload));
         }
       });
 
       room.on(RoomEvent.ParticipantConnected, (participant: RemoteParticipant) => {
         console.log('Agent participant connected:', participant.identity);
-        if (participant.identity.includes('agent')) {
-          console.log('SAGE moderation agent is now active');
-          // Simulate initial transcript entry to show it's working
-          setTranscript(prev => [...prev, {
-            speaker: 'System',
-            text: 'AI moderation agent connected and listening...',
-            timestamp: new Date()
-          }]);
-        }
+        
+        setTranscript(prev => [...prev, {
+          speaker: 'System',
+          text: `${participant.identity} has joined the moderation session.`,
+          timestamp: new Date()
+        }]);
+      });
+
+      room.on(RoomEvent.ParticipantDisconnected, (participant: RemoteParticipant) => {
+        console.log('Agent participant disconnected:', participant.identity);
+        
+        setTranscript(prev => [...prev, {
+          speaker: 'System',
+          text: `${participant.identity} has left the moderation session.`,
+          timestamp: new Date()
+        }]);
       });
 
       // Connect to the room
@@ -183,48 +220,24 @@ export const useLiveKitAgent = ({
       // Send agent configuration update to the room
       const agentUpdate = {
         type: 'update_agents',
-        agents: newAgents.filter(a => a.active)
+        agents: newAgents.filter(a => a.active),
+        timestamp: Date.now()
       };
 
       await roomRef.current.localParticipant.publishData(
         new TextEncoder().encode(JSON.stringify(agentUpdate))
       );
 
-      console.log('Sent agent update to LiveKit Agent');
+      console.log('Sent agent update to LiveKit Agent:', agentUpdate);
+      
+      setTranscript(prev => [...prev, {
+        speaker: 'System',
+        text: `Updated AI agents: ${newAgents.filter(a => a.active).map(a => a.name).join(', ')}`,
+        timestamp: new Date()
+      }]);
     } catch (err) {
       console.error('Error updating agents:', err);
     }
-  }, [isConnected]);
-
-  // Simulate transcript updates for testing when connected
-  useEffect(() => {
-    if (!isConnected) return;
-
-    const interval = setInterval(() => {
-      // Simulate receiving transcript data to test the UI
-      const testMessages = [
-        "AI is processing audio...",
-        "Listening for speech patterns...",
-        "Ready to moderate discussion..."
-      ];
-      
-      const randomMessage = testMessages[Math.floor(Math.random() * testMessages.length)];
-      
-      setTranscript(prev => {
-        // Only add if we don't have recent entries
-        const lastEntry = prev[prev.length - 1];
-        if (!lastEntry || Date.now() - lastEntry.timestamp.getTime() > 10000) {
-          return [...prev, {
-            speaker: 'AI System',
-            text: randomMessage,
-            timestamp: new Date()
-          }];
-        }
-        return prev;
-      });
-    }, 15000); // Every 15 seconds
-
-    return () => clearInterval(interval);
   }, [isConnected]);
 
   // Cleanup on unmount
