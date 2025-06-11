@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Brain, Eye, EyeOff } from 'lucide-react';
 import { useAIModeration } from '@/hooks/useAIModeration';
 
@@ -61,8 +61,15 @@ const AIModerationPanel: React.FC<AIModerationPanelProps> = ({
   });
 
   // Set up the audio callback when AI connection is ready and callback is provided
-  React.useEffect(() => {
+  useEffect(() => {
+    console.log('AIModerationPanel: Setting up audio callback', { 
+      onAudioData: !!onAudioData, 
+      aiConnected, 
+      sendAudioToAI: !!sendAudioToAI 
+    });
+    
     if (onAudioData && aiConnected && sendAudioToAI) {
+      console.log('AIModerationPanel: Registering audio callback');
       onAudioData(sendAudioToAI);
     }
   }, [onAudioData, aiConnected, sendAudioToAI]);
@@ -95,7 +102,7 @@ const AIModerationPanel: React.FC<AIModerationPanelProps> = ({
         
         {error && (
           <div className="text-sm text-red-600 mb-3 p-2 bg-red-50 rounded">
-            AI connection lost unexpectedly
+            {error}
           </div>
         )}
 
@@ -110,6 +117,13 @@ const AIModerationPanel: React.FC<AIModerationPanelProps> = ({
             Ready to moderate your debate
           </div>
         )}
+        
+        {/* Debug info */}
+        <div className="text-xs text-content-muted mt-2 p-2 bg-gray-50 rounded">
+          WebRTC: {isWebRTCConnected ? 'Connected' : 'Disconnected'} | 
+          AI: {aiConnected ? 'Connected' : aiConnecting ? 'Connecting' : 'Offline'} | 
+          Transcript entries: {transcript.length}
+        </div>
       </div>
 
       {/* AI Moderators */}

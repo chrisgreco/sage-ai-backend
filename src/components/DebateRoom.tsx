@@ -1,5 +1,5 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ArrowLeft, Settings } from 'lucide-react';
 import SageLogo from './SageLogo';
@@ -20,14 +20,24 @@ const DebateRoom: React.FC = () => {
   };
 
   const handleAudioData = (audioData: Float32Array) => {
+    console.log('DebateRoom: Received audio data, length:', audioData.length);
     // Forward audio data to AI moderation if available
     if (aiModerationCallbackRef.current) {
+      console.log('DebateRoom: Forwarding audio to AI moderation');
       aiModerationCallbackRef.current(audioData);
+    } else {
+      console.warn('DebateRoom: AI moderation callback not available');
     }
   };
 
   const handleAIModerationReady = (callback: (audioData: Float32Array) => void) => {
+    console.log('DebateRoom: AI moderation callback registered');
     aiModerationCallbackRef.current = callback;
+  };
+
+  const handleWebRTCConnectionChange = (connected: boolean) => {
+    console.log('DebateRoom: WebRTC connection changed:', connected);
+    setIsWebRTCConnected(connected);
   };
 
   return (
@@ -72,6 +82,7 @@ const DebateRoom: React.FC = () => {
               roomId={id || 'demo'} 
               onLeave={handleLeaveRoom}
               onAudioData={handleAudioData}
+              onConnectionChange={handleWebRTCConnectionChange}
             />
           </div>
 

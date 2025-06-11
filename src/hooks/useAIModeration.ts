@@ -25,6 +25,7 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
   }, [isConnected]);
 
   const handleConnectionChange = useCallback((connected: boolean, connecting: boolean) => {
+    console.log('AI moderation connection change:', { connected, connecting });
     setAiConnected(connected);
     setAiConnecting(connecting);
   }, []);
@@ -87,16 +88,27 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
     }
   }, []);
 
+  const handleError = useCallback((error: string | null) => {
+    console.log('AI moderation error:', error);
+    setError(error);
+  }, []);
+
   // Always call useAIWebSocket with stable dependencies
   const { connect, disconnect, sendMessage, isSessionConfigured } = useAIWebSocket({
     onMessage: handleAIMessage,
     onConnectionChange: handleConnectionChange,
-    onError: setError,
+    onError: handleError,
     agents: [] // Use empty array to avoid dependency changes
   });
 
   // Connect to AI moderation when WebRTC is connected
   useEffect(() => {
+    console.log('AI moderation effect:', { 
+      isConnected: isConnectedRef.current, 
+      aiConnected, 
+      aiConnecting 
+    });
+    
     if (isConnectedRef.current && !aiConnected && !aiConnecting) {
       console.log('WebRTC connected, connecting to AI...');
       connect();
@@ -118,7 +130,7 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
         type: 'input_audio_buffer.append',
         audio: base64Audio
       };
-      console.log('Sending audio data to AI, length:', audioData.length);
+      console.log('Sending audio data to AI, length:', audioData.length, 'base64 length:', base64Audio.length);
       sendMessage(audioMessage);
     } catch (err) {
       console.error('Error sending audio to AI:', err);
@@ -127,17 +139,20 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
 
   const connectToAI = useCallback(() => {
     if (!aiConnecting && !aiConnected) {
+      console.log('Manual AI connection requested');
       connect();
     }
   }, [aiConnecting, aiConnected, connect]);
 
   const disconnectFromAI = useCallback(() => {
+    console.log('Manual AI disconnection requested');
     disconnect();
   }, [disconnect]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      console.log('AI moderation cleanup');
       disconnect();
     };
   }, [disconnect]);

@@ -8,9 +8,15 @@ interface WebRTCAudioRoomProps {
   roomId: string;
   onLeave?: () => void;
   onAudioData?: (audioData: Float32Array) => void;
+  onConnectionChange?: (connected: boolean) => void;
 }
 
-const WebRTCAudioRoom: React.FC<WebRTCAudioRoomProps> = ({ roomId, onLeave, onAudioData }) => {
+const WebRTCAudioRoom: React.FC<WebRTCAudioRoomProps> = ({ 
+  roomId, 
+  onLeave, 
+  onAudioData,
+  onConnectionChange 
+}) => {
   const { user } = useAuth();
 
   const {
@@ -28,12 +34,21 @@ const WebRTCAudioRoom: React.FC<WebRTCAudioRoomProps> = ({ roomId, onLeave, onAu
     onAudioData: onAudioData // Pass the audio callback through
   });
 
+  // Notify parent of connection changes
+  useEffect(() => {
+    if (onConnectionChange) {
+      onConnectionChange(isConnected);
+    }
+  }, [isConnected, onConnectionChange]);
+
   // Only attempt connection once when component mounts
   useEffect(() => {
+    console.log('WebRTCAudioRoom: Attempting to connect to room:', roomId);
     connectToRoom();
     
     // Cleanup on unmount
     return () => {
+      console.log('WebRTCAudioRoom: Cleaning up connection');
       disconnectFromRoom();
     };
   }, []); // Empty dependency array - only run once
