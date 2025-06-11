@@ -1,3 +1,4 @@
+
 import { useState, useEffect, useCallback } from 'react';
 import { 
   Room, 
@@ -18,7 +19,7 @@ interface UseWebRTCRoomProps {
   serverUrl?: string;
 }
 
-export const useWebRTCRoom = ({ roomName, participantName, serverUrl }: UseWebRTCRoomProps) => {
+export const useWebRTCRoom = ({ roomName, participantName }: UseWebRTCRoomProps) => {
   const [room] = useState(() => new Room());
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -97,32 +98,10 @@ export const useWebRTCRoom = ({ roomName, participantName, serverUrl }: UseWebRT
       console.log('Token received successfully, connecting to LiveKit...');
       console.log('Server URL:', data.serverUrl);
       console.log('Token length:', data.token.length);
-      console.log('Possible servers:', data.possibleServers);
       
-      // Try to connect with the primary server URL
-      let connectionSuccessful = false;
-      const serversToTry = data.possibleServers || [data.serverUrl];
-      
-      for (const server of serversToTry) {
-        try {
-          console.log(`Trying to connect to: ${server}`);
-          await room.connect(server, data.token);
-          console.log(`Successfully connected to LiveKit at: ${server}`);
-          connectionSuccessful = true;
-          break;
-        } catch (serverError) {
-          console.error(`Failed to connect to ${server}:`, serverError);
-          if (server === serversToTry[serversToTry.length - 1]) {
-            // If this was the last server to try, throw the error
-            throw serverError;
-          }
-          // Otherwise, continue to the next server
-        }
-      }
-
-      if (!connectionSuccessful) {
-        throw new Error('Failed to connect to any LiveKit server');
-      }
+      // Connect to your LiveKit server
+      await room.connect(data.serverUrl, data.token);
+      console.log(`Successfully connected to LiveKit at: ${data.serverUrl}`);
 
     } catch (err) {
       console.error('Failed to connect to room:', err);

@@ -121,19 +121,14 @@ serve(async (req) => {
 
     console.log(`Generated token for user: ${participantName}, room: ${roomId}`);
 
-    // Try different server URLs based on your LiveKit setup
-    const possibleServers = [
-      'wss://sage-livekit.livekit.cloud',
-      'wss://sage-livekit-livekit.cloud',
-      'ws://localhost:7880' // fallback for development
-    ];
+    // Use your actual LiveKit server URL
+    const serverUrl = 'wss://sage-2kpu4z1y.livekit.cloud';
 
     return new Response(
       JSON.stringify({ 
         token,
-        serverUrl: possibleServers[0], // Try the first one
-        participantName,
-        possibleServers // Include alternatives for debugging
+        serverUrl,
+        participantName
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
