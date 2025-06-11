@@ -27,6 +27,7 @@ export const useWebRTCRoom = ({ roomName, participantName }: UseWebRTCRoomProps)
   const [isMicrophoneEnabled, setIsMicrophoneEnabled] = useState(false);
   const [localAudioTrack, setLocalAudioTrack] = useState<LocalTrack | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [hasAttemptedConnection, setHasAttemptedConnection] = useState(false);
 
   // Update participants when room state changes
   useEffect(() => {
@@ -47,6 +48,7 @@ export const useWebRTCRoom = ({ roomName, participantName }: UseWebRTCRoomProps)
       console.log('Disconnected from LiveKit room:', reason);
       setIsConnected(false);
       setIsConnecting(false);
+      // Don't auto-reconnect to prevent loops
     });
 
     // Handle connection errors
@@ -70,14 +72,16 @@ export const useWebRTCRoom = ({ roomName, participantName }: UseWebRTCRoomProps)
   }, [room]);
 
   const connectToRoom = useCallback(async () => {
-    if (isConnecting || isConnected) {
-      console.log('Already connecting or connected, skipping...');
+    // Prevent multiple connection attempts
+    if (isConnecting || isConnected || hasAttemptedConnection) {
+      console.log('Connection already in progress or established, skipping...');
       return;
     }
 
     try {
       setIsConnecting(true);
       setError(null);
+      setHasAttemptedConnection(true);
       console.log(`Attempting to connect to room: ${roomName}`);
 
       // Get LiveKit token from our edge function
@@ -107,8 +111,9 @@ export const useWebRTCRoom = ({ roomName, participantName }: UseWebRTCRoomProps)
       console.error('Failed to connect to room:', err);
       setError(err instanceof Error ? err.message : 'Failed to connect to room');
       setIsConnecting(false);
+      setHasAttemptedConnection(false); // Allow retry on error
     }
-  }, [room, roomName, isConnecting, isConnected]);
+  }, [room, roomName, isConnecting, isConnected, hasAttemptedConnection]);
 
   const disconnectFromRoom = useCallback(() => {
     console.log('Disconnecting from room...');
@@ -118,9 +123,15 @@ export const useWebRTCRoom = ({ roomName, participantName }: UseWebRTCRoomProps)
       setLocalAudioTrack(null);
     }
     setIsMicrophoneEnabled(false);
+    setHasAttemptedConnection(false); // Reset for potential reconnection
   }, [room, localAudioTrack]);
 
   const toggleMicrophone = useCallback(async () => {
+    if (!isConnected) {
+      console.log('Not connected, cannot toggle microphone');
+      return;
+    }
+
     try {
       if (isMicrophoneEnabled && localAudioTrack) {
         // Disable microphone
@@ -142,7 +153,7 @@ export const useWebRTCRoom = ({ roomName, participantName }: UseWebRTCRoomProps)
       console.error('Failed to toggle microphone:', err);
       setError(err instanceof Error ? err.message : 'Failed to toggle microphone');
     }
-  }, [room, isMicrophoneEnabled, localAudioTrack]);
+  }, [room, isMicrophoneEnabled, localAudioTrack, isConnected]);
 
   return {
     room,

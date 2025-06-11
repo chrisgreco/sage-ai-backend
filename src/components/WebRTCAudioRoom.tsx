@@ -26,12 +26,15 @@ const WebRTCAudioRoom: React.FC<WebRTCAudioRoomProps> = ({ roomId, onLeave }) =>
     participantName: user?.email || 'Anonymous'
   });
 
-  // Auto-connect when component mounts
+  // Only attempt connection once when component mounts
   useEffect(() => {
-    if (!isConnected && !isConnecting) {
-      connectToRoom();
-    }
-  }, [connectToRoom, isConnected, isConnecting]);
+    connectToRoom();
+    
+    // Cleanup on unmount
+    return () => {
+      disconnectFromRoom();
+    };
+  }, []); // Empty dependency array - only run once
 
   const handleLeaveRoom = () => {
     disconnectFromRoom();
