@@ -1,14 +1,17 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Settings } from 'lucide-react';
+import { Settings } from 'lucide-react';
 import SageLogo from './SageLogo';
 import WebRTCAudioRoom from './WebRTCAudioRoom';
 import AIModerationPanel from './AIModerationPanel';
+import UserMenu from './UserMenu';
+import { useAuth } from '@/hooks/useAuth';
 
 const DebateRoom: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [showSettings, setShowSettings] = useState(false);
   const [isWebRTCConnected, setIsWebRTCConnected] = useState(false);
   const [lastAudioTimestamp, setLastAudioTimestamp] = useState<number | null>(null);
@@ -17,6 +20,10 @@ const DebateRoom: React.FC = () => {
   const aiModerationCallbackRef = useRef<((audioData: Float32Array) => void) | null>(null);
 
   const handleLeaveRoom = () => {
+    navigate('/');
+  };
+
+  const handleLogoClick = () => {
     navigate('/');
   };
 
@@ -59,33 +66,22 @@ const DebateRoom: React.FC = () => {
 
   return (
     <div className="min-h-screen relative overflow-hidden">
-      {/* Header with homepage styling */}
+      {/* Header matching homepage styling */}
       <div className="glass-panel-elevated sticky top-0 z-50 mx-2 md:mx-3 mt-1 md:mt-1.5 mb-2 md:mb-3 fade-in-up">
         <div className="max-w-md mx-auto md:max-w-4xl px-2.5 md:px-4 py-0.5 md:py-1">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
+            <button onClick={handleLogoClick} className="hover:opacity-80 transition-opacity">
+              <SageLogo size="sm" className="md:w-auto" />
+            </button>
+            <div className="flex items-center space-x-1.5 md:space-x-2">
+              {user && <UserMenu />}
               <button
-                onClick={handleLeaveRoom}
+                onClick={() => setShowSettings(!showSettings)}
                 className="glass-button p-1.5 hover:bg-white/60"
               >
-                <ArrowLeft className="w-4 h-4 text-content-primary" />
+                <Settings className="w-4 h-4 text-content-primary" />
               </button>
-              <SageLogo size="sm" />
-              <div>
-                <h1 className="text-sm md:text-base font-semibold text-content-primary">
-                  Debate Room {id}
-                </h1>
-                <p className="text-xs text-content-secondary">
-                  AI-Moderated Discussion
-                </p>
-              </div>
             </div>
-            <button
-              onClick={() => setShowSettings(!showSettings)}
-              className="glass-button p-1.5 hover:bg-white/60"
-            >
-              <Settings className="w-4 h-4 text-content-primary" />
-            </button>
           </div>
         </div>
       </div>
