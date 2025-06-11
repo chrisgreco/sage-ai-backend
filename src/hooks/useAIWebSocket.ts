@@ -15,6 +15,7 @@ export const useAIWebSocket = ({ onMessage, onConnectionChange, onError, agents 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const sessionConfiguredRef = useRef(false);
+  const connectionAttemptRef = useRef(0);
 
   const configureSession = useCallback(() => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
@@ -54,20 +55,35 @@ export const useAIWebSocket = ({ onMessage, onConnectionChange, onError, agents 
     try {
       onError(null);
       sessionConfiguredRef.current = false;
-      onConnectionChange(false, true); // Mark as connecting before we start
-      console.log('Connecting to AI moderation...');
+      connectionAttemptRef.current += 1;
+      const attemptNumber = connectionAttemptRef.current;
+      
+      onConnectionChange(false, true);
+      console.log(`Connecting to AI moderation (attempt ${attemptNumber})...`);
 
-      // Get the full URL for the WebSocket connection
+      // Use the correct WebSocket URL format
       const wsUrl = `wss://${window.location.hostname === 'localhost' ? 'localhost:54321' : window.location.hostname}/functions/v1/openai-realtime-relay`;
       console.log('Connecting to WebSocket URL:', wsUrl);
       
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
+      // Set a connection timeout
+      const connectionTimeout = setTimeout(() => {
+        if (ws.readyState === WebSocket.CONNECTING) {
+          console.log('Connection timeout, closing...');
+          ws.close();
+          onError('Connection timeout - please check your internet connection');
+          onConnectionChange(false, false);
+        }
+      }, 15000); // 15 second timeout
+
       ws.onopen = () => {
-        console.log('AI moderation WebSocket connected successfully');
+        clearTimeout(connectionTimeout);
+        console.log(`AI moderation WebSocket connected successfully (attempt ${attemptNumber})`);
         onConnectionChange(true, false);
         onError(null);
+        connectionAttemptRef.current = 0; // Reset counter on successful connection
       };
 
       ws.onmessage = (event) => {
@@ -103,17 +119,32 @@ export const useAIWebSocket = ({ onMessage, onConnectionChange, onError, agents 
       };
 
       ws.onclose = (event) => {
-        console.log('AI moderation WebSocket disconnected:', event.code, event.reason);
+        clearTimeout(connectionTimeout);
+        console.log(`AI moderation WebSocket disconnected (attempt ${attemptNumber}):`, event.code, event.reason);
         onConnectionChange(false, false);
         sessionConfiguredRef.current = false;
         
         if (event.code !== 1000) {
-          onError('AI connection lost unexpectedly');
+          // Only show error if it wasn't a normal closure
+          const errorMessage = event.reason || 'AI connection lost unexpectedly';
+          onError(errorMessage);
+          
+          // Auto-reconnect with exponential backoff, but limit attempts
+          if (connectionAttemptRef.current < 3) {
+            const delay = Math.min(1000 * Math.pow(2, connectionAttemptRef.current - 1), 5000);
+            console.log(`Scheduling reconnection in ${delay}ms...`);
+            reconnectTimeoutRef.current = setTimeout(() => {
+              connect();
+            }, delay);
+          } else {
+            onError('Failed to connect to AI service after multiple attempts. Please try the Reconnect button.');
+          }
         }
       };
 
       ws.onerror = (error) => {
-        console.error('AI WebSocket error:', error);
+        clearTimeout(connectionTimeout);
+        console.error(`AI WebSocket error (attempt ${attemptNumber}):`, error);
         onError('Failed to connect to AI moderation service');
         onConnectionChange(false, false);
       };
@@ -141,6 +172,7 @@ export const useAIWebSocket = ({ onMessage, onConnectionChange, onError, agents 
     onConnectionChange(false, false);
     onError(null);
     sessionConfiguredRef.current = false;
+    connectionAttemptRef.current = 0; // Reset connection attempts
   }, [onConnectionChange, onError]);
 
   const sendMessage = useCallback((message: any) => {

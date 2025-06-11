@@ -34,9 +34,9 @@ serve(async (req) => {
   console.log("Establishing connection to OpenAI Realtime API...");
   console.log("API Key available:", !!openAIApiKey);
 
-  // Connect to OpenAI Realtime API
+  // Connect to OpenAI Realtime API with updated model and required headers
   const openAISocket = new WebSocket(
-    "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2024-12-17",
+    "wss://api.openai.com/v1/realtime?model=gpt-4o-realtime-preview-2025-06-03",
     [], 
     {
       headers: {
@@ -64,12 +64,12 @@ serve(async (req) => {
       
       // Configure session after receiving session.created
       if (message.type === 'session.created' && !sessionConfigured) {
-        console.log("Configuring session...");
+        console.log("Configuring session with updated settings...");
         const sessionUpdate = {
           type: 'session.update',
           session: {
             modalities: ['text', 'audio'],
-            instructions: 'You are an AI moderator for debates. Your role depends on your assigned persona: Socrates (ask clarifying questions), Solon (enforce rules), Buddha (maintain peaceful tone), Hermes (summarize and transition), or Aristotle (fact-check). Only speak when your specific role is needed.',
+            instructions: 'You are an AI moderator for debates. Your role depends on your assigned persona: Socrates (ask clarifying questions), Solon (enforce rules), Buddha (maintain peaceful tone), Hermes (summarize and transition), or Aristotle (fact-check). Only speak when your specific role is needed. Keep interventions brief and polite.',
             voice: 'alloy',
             input_audio_format: 'pcm16',
             output_audio_format: 'pcm16',
@@ -89,6 +89,7 @@ serve(async (req) => {
         
         openAISocket.send(JSON.stringify(sessionUpdate));
         sessionConfigured = true;
+        console.log("Session configuration sent");
       }
 
       // Forward all messages to client
@@ -111,18 +112,18 @@ serve(async (req) => {
     if (socket.readyState === WebSocket.OPEN) {
       socket.send(JSON.stringify({
         type: "error",
-        error: { message: "OpenAI connection error" }
+        error: { message: "OpenAI connection error - check API key and permissions" }
       }));
     }
   };
 
   socket.onmessage = (event) => {
     try {
-      // Forward client messages to OpenAI
       if (openAISocket.readyState === WebSocket.OPEN) {
+        console.log("Forwarding message to OpenAI");
         openAISocket.send(event.data);
       } else {
-        console.warn("OpenAI socket not ready, message not sent");
+        console.warn("OpenAI socket not ready, current state:", openAISocket.readyState);
         if (socket.readyState === WebSocket.OPEN) {
           socket.send(JSON.stringify({
             type: "error",
