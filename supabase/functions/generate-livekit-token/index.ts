@@ -3,8 +3,35 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 
-// LiveKit JWT generation (simplified version - in production use the official SDK)
-function generateLiveKitToken(roomName: string, participantName: string): string {
+// Proper HMAC-SHA256 implementation for JWT signing
+async function hmacSha256(key: string, data: string): Promise<ArrayBuffer> {
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(key);
+  const dataToSign = encoder.encode(data);
+  
+  const cryptoKey = await crypto.subtle.importKey(
+    'raw',
+    keyData,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  
+  return await crypto.subtle.sign('HMAC', cryptoKey, dataToSign);
+}
+
+// Convert ArrayBuffer to base64url
+function arrayBufferToBase64Url(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  const binary = String.fromCharCode(...bytes);
+  return btoa(binary)
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=/g, '');
+}
+
+// Proper JWT token generation for LiveKit
+async function generateLiveKitToken(roomName: string, participantName: string): Promise<string> {
   const apiKey = Deno.env.get('LIVEKIT_API_KEY');
   const apiSecret = Deno.env.get('LIVEKIT_API_SECRET');
   
@@ -12,41 +39,40 @@ function generateLiveKitToken(roomName: string, participantName: string): string
     throw new Error('LiveKit credentials not configured');
   }
 
+  const now = Math.floor(Date.now() / 1000);
+  
+  // JWT header
+  const header = {
+    alg: 'HS256',
+    typ: 'JWT'
+  };
+
   // JWT payload for LiveKit
   const payload = {
     iss: apiKey,
     sub: participantName,
-    iat: Math.floor(Date.now() / 1000),
-    exp: Math.floor(Date.now() / 1000) + (6 * 60 * 60), // 6 hours
-    nbf: Math.floor(Date.now() / 1000) - 60, // 1 minute ago
-    room: {
-      join: true,
-      name: roomName,
-    },
-    participant: {
-      identity: participantName,
-      name: participantName,
-    },
+    iat: now,
+    exp: now + (6 * 60 * 60), // 6 hours
+    nbf: now - 60, // 1 minute ago
     video: {
-      room_join: true,
-      can_publish: true,
-      can_subscribe: true,
-    },
+      room: roomName,
+      roomJoin: true,
+      canPublish: true,
+      canSubscribe: true,
+      canPublishData: true
+    }
   };
 
-  // Simple JWT encoding (in production, use proper library)
-  const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
-  const payloadEncoded = btoa(JSON.stringify(payload));
+  // Encode header and payload
+  const encodedHeader = arrayBufferToBase64Url(new TextEncoder().encode(JSON.stringify(header)));
+  const encodedPayload = arrayBufferToBase64Url(new TextEncoder().encode(JSON.stringify(payload)));
   
-  const signature = btoa(
-    Array.from(
-      new Uint8Array(
-        new TextEncoder().encode(`${header}.${payloadEncoded}${apiSecret}`)
-      )
-    ).map(b => String.fromCharCode(b)).join('')
-  );
+  // Create signature
+  const signatureInput = `${encodedHeader}.${encodedPayload}`;
+  const signatureBuffer = await hmacSha256(apiSecret, signatureInput);
+  const encodedSignature = arrayBufferToBase64Url(signatureBuffer);
 
-  return `${header}.${payloadEncoded}.${signature}`;
+  return `${encodedHeader}.${encodedPayload}.${encodedSignature}`;
 }
 
 serve(async (req) => {
@@ -82,7 +108,9 @@ serve(async (req) => {
 
     // Generate token
     const participantName = user.email || user.id;
-    const token = generateLiveKitToken(roomId, participantName);
+    const token = await generateLiveKitToken(roomId, participantName);
+
+    console.log(`Generated token for user: ${participantName}, room: ${roomId}`);
 
     return new Response(
       JSON.stringify({ 
