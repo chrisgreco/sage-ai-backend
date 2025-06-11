@@ -1,9 +1,9 @@
 
 import React from 'react';
-import DebateRoom from '../components/DebateRoom';
+import HomePage from '../components/HomePage';
 
 const Index = () => {
-  return <DebateRoom />;
+  return <HomePage />;
 };
 
 export default Index;

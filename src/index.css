@@ -1,3 +1,4 @@
+
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 @tailwind base;
 @tailwind components;
@@ -29,6 +30,19 @@
     --popover-foreground: 222.2 47.4% 11.2%;
     --card: 0 0% 100%;
     --card-foreground: 222.2 47.4% 11.2%;
+
+    /* Glass system colors */
+    --glass-primary: 255 255 255 / 0.7;
+    --glass-secondary: 255 255 255 / 0.5;
+    --glass-accent: 255 255 255 / 0.3;
+    --glass-surface: 255 255 255 / 0.8;
+    --glass-border: 255 255 255 / 0.2;
+
+    /* Content colors */
+    --content-primary: 15 23 42;
+    --content-secondary: 71 85 105;
+    --content-muted: 148 163 184;
+    --content-inverse: 248 250 252;
   }
 
   .dark {
@@ -55,6 +69,19 @@
     --popover-foreground: 210 40% 98%;
     --card: 222.2 84% 4.9%;
     --card-foreground: 210 40% 98%;
+
+    /* Glass system colors for dark mode */
+    --glass-primary: 0 0 0 / 0.3;
+    --glass-secondary: 0 0 0 / 0.2;
+    --glass-accent: 0 0 0 / 0.1;
+    --glass-surface: 0 0 0 / 0.4;
+    --glass-border: 255 255 255 / 0.1;
+
+    /* Content colors for dark mode */
+    --content-primary: 248 250 252;
+    --content-secondary: 203 213 225;
+    --content-muted: 148 163 184;
+    --content-inverse: 15 23 42;
   }
 }
 
@@ -64,7 +91,7 @@
   }
 
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans;
   }
 }
 
@@ -85,6 +112,15 @@
 
   .scale-in {
     animation: scaleIn 0.3s ease-out forwards;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
   }
 
   @keyframes fadeInUp {
@@ -111,44 +147,44 @@
 }
 
 @layer components {
-  /* Glass effect components */
+  /* Modern Glass Components */
   .glass-panel {
-    @apply bg-white/70 backdrop-blur-md border border-white/20 rounded-2xl shadow-lg;
+    @apply bg-white/40 backdrop-blur-md border border-white/20 rounded-2xl shadow-lg;
   }
   
   .glass-panel-elevated {
-    @apply bg-white/80 backdrop-blur-lg border border-white/30 rounded-2xl shadow-xl;
+    @apply bg-white/60 backdrop-blur-lg border border-white/30 rounded-2xl shadow-xl;
   }
   
   .glass-button {
-    @apply bg-white/60 backdrop-blur-sm border border-white/30 rounded-xl px-4 py-2 
-           transition-all duration-200 hover:bg-white/80 hover:border-white/40 
-           hover:shadow-md active:scale-95;
+    @apply bg-white/30 backdrop-blur-sm border border-white/20 rounded-xl px-4 py-2 
+           transition-all duration-300 hover:bg-white/50 hover:border-white/40 
+           hover:shadow-lg active:scale-95;
   }
 
   .glass-input {
-    @apply bg-white/50 backdrop-blur-sm border border-white/30 rounded-lg
-           focus:bg-white/70 focus:border-white/50 transition-all duration-200;
+    @apply bg-white/30 backdrop-blur-sm border border-white/20 rounded-lg
+           focus:bg-white/50 focus:border-white/40 transition-all duration-200;
   }
   
   /* Debate Room Specific Styles */
   .participant-slot {
-    @apply p-4 rounded-xl bg-white/70 backdrop-blur-md border border-white/20 shadow-sm transition-all duration-200;
+    @apply p-4 rounded-xl bg-white/40 backdrop-blur-md border border-white/20 shadow-sm transition-all duration-200;
   }
 
   .participant-slot.active {
-    @apply border-blue-300 shadow-md;
+    @apply border-blue-300/50 shadow-md bg-white/60;
   }
 
   .participant-slot.speaking {
-    @apply border-green-300 shadow-md;
+    @apply border-green-300/50 shadow-md bg-white/60;
   }
 
   .agent-slot {
-    @apply p-4 rounded-xl bg-white/70 backdrop-blur-md border border-white/20 shadow-sm transition-all duration-200;
+    @apply p-4 rounded-xl bg-white/40 backdrop-blur-md border border-white/20 shadow-sm transition-all duration-200;
   }
 
   .agent-slot.active {
-    @apply border-purple-300 shadow-md;
+    @apply border-purple-300/50 shadow-md bg-white/60;
   }
 }
