@@ -131,7 +131,7 @@ const AIModerationPanel: React.FC<AIModerationPanelProps> = ({
           )}
 
           {activeAgent && (
-            <div className="text-sm text-liquid-700 mb-3 p-2 glass-panel">
+            <div className="text-sm text-silver-600 mb-3 p-2 glass-panel">
               {activeAgent} is moderating...
             </div>
           )}
@@ -209,7 +209,7 @@ const AIModerationPanel: React.FC<AIModerationPanelProps> = ({
                 <div key={index} className="text-sm">
                   <span className={`font-medium ${
                     entry.speaker.includes('AI') || agents.some(a => a.name === entry.speaker)
-                      ? 'text-liquid-700' 
+                      ? 'text-silver-600' 
                       : 'text-content-primary'
                   }`}>
                     {entry.speaker}:
