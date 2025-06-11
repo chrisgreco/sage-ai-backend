@@ -43,9 +43,10 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
       sessionConfiguredRef.current = false;
       console.log('Connecting to AI moderation...');
 
-      // Use the correct WebSocket URL for our Supabase project
+      // Use the correct WebSocket URL - direct to Supabase edge function
       const wsUrl = `wss://zpfouxphwgtqhgalzyqk.supabase.co/functions/v1/openai-realtime-relay`;
       
+      console.log('Connecting to WebSocket URL:', wsUrl);
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
@@ -142,17 +143,10 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
       
       case 'input_audio_buffer.speech_started':
         console.log('User started speaking');
-        // Add user speech indicator
-        setTranscript(prev => [
-          ...prev,
-          { speaker: 'You', text: '(speaking...)', timestamp: new Date() }
-        ]);
         break;
       
       case 'input_audio_buffer.speech_stopped':
         console.log('User stopped speaking, AI analyzing...');
-        // Remove the "speaking..." indicator
-        setTranscript(prev => prev.filter(entry => entry.text !== '(speaking...)'));
         break;
 
       case 'conversation.item.input_audio_transcription.completed':
@@ -160,7 +154,7 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
           console.log('User transcript completed:', message.transcript);
           // Add user's completed transcript
           setTranscript(prev => [
-            ...prev.filter(entry => entry.text !== '(speaking...)'),
+            ...prev,
             { speaker: 'You', text: message.transcript, timestamp: new Date() }
           ]);
         }
