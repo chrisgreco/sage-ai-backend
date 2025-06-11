@@ -58,18 +58,18 @@ const UserMenu: React.FC = () => {
   const avatarUrl = profile?.avatar_url;
 
   return (
-    <div className="flex items-center space-x-3">
-      <div className="glass-panel px-3 py-2 flex items-center space-x-2">
-        <Avatar className="w-8 h-8">
+    <div className="flex items-center space-x-2 md:space-x-3">
+      <div className="glass-panel px-2 md:px-3 py-2 flex items-center space-x-2">
+        <Avatar className="w-7 h-7 md:w-8 md:h-8">
           {avatarUrl ? (
             <AvatarImage src={avatarUrl} alt={displayName} />
           ) : (
             <AvatarFallback className="bg-gradient-to-br from-purple-500 to-blue-600 text-white">
-              <User className="w-4 h-4" />
+              <User className="w-3 h-3 md:w-4 md:h-4" />
             </AvatarFallback>
           )}
         </Avatar>
-        <span className="text-sm font-medium text-content-primary">
+        <span className="text-xs md:text-sm font-medium text-content-primary max-w-[80px] md:max-w-none truncate">
           {displayName}
         </span>
       </div>
@@ -79,13 +79,13 @@ const UserMenu: React.FC = () => {
         disabled={isGenerating}
         variant="ghost"
         size="sm"
-        className="glass-button hover:bg-purple-100"
+        className="glass-button hover:bg-purple-100 p-2"
         title="Generate unique philosophy-themed profile icon"
       >
         {isGenerating ? (
-          <RefreshCw className="w-4 h-4 animate-spin" />
+          <RefreshCw className="w-3 h-3 md:w-4 md:h-4 animate-spin" />
         ) : (
-          <Sparkles className="w-4 h-4" />
+          <Sparkles className="w-3 h-3 md:w-4 md:h-4" />
         )}
       </Button>
       
@@ -93,9 +93,9 @@ const UserMenu: React.FC = () => {
         onClick={handleSignOut}
         variant="ghost"
         size="sm"
-        className="glass-button hover:bg-red-100 hover:text-red-600"
+        className="glass-button hover:bg-red-100 hover:text-red-600 p-2"
       >
-        <LogOut className="w-4 h-4" />
+        <LogOut className="w-3 h-3 md:w-4 md:h-4" />
       </Button>
     </div>
   );

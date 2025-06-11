@@ -81,12 +81,12 @@ const HomePage: React.FC = () => {
         <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-72 h-72 bg-gradient-to-r from-teal-400/15 to-cyan-400/15 blur-3xl floating-element" style={{ animationDelay: '-1.5s' }}></div>
       </div>
 
-      {/* Enhanced iOS-style Header with organic shape */}
-      <div className="glass-panel-elevated sticky top-0 z-50 mx-4 mt-4 mb-6 fade-in-up liquid-morph">
-        <div className="max-w-md mx-auto md:max-w-4xl px-6 py-4">
+      {/* Enhanced iOS-style Header with improved mobile spacing */}
+      <div className="glass-panel-elevated sticky top-0 z-50 mx-3 md:mx-4 mt-2 md:mt-4 mb-4 md:mb-6 fade-in-up liquid-morph">
+        <div className="max-w-md mx-auto md:max-w-4xl px-4 md:px-6 py-3 md:py-4">
           <div className="flex items-center justify-between">
-            <SageLogo size="md" />
-            <div className="flex items-center space-x-3">
+            <SageLogo size="sm" className="md:w-auto" />
+            <div className="flex items-center space-x-2 md:space-x-3">
               {user && <UserMenu />}
             </div>
           </div>
@@ -136,11 +136,11 @@ const HomePage: React.FC = () => {
           </div>
           
           <div className="flex space-x-6 overflow-x-auto pb-6 scrollbar-hide px-3">
-            {/* Enhanced Start Debate Story with organic shape */}
+            {/* Enhanced Start Debate Story with organic shape and flowing animation */}
             <div className="flex-shrink-0 cursor-pointer group" onClick={handleStartDebate}>
               <div className="relative story-circle">
-                <div className="w-20 h-20 bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-700 p-1 shadow-2xl shadow-blue-500/25 icon-container">
-                  <div className="w-full h-full backdrop-blur-sm flex items-center justify-center border-2 border-white/50 group-hover:scale-105 transition-all duration-500 icon-container"
+                <div className="w-20 h-20 bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-700 p-1 shadow-2xl shadow-blue-500/25 icon-container liquid-morph">
+                  <div className="w-full h-full backdrop-blur-sm flex items-center justify-center border-2 border-white/50 group-hover:scale-105 transition-all duration-500 icon-container liquid-morph"
                        style={{ 
                          background: 'linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 100%)',
                        }}>
@@ -155,7 +155,7 @@ const HomePage: React.FC = () => {
               </div>
             </div>
 
-            {/* Enhanced Debate Room Stories */}
+            {/* Enhanced Debate Room Stories with flowing animations */}
             {featuredRooms.map((room) => (
               <DebateStoryCircle key={room.id} room={room} />
             ))}
