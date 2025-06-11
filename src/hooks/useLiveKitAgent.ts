@@ -32,6 +32,8 @@ export const useLiveKitAgent = ({
   const [activeAgent, setActiveAgent] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<TranscriptEntry[]>([]);
   const roomRef = useRef<Room | null>(null);
+  const lastMessageRef = useRef<string>('');
+  const messageCountRef = useRef<number>(0);
 
   const connect = useCallback(async () => {
     if (isConnecting || isConnected) return;
@@ -68,8 +70,12 @@ export const useLiveKitAgent = ({
         setIsConnecting(false);
         onConnectionChange?.(true, false);
         
-        // Add initial connection message
-        setTranscript(prev => [...prev, {
+        // Reset message tracking
+        messageCountRef.current = 0;
+        lastMessageRef.current = '';
+        
+        // Add initial connection message only once
+        setTranscript([{
           speaker: 'System',
           text: 'Connected to AI moderation agents. Start speaking to see live transcription.',
           timestamp: new Date()
@@ -101,11 +107,23 @@ export const useLiveKitAgent = ({
         }
       });
 
-      // Enhanced data message handling
+      // Enhanced data message handling with deduplication
       room.on(RoomEvent.DataReceived, (payload: Uint8Array, participant?: RemoteParticipant) => {
         try {
           const message = JSON.parse(new TextDecoder().decode(payload));
+          const messageKey = `${message.type}-${message.text || message.content || ''}-${participant?.identity || ''}`;
+          
           console.log('Received data from agent:', message, 'from participant:', participant?.identity);
+          
+          // Prevent duplicate system messages
+          if (messageKey === lastMessageRef.current) {
+            console.log('Duplicate message detected, skipping:', messageKey);
+            return;
+          }
+          
+          // Track message frequency
+          messageCountRef.current++;
+          lastMessageRef.current = messageKey;
           
           // Handle different message types from the Python agent
           switch (message.type) {
@@ -116,48 +134,63 @@ export const useLiveKitAgent = ({
               
             case 'transcript':
             case 'transcription':
-              console.log('Adding transcript entry:', message);
-              setTranscript(prev => [...prev, {
-                speaker: message.speaker || participant?.identity || 'User',
-                text: message.text || message.content || message.transcript,
-                timestamp: new Date()
-              }]);
+              if (message.text && message.text.trim()) {
+                console.log('Adding transcript entry:', message);
+                setTranscript(prev => [...prev, {
+                  speaker: message.speaker || participant?.identity || 'User',
+                  text: message.text || message.content || message.transcript,
+                  timestamp: new Date()
+                }]);
+              }
               break;
               
             case 'agent_intervention':
             case 'agent_response':
-              console.log('Agent intervention:', message);
-              setActiveAgent(message.agent || participant?.identity || 'AI Agent');
-              setTranscript(prev => [...prev, {
-                speaker: message.agent || participant?.identity || 'AI Agent',
-                text: message.text || message.response,
-                timestamp: new Date()
-              }]);
+              if (message.text && message.text.trim()) {
+                console.log('Agent intervention:', message);
+                setActiveAgent(message.agent || participant?.identity || 'AI Agent');
+                setTranscript(prev => [...prev, {
+                  speaker: message.agent || participant?.identity || 'AI Agent',
+                  text: message.text || message.response,
+                  timestamp: new Date()
+                }]);
+              }
               break;
               
             case 'user_speech':
             case 'speech_detected':
-              console.log('User speech detected:', message);
-              setTranscript(prev => [...prev, {
-                speaker: 'You',
-                text: message.text || message.transcript,
-                timestamp: new Date()
-              }]);
+              if (message.text && message.text.trim()) {
+                console.log('User speech detected:', message);
+                setTranscript(prev => [...prev, {
+                  speaker: 'You',
+                  text: message.text || message.transcript,
+                  timestamp: new Date()
+                }]);
+              }
               break;
               
             case 'system_message':
-              console.log('System message:', message);
-              setTranscript(prev => [...prev, {
-                speaker: 'System',
-                text: message.text || message.message,
-                timestamp: new Date()
-              }]);
+              // Only add system messages if they're not repetitive
+              if (messageCountRef.current < 5 && message.text && message.text.trim()) {
+                console.log('System message:', message);
+                setTranscript(prev => [...prev, {
+                  speaker: 'System',
+                  text: message.text || message.message,
+                  timestamp: new Date()
+                }]);
+              }
+              break;
+              
+            case 'debug':
+            case 'status':
+              console.log('Debug/Status message:', message);
+              // Don't add debug messages to transcript
               break;
               
             default:
               console.log('Unknown message type:', message.type, message);
-              // Try to extract any text content for display
-              if (message.text || message.content) {
+              // Only add unknown messages if they have meaningful content
+              if ((message.text || message.content) && messageCountRef.current < 10) {
                 setTranscript(prev => [...prev, {
                   speaker: participant?.identity || 'Agent',
                   text: message.text || message.content,

@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from 'react';
 import type { UseAIModerationProps, UseAIModerationReturn } from '@/types/aiModeration';
 import { useLiveKitAgent } from './useLiveKitAgent';
@@ -69,9 +68,11 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
           type: 'audio_data',
           timestamp: Date.now(),
           audioLength: audioData.length,
-          sampleRate: 24000, // Standard for most audio processing
+          sampleRate: 24000,
           channels: 1,
-          format: 'float32'
+          format: 'float32',
+          // Add a test flag to help identify if the agent is processing
+          test: audioDataReceived % 50 === 0 // Every 50th message
         };
         
         room.localParticipant.publishData(
@@ -80,8 +81,14 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
         
         console.log('Sent audio data notification to agent:', {
           length: audioData.length,
-          timestamp: audioMessage.timestamp
+          timestamp: audioMessage.timestamp,
+          count: audioDataReceived
         });
+
+        // Add a test transcript entry every 100 audio packets to verify the pipeline
+        if (audioDataReceived % 100 === 0 && audioDataReceived > 0) {
+          console.log(`Audio pipeline test: sent ${audioDataReceived} audio packets`);
+        }
       } catch (err) {
         console.error('Error sending audio data to agent:', err);
       }
@@ -92,7 +99,7 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
         audioLength: audioData.length 
       });
     }
-  }, [room, aiConnected]);
+  }, [room, aiConnected, audioDataReceived]);
 
   const connectToAI = useCallback(() => {
     if (!aiConnecting && !aiConnected) {
