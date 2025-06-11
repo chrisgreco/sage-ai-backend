@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from 'react';
 import { 
   Room, 
@@ -19,7 +18,7 @@ interface UseWebRTCRoomProps {
   serverUrl?: string;
 }
 
-export const useWebRTCRoom = ({ roomName, participantName, serverUrl = 'wss://sage-livekit.livekit.cloud' }: UseWebRTCRoomProps) => {
+export const useWebRTCRoom = ({ roomName, participantName, serverUrl }: UseWebRTCRoomProps) => {
   const [room] = useState(() => new Room());
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -96,17 +95,41 @@ export const useWebRTCRoom = ({ roomName, participantName, serverUrl = 'wss://sa
       }
 
       console.log('Token received successfully, connecting to LiveKit...');
-      console.log('Server URL:', data.serverUrl || serverUrl);
+      console.log('Server URL:', data.serverUrl);
+      console.log('Token length:', data.token.length);
+      console.log('Possible servers:', data.possibleServers);
       
-      await room.connect(data.serverUrl || serverUrl, data.token);
-      console.log('LiveKit connection successful');
+      // Try to connect with the primary server URL
+      let connectionSuccessful = false;
+      const serversToTry = data.possibleServers || [data.serverUrl];
+      
+      for (const server of serversToTry) {
+        try {
+          console.log(`Trying to connect to: ${server}`);
+          await room.connect(server, data.token);
+          console.log(`Successfully connected to LiveKit at: ${server}`);
+          connectionSuccessful = true;
+          break;
+        } catch (serverError) {
+          console.error(`Failed to connect to ${server}:`, serverError);
+          if (server === serversToTry[serversToTry.length - 1]) {
+            // If this was the last server to try, throw the error
+            throw serverError;
+          }
+          // Otherwise, continue to the next server
+        }
+      }
+
+      if (!connectionSuccessful) {
+        throw new Error('Failed to connect to any LiveKit server');
+      }
 
     } catch (err) {
       console.error('Failed to connect to room:', err);
       setError(err instanceof Error ? err.message : 'Failed to connect to room');
       setIsConnecting(false);
     }
-  }, [room, roomName, serverUrl, isConnecting, isConnected]);
+  }, [room, roomName, isConnecting, isConnected]);
 
   const disconnectFromRoom = useCallback(() => {
     console.log('Disconnecting from room...');

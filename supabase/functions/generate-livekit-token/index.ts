@@ -39,6 +39,9 @@ async function generateLiveKitToken(roomName: string, participantName: string): 
     throw new Error('LiveKit credentials not configured');
   }
 
+  console.log('Using API Key:', apiKey.substring(0, 8) + '...');
+  console.log('Room:', roomName, 'Participant:', participantName);
+
   const now = Math.floor(Date.now() / 1000);
   
   // JWT header
@@ -47,7 +50,7 @@ async function generateLiveKitToken(roomName: string, participantName: string): 
     typ: 'JWT'
   };
 
-  // JWT payload for LiveKit
+  // JWT payload for LiveKit - updated with correct claims
   const payload = {
     iss: apiKey,
     sub: participantName,
@@ -59,9 +62,12 @@ async function generateLiveKitToken(roomName: string, participantName: string): 
       roomJoin: true,
       canPublish: true,
       canSubscribe: true,
-      canPublishData: true
+      canPublishData: true,
+      canUpdateOwnMetadata: true
     }
   };
+
+  console.log('Token payload:', JSON.stringify(payload, null, 2));
 
   // Encode header and payload
   const encodedHeader = arrayBufferToBase64Url(new TextEncoder().encode(JSON.stringify(header)));
@@ -72,7 +78,10 @@ async function generateLiveKitToken(roomName: string, participantName: string): 
   const signatureBuffer = await hmacSha256(apiSecret, signatureInput);
   const encodedSignature = arrayBufferToBase64Url(signatureBuffer);
 
-  return `${encodedHeader}.${encodedPayload}.${encodedSignature}`;
+  const token = `${encodedHeader}.${encodedPayload}.${encodedSignature}`;
+  console.log('Generated token length:', token.length);
+  
+  return token;
 }
 
 serve(async (req) => {
@@ -112,11 +121,19 @@ serve(async (req) => {
 
     console.log(`Generated token for user: ${participantName}, room: ${roomId}`);
 
+    // Try different server URLs based on your LiveKit setup
+    const possibleServers = [
+      'wss://sage-livekit.livekit.cloud',
+      'wss://sage-livekit-livekit.cloud',
+      'ws://localhost:7880' // fallback for development
+    ];
+
     return new Response(
       JSON.stringify({ 
         token,
-        serverUrl: 'wss://sage-livekit.livekit.cloud',
-        participantName
+        serverUrl: possibleServers[0], // Try the first one
+        participantName,
+        possibleServers // Include alternatives for debugging
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
