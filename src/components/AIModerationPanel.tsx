@@ -1,7 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
-import { Brain, Eye, EyeOff } from 'lucide-react';
+import { Brain, Eye, EyeOff, RefreshCcw } from 'lucide-react';
 import { useAIModeration } from '@/hooks/useAIModeration';
+import { Button } from './ui/button';
+import { Tooltip } from './ui/tooltip';
 
 interface AIModerationPanelProps {
   roomId: string;
@@ -53,7 +55,9 @@ const AIModerationPanel: React.FC<AIModerationPanelProps> = ({
     activeAgent,
     transcript,
     error,
-    sendAudioToAI
+    sendAudioToAI,
+    connectToAI,
+    disconnectFromAI
   } = useAIModeration({
     roomId,
     isConnected: isWebRTCConnected,
@@ -68,7 +72,7 @@ const AIModerationPanel: React.FC<AIModerationPanelProps> = ({
       sendAudioToAI: !!sendAudioToAI 
     });
     
-    if (onAudioData && aiConnected && sendAudioToAI) {
+    if (onAudioData && sendAudioToAI) {
       console.log('AIModerationPanel: Registering audio callback');
       onAudioData(sendAudioToAI);
     }
@@ -80,6 +84,14 @@ const AIModerationPanel: React.FC<AIModerationPanelProps> = ({
         ? { ...agent, active: !agent.active }
         : agent
     ));
+  };
+
+  const handleReconnect = () => {
+    console.log('Manual reconnection requested');
+    disconnectFromAI();
+    setTimeout(() => {
+      connectToAI();
+    }, 500);
   };
 
   return (
@@ -103,6 +115,17 @@ const AIModerationPanel: React.FC<AIModerationPanelProps> = ({
         {error && (
           <div className="text-sm text-red-600 mb-3 p-2 bg-red-50 rounded">
             {error}
+            <div className="mt-2">
+              <Button 
+                size="sm" 
+                variant="outline" 
+                onClick={handleReconnect}
+                className="flex items-center space-x-1"
+              >
+                <RefreshCcw className="w-3 h-3" />
+                <span>Reconnect</span>
+              </Button>
+            </div>
           </div>
         )}
 
@@ -141,16 +164,18 @@ const AIModerationPanel: React.FC<AIModerationPanelProps> = ({
                   </p>
                   <p className="text-xs text-content-muted">{agent.role}</p>
                 </div>
-                <button
-                  onClick={() => toggleAgent(agent.name)}
-                  className={`p-1 rounded transition-colors ${
-                    agent.active 
-                      ? 'text-green-600 hover:bg-green-50' 
-                      : 'text-gray-400 hover:bg-gray-50'
-                  }`}
-                >
-                  {agent.active ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-                </button>
+                <Tooltip content={agent.active ? 'Disable Agent' : 'Enable Agent'}>
+                  <button
+                    onClick={() => toggleAgent(agent.name)}
+                    className={`p-1 rounded transition-colors ${
+                      agent.active 
+                        ? 'text-green-600 hover:bg-green-50' 
+                        : 'text-gray-400 hover:bg-gray-50'
+                    }`}
+                  >
+                    {agent.active ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                  </button>
+                </Tooltip>
               </div>
               <p className="text-xs text-content-secondary leading-relaxed">
                 {agent.persona}

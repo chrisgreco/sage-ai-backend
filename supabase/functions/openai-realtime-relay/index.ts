@@ -32,6 +32,7 @@ serve(async (req) => {
   }
 
   console.log("Establishing connection to OpenAI Realtime API...");
+  console.log("API Key available:", !!openAIApiKey);
 
   // Connect to OpenAI Realtime API
   const openAISocket = new WebSocket(
@@ -49,6 +50,11 @@ serve(async (req) => {
 
   openAISocket.onopen = () => {
     console.log("Connected to OpenAI Realtime API successfully");
+    socket.send(JSON.stringify({
+      type: "connection_status",
+      status: "connected",
+      message: "Connected to OpenAI successfully"
+    }));
   };
 
   openAISocket.onmessage = (event) => {
@@ -91,6 +97,22 @@ serve(async (req) => {
       }
     } catch (error) {
       console.error("Error processing OpenAI message:", error);
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+          type: "error",
+          error: { message: `Error processing OpenAI message: ${error.message}` }
+        }));
+      }
+    }
+  };
+
+  openAISocket.onerror = (error) => {
+    console.error("OpenAI WebSocket error:", error);
+    if (socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({
+        type: "error",
+        error: { message: "OpenAI connection error" }
+      }));
     }
   };
 
@@ -101,9 +123,21 @@ serve(async (req) => {
         openAISocket.send(event.data);
       } else {
         console.warn("OpenAI socket not ready, message not sent");
+        if (socket.readyState === WebSocket.OPEN) {
+          socket.send(JSON.stringify({
+            type: "error",
+            error: { message: "OpenAI connection not ready" }
+          }));
+        }
       }
     } catch (error) {
       console.error("Error forwarding message to OpenAI:", error);
+      if (socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({
+          type: "error",
+          error: { message: `Error sending to OpenAI: ${error.message}` }
+        }));
+      }
     }
   };
 
@@ -117,14 +151,12 @@ serve(async (req) => {
   openAISocket.onclose = (event) => {
     console.log("OpenAI connection closed:", event.code, event.reason);
     if (socket.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({
+        type: "connection_status",
+        status: "disconnected",
+        message: `OpenAI connection closed: ${event.reason || 'Unknown reason'}`
+      }));
       socket.close();
-    }
-  };
-
-  openAISocket.onerror = (error) => {
-    console.error("OpenAI WebSocket error:", error);
-    if (socket.readyState === WebSocket.OPEN) {
-      socket.close(1011, "OpenAI connection error");
     }
   };
 

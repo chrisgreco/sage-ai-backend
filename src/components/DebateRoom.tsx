@@ -11,6 +11,7 @@ const DebateRoom: React.FC = () => {
   const navigate = useNavigate();
   const [showSettings, setShowSettings] = useState(false);
   const [isWebRTCConnected, setIsWebRTCConnected] = useState(false);
+  const [lastAudioTimestamp, setLastAudioTimestamp] = useState<number | null>(null);
   
   // Create a ref to store the AI moderation callback
   const aiModerationCallbackRef = useRef<((audioData: Float32Array) => void) | null>(null);
@@ -20,10 +21,12 @@ const DebateRoom: React.FC = () => {
   };
 
   const handleAudioData = (audioData: Float32Array) => {
-    console.log('DebateRoom: Received audio data, length:', audioData.length);
+    // Update timestamp to track when we last received audio
+    setLastAudioTimestamp(Date.now());
+    
     // Forward audio data to AI moderation if available
     if (aiModerationCallbackRef.current) {
-      console.log('DebateRoom: Forwarding audio to AI moderation');
+      console.log('DebateRoom: Forwarding audio to AI moderation, length:', audioData.length);
       aiModerationCallbackRef.current(audioData);
     } else {
       console.warn('DebateRoom: AI moderation callback not available');
@@ -39,6 +42,20 @@ const DebateRoom: React.FC = () => {
     console.log('DebateRoom: WebRTC connection changed:', connected);
     setIsWebRTCConnected(connected);
   };
+
+  // Monitor audio activity
+  useEffect(() => {
+    if (!lastAudioTimestamp) return;
+    
+    const intervalId = setInterval(() => {
+      const now = Date.now();
+      if (lastAudioTimestamp && now - lastAudioTimestamp > 5000) {
+        console.log('DebateRoom: No audio received in the last 5 seconds');
+      }
+    }, 5000);
+    
+    return () => clearInterval(intervalId);
+  }, [lastAudioTimestamp]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-purple-50">

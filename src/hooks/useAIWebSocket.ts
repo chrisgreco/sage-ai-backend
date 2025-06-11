@@ -1,5 +1,6 @@
 
 import { useRef, useCallback } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import type { AIAgent } from '@/types/aiModeration';
 import { generateModerationInstructions } from '@/utils/aiModerationUtils';
 
@@ -10,7 +11,7 @@ interface UseAIWebSocketProps {
   agents: AIAgent[];
 }
 
-export const useAIWebSocket = ({ onMessage, onConnectionChange, onError }: UseAIWebSocketProps) => {
+export const useAIWebSocket = ({ onMessage, onConnectionChange, onError, agents }: UseAIWebSocketProps) => {
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const sessionConfiguredRef = useRef(false);
@@ -21,19 +22,7 @@ export const useAIWebSocket = ({ onMessage, onConnectionChange, onError }: UseAI
       return;
     }
 
-    // Use a default instruction set since we removed the agents dependency
-    const instructions = `You are part of a multi-agent AI moderation system for live voice debates. 
-
-Your role depends on your assigned persona. Only speak when your specific moderation criteria are met:
-- Socrates: Ask clarifying questions when assumptions are made
-- Solon: Enforce rules when violations occur (interruptions, personal attacks)
-- Buddha: Intervene when tone becomes aggressive or hostile
-- Hermes: Summarize key points during natural breaks
-- Aristotle: Request sources for factual claims
-
-Keep interventions brief (1-2 sentences), polite, and focused on your specific role. Only one agent should speak at a time.
-
-The user is in a live debate. Listen carefully and only interject when necessary according to your role.`;
+    const instructions = generateModerationInstructions(agents);
 
     const sessionUpdate = {
       type: 'session.update',
@@ -59,15 +48,17 @@ The user is in a live debate. Listen carefully and only interject when necessary
 
     console.log('Configuring AI session with instructions');
     wsRef.current.send(JSON.stringify(sessionUpdate));
-  }, []);
+  }, [agents]);
 
   const connect = useCallback(() => {
     try {
       onError(null);
       sessionConfiguredRef.current = false;
+      onConnectionChange(false, true); // Mark as connecting before we start
       console.log('Connecting to AI moderation...');
 
-      const wsUrl = `wss://zpfouxphwgtqhgalzyqk.supabase.co/functions/v1/openai-realtime-relay`;
+      // Get the full URL for the WebSocket connection
+      const wsUrl = `wss://${window.location.hostname === 'localhost' ? 'localhost:54321' : window.location.hostname}/functions/v1/openai-realtime-relay`;
       console.log('Connecting to WebSocket URL:', wsUrl);
       
       const ws = new WebSocket(wsUrl);
@@ -84,17 +75,30 @@ The user is in a live debate. Listen carefully and only interject when necessary
           const message = JSON.parse(event.data);
           console.log('AI message received:', message.type);
           
+          if (message.type === 'connection_status') {
+            console.log('Connection status:', message.status, message.message);
+            if (message.status === 'disconnected') {
+              onConnectionChange(false, false);
+              onError(message.message || 'Connection to AI service lost');
+              return;
+            }
+          }
+          
           if (message.type === 'session.created' && !sessionConfiguredRef.current) {
             console.log('AI session created, configuring...');
             configureSession();
           } else if (message.type === 'session.updated') {
             console.log('AI session configured successfully');
             sessionConfiguredRef.current = true;
+          } else if (message.type === 'error') {
+            console.error('AI error:', message.error);
+            onError(message.error?.message || 'AI service error');
           }
           
           onMessage(message);
         } catch (err) {
           console.error('Error parsing AI message:', err);
+          onError('Failed to process AI response');
         }
       };
 
@@ -140,8 +144,8 @@ The user is in a live debate. Listen carefully and only interject when necessary
   }, [onConnectionChange, onError]);
 
   const sendMessage = useCallback((message: any) => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN || !sessionConfiguredRef.current) {
-      console.warn('WebSocket not ready or session not configured, skipping message');
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      console.warn('WebSocket not ready, skipping message');
       return;
     }
 
@@ -149,8 +153,9 @@ The user is in a live debate. Listen carefully and only interject when necessary
       wsRef.current.send(JSON.stringify(message));
     } catch (err) {
       console.error('Error sending message to AI:', err);
+      onError('Failed to send message to AI');
     }
-  }, []);
+  }, [onError]);
 
   return {
     connect,
