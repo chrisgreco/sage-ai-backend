@@ -1,1 +1,9 @@
-"livekit-api==1.0.3"  
+livekit-api==1.0.3  
+openai 
+python-dotenv 
+requests 
+websockets 
+fastapi 
+uvicorn 
+pydantic 
+deepgram-sdk
