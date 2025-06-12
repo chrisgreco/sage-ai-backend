@@ -2,11 +2,13 @@ import os
 import logging
 import uvicorn
 import asyncio
+import secrets
+import string
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import openai
-from livekit import api
+from livekit.jwt import AccessToken, VideoGrant
 
 # Load environment variables
 load_dotenv()
@@ -39,21 +41,30 @@ class DebateRequest(BaseModel):
 async def health_check():
     return {"status": "healthy"}
 
+# Generate a random room name if needed
+def generate_room_name(topic=None):
+    if topic:
+        base = f"debate-{topic.replace(' ', '-').lower()}"
+        # Add some randomness to avoid collisions
+        random_suffix = ''.join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(6))
+        return f"{base}-{random_suffix}"
+    else:
+        random_chars = ''.join(secrets.choice(string.ascii_lowercase + string.digits) for _ in range(12))
+        return f"debate-{random_chars}"
+
 # LiveKit connection endpoint
 @app.get("/connect")
 async def connect_to_livekit():
     try:
-        # Initialize LiveKit API client
-        token = api.AccessToken(
-            api_key=LIVEKIT_API_KEY,
-            api_secret=LIVEKIT_API_SECRET
-        ).with_identity("sage-ai-backend").to_jwt()
+        # Initialize LiveKit token
+        token = AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
+        token.add_identity("sage-ai-backend")
         
         return {
             "status": "success", 
             "message": "Ready to connect to LiveKit",
             "livekit_url": LIVEKIT_URL,
-            "token": token
+            "token": token.to_jwt()
         }
     except Exception as e:
         logger.error(f"Error connecting to LiveKit: {str(e)}")
@@ -66,26 +77,27 @@ async def create_debate(request: DebateRequest):
         logger.info(f"Creating debate on topic: {request.topic}")
         
         # Generate a room name if not provided
-        room_name = request.room_name or f"debate-{request.topic.replace(' ', '-').lower()}"
+        room_name = request.room_name or generate_room_name(request.topic)
         
         # Create a token with room creation permissions
-        token = api.AccessToken(
-            api_key=LIVEKIT_API_KEY,
-            api_secret=LIVEKIT_API_SECRET
-        ).with_identity("ai-moderator").with_name("AI Moderator").with_grants(
-            api.VideoGrants(
-                room_join=True,
-                room_create=True,
-                room=room_name
-            )
-        ).to_jwt()
+        token = AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
+        token.add_identity("ai-moderator")
+        token.name = "AI Moderator"
+        
+        # Set permissions
+        grant = VideoGrant(
+            room_join=True,
+            room_create=True,
+            room=room_name
+        )
+        token.with_grants(grant)
         
         return {
             "status": "success", 
             "message": f"Debate created on topic: {request.topic}",
             "room_name": room_name,
             "livekit_url": LIVEKIT_URL,
-            "token": token
+            "token": token.to_jwt()
         }
     except Exception as e:
         logger.error(f"Error creating debate: {str(e)}")
