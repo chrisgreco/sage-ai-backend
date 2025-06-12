@@ -1,10 +1,11 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from './ui/button';
 import { Input } from './ui/input';
 import { Label } from './ui/label';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
-import { Loader2, MessageSquare } from 'lucide-react';
+import { Alert, AlertDescription } from './ui/alert';
+import { Loader2, MessageSquare, AlertCircle, RefreshCw } from 'lucide-react';
 import { useBackendAPI } from '@/hooks/useBackendAPI';
 
 interface DebateTopicSelectorProps {
@@ -23,7 +24,17 @@ const popularTopics = [
 const DebateTopicSelector: React.FC<DebateTopicSelectorProps> = ({ onTopicSelected }) => {
   const [customTopic, setCustomTopic] = useState('');
   const [selectedTopic, setSelectedTopic] = useState<string | null>(null);
-  const { createDebate, isLoading, error } = useBackendAPI();
+  const [backendHealth, setBackendHealth] = useState<boolean | null>(null);
+  const { createDebate, checkHealth, isLoading, error } = useBackendAPI();
+
+  // Check backend health on component mount
+  useEffect(() => {
+    const healthCheck = async () => {
+      const isHealthy = await checkHealth();
+      setBackendHealth(isHealthy);
+    };
+    healthCheck();
+  }, [checkHealth]);
 
   const handleTopicSelect = async (topic: string) => {
     try {
@@ -43,6 +54,11 @@ const DebateTopicSelector: React.FC<DebateTopicSelectorProps> = ({ onTopicSelect
     }
   };
 
+  const handleRetry = async () => {
+    const isHealthy = await checkHealth();
+    setBackendHealth(isHealthy);
+  };
+
   return (
     <Card className="glass-panel max-w-2xl mx-auto">
       <CardHeader>
@@ -52,10 +68,42 @@ const DebateTopicSelector: React.FC<DebateTopicSelectorProps> = ({ onTopicSelect
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* Backend Status Alert */}
+        {backendHealth === false && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription className="flex items-center justify-between">
+              <span>Unable to connect to the debate server. Please try again.</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRetry}
+                className="ml-2"
+              >
+                <RefreshCw className="w-3 h-3 mr-1" />
+                Retry
+              </Button>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {/* API Error Alert */}
         {error && (
-          <div className="p-3 rounded-lg bg-red-100 border border-red-200">
-            <p className="text-sm text-red-700">{error}</p>
-          </div>
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription className="flex items-center justify-between">
+              <span>{error}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleRetry}
+                className="ml-2"
+              >
+                <RefreshCw className="w-3 h-3 mr-1" />
+                Retry
+              </Button>
+            </AlertDescription>
+          </Alert>
         )}
 
         {/* Popular Topics */}
@@ -70,7 +118,7 @@ const DebateTopicSelector: React.FC<DebateTopicSelectorProps> = ({ onTopicSelect
                 variant="outline"
                 className="glass-button text-left h-auto p-3 justify-start hover:bg-silver-50"
                 onClick={() => handleTopicSelect(topic)}
-                disabled={isLoading}
+                disabled={isLoading || backendHealth === false}
               >
                 {isLoading && selectedTopic === topic ? (
                   <Loader2 className="w-4 h-4 animate-spin mr-2" />
@@ -92,11 +140,11 @@ const DebateTopicSelector: React.FC<DebateTopicSelectorProps> = ({ onTopicSelect
               onChange={(e) => setCustomTopic(e.target.value)}
               placeholder="Enter a debate topic..."
               className="glass-panel flex-1"
-              disabled={isLoading}
+              disabled={isLoading || backendHealth === false}
             />
             <Button 
               type="submit" 
-              disabled={!customTopic.trim() || isLoading}
+              disabled={!customTopic.trim() || isLoading || backendHealth === false}
               className="glass-button"
             >
               {isLoading && selectedTopic === customTopic ? (
@@ -107,6 +155,17 @@ const DebateTopicSelector: React.FC<DebateTopicSelectorProps> = ({ onTopicSelect
             </Button>
           </form>
         </div>
+
+        {/* Backend Status Indicator */}
+        {backendHealth !== null && (
+          <div className="text-xs text-content-secondary text-center">
+            Server Status: {backendHealth ? (
+              <span className="text-green-600">Connected</span>
+            ) : (
+              <span className="text-red-600">Disconnected</span>
+            )}
+          </div>
+        )}
       </CardContent>
     </Card>
   );

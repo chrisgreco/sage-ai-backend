@@ -28,6 +28,20 @@ export const useBackendAPI = () => {
 
     try {
       console.log('Creating debate with topic:', topic);
+      console.log('Backend URL:', BACKEND_API_URL);
+      
+      // First check if the backend is healthy
+      const healthCheck = await fetch(`${BACKEND_API_URL}/health`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!healthCheck.ok) {
+        throw new Error(`Backend health check failed (${healthCheck.status})`);
+      }
+
       const response = await fetch(`${BACKEND_API_URL}/debate`, {
         method: 'POST',
         headers: {
@@ -40,7 +54,8 @@ export const useBackendAPI = () => {
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text();
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
       }
 
       const data = await response.json();
@@ -48,7 +63,14 @@ export const useBackendAPI = () => {
       return data;
     } catch (err) {
       console.error('Failed to create debate:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Failed to create debate';
+      let errorMessage = 'Failed to create debate';
+      
+      if (err instanceof TypeError && err.message === 'Failed to fetch') {
+        errorMessage = 'Unable to connect to the debate server. Please check your internet connection and try again.';
+      } else if (err instanceof Error) {
+        errorMessage = err.message;
+      }
+      
       setError(errorMessage);
       throw new Error(errorMessage);
     } finally {
@@ -70,7 +92,8 @@ export const useBackendAPI = () => {
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorText = await response.text();
+        throw new Error(`HTTP error! status: ${response.status}, message: ${errorText}`);
       }
 
       const data = await response.json();
@@ -78,7 +101,14 @@ export const useBackendAPI = () => {
       return data;
     } catch (err) {
       console.error('Failed to connect to room:', err);
-      const errorMessage = err instanceof Error ? err.message : 'Failed to connect to room';
+      let errorMessage = 'Failed to connect to room';
+      
+      if (err instanceof TypeError && err.message === 'Failed to fetch') {
+        errorMessage = 'Unable to connect to the debate server. Please check your internet connection and try again.';
+      } else if (err instanceof Error) {
+        errorMessage = err.message;
+      }
+      
       setError(errorMessage);
       throw new Error(errorMessage);
     } finally {
@@ -89,7 +119,12 @@ export const useBackendAPI = () => {
   const checkHealth = useCallback(async (): Promise<boolean> => {
     try {
       console.log('Checking backend health...');
-      const response = await fetch(`${BACKEND_API_URL}/health`);
+      const response = await fetch(`${BACKEND_API_URL}/health`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
       const isHealthy = response.ok;
       console.log('Backend health check result:', isHealthy);
       return isHealthy;
