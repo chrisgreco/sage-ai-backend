@@ -1,5 +1,4 @@
-livekit-agents[openai,silero]>=1.0.0
-python-dotenv>=1.0.0
-asyncio>=3.4.3
-requests>=2.31.0
-PyJWT>=2.8.0
+
+livekit-agents[openai,silero]
+python-dotenv
+asyncio
