@@ -27,6 +27,7 @@ export const useBackendAPI = () => {
     setError(null);
 
     try {
+      console.log('Creating debate with topic:', topic);
       const response = await fetch(`${BACKEND_API_URL}/debate`, {
         method: 'POST',
         headers: {
@@ -43,9 +44,10 @@ export const useBackendAPI = () => {
       }
 
       const data = await response.json();
-      console.log('Debate created:', data);
+      console.log('Debate created successfully:', data);
       return data;
     } catch (err) {
+      console.error('Failed to create debate:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to create debate';
       setError(errorMessage);
       throw new Error(errorMessage);
@@ -59,6 +61,7 @@ export const useBackendAPI = () => {
     setError(null);
 
     try {
+      console.log('Getting connection token from backend...');
       const response = await fetch(`${BACKEND_API_URL}/connect`, {
         method: 'GET',
         headers: {
@@ -74,6 +77,7 @@ export const useBackendAPI = () => {
       console.log('Connection token received:', data);
       return data;
     } catch (err) {
+      console.error('Failed to connect to room:', err);
       const errorMessage = err instanceof Error ? err.message : 'Failed to connect to room';
       setError(errorMessage);
       throw new Error(errorMessage);
@@ -84,8 +88,11 @@ export const useBackendAPI = () => {
 
   const checkHealth = useCallback(async (): Promise<boolean> => {
     try {
+      console.log('Checking backend health...');
       const response = await fetch(`${BACKEND_API_URL}/health`);
-      return response.ok;
+      const isHealthy = response.ok;
+      console.log('Backend health check result:', isHealthy);
+      return isHealthy;
     } catch (err) {
       console.error('Backend health check failed:', err);
       return false;
