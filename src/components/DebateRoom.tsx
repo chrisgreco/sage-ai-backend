@@ -1,10 +1,10 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Settings } from 'lucide-react';
+import { Settings, ArrowLeft } from 'lucide-react';
 import SageLogo from './SageLogo';
 import WebRTCAudioRoom from './WebRTCAudioRoom';
 import AIModerationPanel from './AIModerationPanel';
+import DebateTopicSelector from './DebateTopicSelector';
 import UserMenu from './UserMenu';
 import { useAuth } from '@/hooks/useAuth';
 
@@ -15,6 +15,8 @@ const DebateRoom: React.FC = () => {
   const [showSettings, setShowSettings] = useState(false);
   const [isWebRTCConnected, setIsWebRTCConnected] = useState(false);
   const [lastAudioTimestamp, setLastAudioTimestamp] = useState<number | null>(null);
+  const [debateTopic, setDebateTopic] = useState<string | null>(null);
+  const [roomName, setRoomName] = useState<string | null>(null);
   
   // Create a ref to store the AI moderation callback
   const aiModerationCallbackRef = useRef<((audioData: Float32Array) => void) | null>(null);
@@ -25,6 +27,18 @@ const DebateRoom: React.FC = () => {
 
   const handleLogoClick = () => {
     navigate('/');
+  };
+
+  const handleTopicSelected = (topic: string, generatedRoomName: string) => {
+    console.log('Topic selected:', topic, 'Room:', generatedRoomName);
+    setDebateTopic(topic);
+    setRoomName(generatedRoomName);
+  };
+
+  const handleBackToTopicSelection = () => {
+    setDebateTopic(null);
+    setRoomName(null);
+    setIsWebRTCConnected(false);
   };
 
   const handleAudioData = (audioData: Float32Array) => {
@@ -64,15 +78,51 @@ const DebateRoom: React.FC = () => {
     return () => clearInterval(intervalId);
   }, [lastAudioTimestamp]);
 
+  // Show topic selector if no topic is selected
+  if (!debateTopic || !roomName) {
+    return (
+      <div className="min-h-screen relative overflow-hidden">
+        {/* Header */}
+        <div className="glass-panel-elevated sticky top-0 z-50 mx-2 md:mx-3 mt-1 md:mt-1.5 mb-2 md:mb-3 fade-in-up">
+          <div className="max-w-md mx-auto md:max-w-4xl px-2.5 md:px-4 py-0.5 md:py-1">
+            <div className="flex items-center justify-between">
+              <button onClick={handleLogoClick} className="hover:opacity-80 transition-opacity">
+                <SageLogo size="sm" className="md:w-auto" />
+              </button>
+              <div className="flex items-center space-x-1.5 md:space-x-2">
+                {user && <UserMenu />}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Topic Selection */}
+        <div className="max-w-md mx-auto md:max-w-4xl px-2.5 md:px-4">
+          <DebateTopicSelector onTopicSelected={handleTopicSelected} />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen relative overflow-hidden">
-      {/* Header matching homepage styling */}
+      {/* Header with topic */}
       <div className="glass-panel-elevated sticky top-0 z-50 mx-2 md:mx-3 mt-1 md:mt-1.5 mb-2 md:mb-3 fade-in-up">
         <div className="max-w-md mx-auto md:max-w-4xl px-2.5 md:px-4 py-0.5 md:py-1">
           <div className="flex items-center justify-between">
-            <button onClick={handleLogoClick} className="hover:opacity-80 transition-opacity">
-              <SageLogo size="sm" className="md:w-auto" />
-            </button>
+            <div className="flex items-center space-x-3">
+              <button onClick={handleBackToTopicSelection} className="hover:opacity-80 transition-opacity">
+                <ArrowLeft className="w-5 h-5 text-content-primary" />
+              </button>
+              <button onClick={handleLogoClick} className="hover:opacity-80 transition-opacity">
+                <SageLogo size="sm" className="md:w-auto" />
+              </button>
+              <div className="hidden md:block">
+                <h1 className="text-sm font-medium text-content-primary truncate max-w-md">
+                  {debateTopic}
+                </h1>
+              </div>
+            </div>
             <div className="flex items-center space-x-1.5 md:space-x-2">
               {user && <UserMenu />}
               <button
@@ -82,6 +132,13 @@ const DebateRoom: React.FC = () => {
                 <Settings className="w-4 h-4 text-content-primary" />
               </button>
             </div>
+          </div>
+          
+          {/* Mobile topic display */}
+          <div className="md:hidden mt-2">
+            <h1 className="text-sm font-medium text-content-primary">
+              {debateTopic}
+            </h1>
           </div>
         </div>
       </div>
@@ -93,7 +150,7 @@ const DebateRoom: React.FC = () => {
           <div className="lg:col-span-3">
             <div className="glass-panel p-4">
               <WebRTCAudioRoom 
-                roomId={id || 'demo'} 
+                roomId={roomName} 
                 onLeave={handleLeaveRoom}
                 onAudioData={handleAudioData}
                 onConnectionChange={handleWebRTCConnectionChange}
@@ -105,7 +162,7 @@ const DebateRoom: React.FC = () => {
           <div className="space-y-4">
             <div className="glass-panel p-4">
               <AIModerationPanel 
-                roomId={id || 'demo'} 
+                roomId={roomName} 
                 isWebRTCConnected={isWebRTCConnected}
                 onAudioData={handleAIModerationReady}
               />

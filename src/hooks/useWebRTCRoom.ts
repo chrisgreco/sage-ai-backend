@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback } from 'react';
 import { 
   Room, 
@@ -11,7 +10,7 @@ import {
   LocalTrack,
   createLocalAudioTrack
 } from 'livekit-client';
-import { supabase } from '@/integrations/supabase/client';
+import { useBackendAPI } from './useBackendAPI';
 
 interface UseWebRTCRoomProps {
   roomName: string;
@@ -31,6 +30,8 @@ export const useWebRTCRoom = ({ roomName, participantName, onAudioData }: UseWeb
   const [hasAttemptedConnection, setHasAttemptedConnection] = useState(false);
   const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
   const [processor, setProcessor] = useState<ScriptProcessorNode | null>(null);
+
+  const { connectToRoom: getConnectionToken } = useBackendAPI();
 
   // Update participants when room state changes
   useEffect(() => {
@@ -102,7 +103,6 @@ export const useWebRTCRoom = ({ roomName, participantName, onAudioData }: UseWeb
   }, [onAudioData]);
 
   const connectToRoom = useCallback(async () => {
-    // Prevent multiple connection attempts
     if (isConnecting || isConnected || hasAttemptedConnection) {
       console.log('Connection already in progress or established, skipping...');
       return;
@@ -114,36 +114,24 @@ export const useWebRTCRoom = ({ roomName, participantName, onAudioData }: UseWeb
       setHasAttemptedConnection(true);
       console.log(`Attempting to connect to room: ${roomName}`);
 
-      // Get LiveKit token from our edge function
-      const { data, error: tokenError } = await supabase.functions.invoke('generate-livekit-token', {
-        body: { roomId: roomName }
-      });
-
-      if (tokenError) {
-        console.error('Token error:', tokenError);
-        throw new Error(tokenError.message || 'Failed to get room token');
-      }
-
-      if (!data?.token) {
-        console.error('No token received:', data);
-        throw new Error('No token received from server');
-      }
+      // Use the new backend API to get connection token
+      const connectionData = await getConnectionToken();
 
       console.log('Token received successfully, connecting to LiveKit...');
-      console.log('Server URL:', data.serverUrl);
-      console.log('Token length:', data.token.length);
+      console.log('Server URL:', connectionData.livekit_url);
+      console.log('Token length:', connectionData.token.length);
       
-      // Connect to your LiveKit server
-      await room.connect(data.serverUrl, data.token);
-      console.log(`Successfully connected to LiveKit at: ${data.serverUrl}`);
+      // Connect to LiveKit server using backend token
+      await room.connect(connectionData.livekit_url, connectionData.token);
+      console.log(`Successfully connected to LiveKit at: ${connectionData.livekit_url}`);
 
     } catch (err) {
       console.error('Failed to connect to room:', err);
       setError(err instanceof Error ? err.message : 'Failed to connect to room');
       setIsConnecting(false);
-      setHasAttemptedConnection(false); // Allow retry on error
+      setHasAttemptedConnection(false);
     }
-  }, [room, roomName, isConnecting, isConnected, hasAttemptedConnection]);
+  }, [room, roomName, isConnecting, isConnected, hasAttemptedConnection, getConnectionToken]);
 
   const disconnectFromRoom = useCallback(() => {
     console.log('Disconnecting from room...');

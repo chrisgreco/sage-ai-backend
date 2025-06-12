@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { 
   Room, 
@@ -9,7 +8,7 @@ import {
   RemoteTrack,
   RemoteTrackPublication
 } from 'livekit-client';
-import { supabase } from '@/integrations/supabase/client';
+import { useBackendAPI } from './useBackendAPI';
 import type { AIAgent, TranscriptEntry } from '@/types/aiModeration';
 
 interface UseLiveKitAgentProps {
@@ -34,6 +33,8 @@ export const useLiveKitAgent = ({
   const roomRef = useRef<Room | null>(null);
   const lastMessageRef = useRef<string>('');
   const messageCountRef = useRef<number>(0);
+  
+  const { connectToRoom: getConnectionToken } = useBackendAPI();
 
   const connect = useCallback(async () => {
     if (isConnecting || isConnected) return;
@@ -46,18 +47,8 @@ export const useLiveKitAgent = ({
 
       console.log('Connecting to LiveKit Agent for room:', roomId);
 
-      // Get LiveKit token for agent room
-      const { data, error: tokenError } = await supabase.functions.invoke('generate-livekit-token', {
-        body: { 
-          roomId: `sage-debate-${roomId}`,
-          participantName: 'User',
-          metadata: JSON.stringify({ agents: agents.filter(a => a.active) })
-        }
-      });
-
-      if (tokenError || !data?.token) {
-        throw new Error(tokenError?.message || 'Failed to get room token');
-      }
+      // Use backend API to get connection token
+      const connectionData = await getConnectionToken();
 
       // Create room and connect
       const room = new Room();
@@ -223,8 +214,8 @@ export const useLiveKitAgent = ({
         }]);
       });
 
-      // Connect to the room
-      await room.connect(data.serverUrl, data.token);
+      // Connect to the room using backend token
+      await room.connect(connectionData.livekit_url, connectionData.token);
 
     } catch (err) {
       console.error('Error connecting to LiveKit Agent:', err);
@@ -233,7 +224,7 @@ export const useLiveKitAgent = ({
       onError?.(errorMessage);
       onConnectionChange?.(false, false);
     }
-  }, [roomId, agents, isConnecting, isConnected, onMessage, onConnectionChange, onError]);
+  }, [roomId, agents, isConnecting, isConnected, onMessage, onConnectionChange, onError, getConnectionToken]);
 
   const disconnect = useCallback(() => {
     console.log('Disconnecting from LiveKit Agent...');
