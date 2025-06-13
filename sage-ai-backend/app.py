@@ -6,6 +6,8 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from dotenv import load_dotenv
 import openai
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 # Debug statement to verify imports
 print("Importing LiveKit API...")
@@ -33,6 +35,15 @@ openai.api_key = OPENAI_API_KEY
 # Create FastAPI instance
 app = FastAPI()
 
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Or specify exact frontend URL
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Define request models
 class DebateRequest(BaseModel):
     topic: str
@@ -41,7 +52,12 @@ class DebateRequest(BaseModel):
 # Health check endpoint
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy"}
+    logger.info("Health check endpoint called")
+    try:
+        return JSONResponse(content={"status": "healthy"})
+    except Exception as e:
+        logger.error(f"Error in health check endpoint: {str(e)}")
+        return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
 # LiveKit connection endpoint
 @app.get("/connect")
