@@ -38,7 +38,10 @@ app = FastAPI()
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Or specify exact frontend URL
+    allow_origins=[
+        "https://lovable.dev",  # Production frontend
+        "http://localhost:3000"  # Local development only; remove in production
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
