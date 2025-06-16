@@ -47,8 +47,11 @@ app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://lovable.dev",  # Production frontend
-        "http://localhost:3000"  # Local development only; remove in production
+        "https://lovable.dev",
+        "https://sage-liquid-glow-design.lovable.app",  # Specific Lovable app
+        "https://*.lovable.app",  # All Lovable app subdomains
+        "https://*.lovableproject.com",  # Alternative Lovable domain pattern
+        "http://localhost:3000"  # Local development
     ],
     allow_credentials=True,
     allow_methods=["*"],
