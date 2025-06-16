@@ -463,7 +463,7 @@ async def create_debate(request: DebateRequest):
         logger.info(f'LiveKit URL being returned: {LIVEKIT_URL}')
         logger.info(f'Room name being returned: {room_name}')
         logger.info(f'Token grants: room_join=True, can_publish=True, can_subscribe=True, can_publish_data=True, room_create=True')
-        logger.info(f'Using environment variables: LIVEKIT_API_KEY={LIVEKIT_API_KEY[:8]}..., LIVEKIT_API_SECRET={'***' if LIVEKIT_API_SECRET else 'MISSING'}')
+        logger.info(f'Using environment variables: LIVEKIT_API_KEY={LIVEKIT_API_KEY[:8]}..., LIVEKIT_API_SECRET={("***" if LIVEKIT_API_SECRET else "MISSING")}')
         logger.info('========================')
         
         response_data = {
