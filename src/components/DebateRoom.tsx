@@ -63,19 +63,22 @@ const DebateRoom: React.FC = () => {
 
   // Launch AI Agents
   const launchAIAgents = async () => {
-    if (!roomName) return;
+    if (!roomName || !debateTopic) return;
     
     setLaunchingAgents(true);
     try {
       const response = await fetch('https://sage-ai-backend-l0en.onrender.com/launch-ai-agents', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ room_name: roomName })
+        body: JSON.stringify({ 
+          room_name: roomName,
+          topic: debateTopic
+        })
       });
       
       if (response.ok) {
         setAiAgentsActive(true);
-        console.log('AI Agents launched successfully');
+        console.log('AI Agents launched successfully for topic:', debateTopic);
       } else {
         console.error('Failed to launch AI agents:', response.statusText);
       }
@@ -214,27 +217,34 @@ const DebateRoom: React.FC = () => {
       {/* Main Content */}
       <div className="max-w-md mx-auto md:max-w-4xl px-2.5 md:px-4 space-y-4">
         
-        {/* AI Moderators Control Panel */}
-        <div className="glass-panel p-4">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-lg font-semibold text-content-primary">AI Moderators</h2>
-            <div className="flex gap-2 items-center">
-              <Button 
-                onClick={launchAIAgents}
-                disabled={launchingAgents || aiAgentsActive}
-                variant={aiAgentsActive ? "secondary" : "default"}
-                size="sm"
-              >
-                {launchingAgents ? "Launching..." : aiAgentsActive ? "🤖 Agents Active" : "🤖 Launch AI Moderators"}
-              </Button>
-              
-              {aiAgentsActive && (
-                <Badge variant="secondary" className="bg-green-100 text-green-800">
-                  5 AI Agents Active
-                </Badge>
-              )}
+                  {/* AI Moderators Control Panel */}
+          <div className="glass-panel p-4">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h2 className="text-lg font-semibold text-content-primary">AI Moderators</h2>
+                {aiAgentsActive && (
+                  <p className="text-sm text-content-secondary">
+                    Moderating: <span className="font-medium text-blue-600">"{debateTopic}"</span>
+                  </p>
+                )}
+              </div>
+              <div className="flex gap-2 items-center">
+                <Button 
+                  onClick={launchAIAgents}
+                  disabled={launchingAgents || aiAgentsActive}
+                  variant={aiAgentsActive ? "secondary" : "default"}
+                  size="sm"
+                >
+                  {launchingAgents ? "Launching..." : aiAgentsActive ? "🤖 Agents Active" : "🤖 Launch AI Moderators"}
+                </Button>
+                
+                {aiAgentsActive && (
+                  <Badge variant="secondary" className="bg-green-100 text-green-800">
+                    5 AI Agents Active
+                  </Badge>
+                )}
+              </div>
             </div>
-          </div>
 
           {/* AI Agent Status Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
@@ -278,6 +288,7 @@ const DebateRoom: React.FC = () => {
             <div className="glass-panel p-4">
               <WebRTCAudioRoom 
                 roomId={roomName} 
+                debateTopic={debateTopic}
                 onLeave={handleLeaveRoom}
                 onAudioData={handleAudioData}
                 onConnectionChange={handleWebRTCConnectionChange}

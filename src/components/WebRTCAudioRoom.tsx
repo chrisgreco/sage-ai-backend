@@ -5,6 +5,7 @@ import { useAuth } from '@/hooks/useAuth';
 
 interface WebRTCAudioRoomProps {
   roomId: string;
+  debateTopic?: string;
   onLeave?: () => void;
   onAudioData?: (audioData: Float32Array) => void;
   onConnectionChange?: (connected: boolean) => void;
@@ -12,6 +13,7 @@ interface WebRTCAudioRoomProps {
 
 const WebRTCAudioRoom: React.FC<WebRTCAudioRoomProps> = ({ 
   roomId, 
+  debateTopic,
   onLeave, 
   onAudioData,
   onConnectionChange 
@@ -42,15 +44,15 @@ const WebRTCAudioRoom: React.FC<WebRTCAudioRoomProps> = ({
 
   // Only attempt connection once when component mounts
   useEffect(() => {
-    console.log('WebRTCAudioRoom: Attempting to connect to room:', roomId);
-    connectToRoom(roomId);
+    console.log('WebRTCAudioRoom: Attempting to connect to room:', roomId, 'with topic:', debateTopic);
+    connectToRoom(roomId, debateTopic || "General Discussion");
     
     // Cleanup on unmount
     return () => {
       console.log('WebRTCAudioRoom: Cleaning up connection');
       disconnectFromRoom();
     };
-  }, [roomId]); // Connect when roomId changes
+  }, [roomId, debateTopic]); // Connect when roomId or topic changes
 
   const handleLeaveRoom = () => {
     disconnectFromRoom();
