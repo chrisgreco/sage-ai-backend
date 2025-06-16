@@ -111,7 +111,7 @@ AGENT_PERSONALITIES = {
         Keep your interventions brief and focused on maintaining structure and civility.""",
         knowledge_base="debate_moderation",
         speaking_triggers=[
-            "off-topic", "personal attack", "inappropriate", "rude", "unfair",
+            "solon", "off-topic", "personal attack", "inappropriate", "rude", "unfair",
             "interrupting", "disrespectful", "order", "rules", "civility",
             "quiet for 10 seconds", "heated argument", "chaos", "disorder"
         ],
@@ -143,7 +143,7 @@ AGENT_PERSONALITIES = {
         Provide rigorous, fact-based analysis while maintaining clarity and accessibility.""",
         knowledge_base="academic_research",
         speaking_triggers=[
-            "research", "study", "data", "evidence", "how does", "why does", 
+            "aristotle", "research", "study", "data", "evidence", "how does", "why does", 
             "what is", "explain", "analysis", "expert opinion", "scientific",
             "academic", "peer-reviewed", "statistics", "empirical"
         ],
@@ -175,7 +175,7 @@ AGENT_PERSONALITIES = {
         Always approach with genuine curiosity and humility, seeking truth through careful questioning.""",
         knowledge_base="critical_thinking",
         speaking_triggers=[
-            "what do you mean", "unclear", "confusing", "I don't understand",
+            "socrates", "what do you mean", "unclear", "confusing", "I don't understand",
             "always", "never", "everyone", "obviously", "clearly", "certainly",
             "assumption", "define", "explain", "clarify", "vague", "ambiguous"
         ],
@@ -207,7 +207,7 @@ AGENT_PERSONALITIES = {
         Focus on clear communication, elegant synthesis, and smooth transitions between ideas.""",
         knowledge_base="systems_thinking",
         speaking_triggers=[
-            "disagree", "conflict", "different views", "both sides", "common ground",
+            "hermes", "disagree", "conflict", "different views", "both sides", "common ground",
             "synthesis", "integrate", "combine", "bridge", "reconcile",
             "pattern", "framework", "holistic", "bigger picture"
         ],
@@ -239,7 +239,7 @@ AGENT_PERSONALITIES = {
         Focus on peace, understanding, and compassionate discourse rather than winning arguments.""",
         knowledge_base="fact_verification", 
         speaking_triggers=[
-            "anger", "conflict", "heated", "argument", "fight", "attack",
+            "buddha", "anger", "conflict", "heated", "argument", "fight", "attack",
             "frustrated", "upset", "disagree strongly", "hostile", "tension",
             "calm down", "peace", "understanding", "compassion", "wisdom"
         ],
