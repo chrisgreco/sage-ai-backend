@@ -131,15 +131,22 @@ async def create_debate(request: DebateRequest):
         # Generate a room name if not provided
         room_name = request.room_name or f"debate-{request.topic.replace(' ', '-').lower()}"
         
-        # Create a token with room creation permissions
+        # Use participant name if provided, otherwise default to "participant"
+        participant_identity = request.participant_name or "participant"
+        participant_display_name = request.participant_name or "Participant"
+        
+        # Create a token for the participant with room join permissions
         token = AccessToken(
             api_key=LIVEKIT_API_KEY,
             api_secret=LIVEKIT_API_SECRET
-        ).with_identity("ai-moderator").with_name("AI Moderator").with_grants(
+        ).with_identity(participant_identity).with_name(participant_display_name).with_grants(
             VideoGrants(
                 room_join=True,
                 room_create=True,
-                room=room_name
+                room=room_name,
+                can_publish=True,
+                can_subscribe=True,
+                can_publish_data=True
             )
         ).to_jwt()
         
@@ -148,10 +155,62 @@ async def create_debate(request: DebateRequest):
             "message": f"Debate created on topic: {request.topic}",
             "room_name": room_name,
             "livekit_url": LIVEKIT_URL,
-            "token": token
+            "token": token,
+            "participant_name": participant_display_name
         }
     except Exception as e:
         logger.error(f"Error creating debate: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Participant token endpoint
+@app.post("/participant-token")
+async def get_participant_token(request: DebateRequest):
+    try:
+        logger.info(f"Generating participant token for: {request.participant_name}")
+        
+        if not livekit_available:
+            return JSONResponse(
+                content={"status": "error", "message": "LiveKit SDK not available"}, 
+                status_code=503
+            )
+            
+        if not all([LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET]):
+            return JSONResponse(
+                content={"status": "error", "message": "LiveKit configuration missing"}, 
+                status_code=503
+            )
+        
+        # Require room_name and participant_name for this endpoint
+        if not request.room_name or not request.participant_name:
+            return JSONResponse(
+                content={"status": "error", "message": "room_name and participant_name are required"}, 
+                status_code=400
+            )
+        
+        # Create a token for the specific participant
+        token = AccessToken(
+            api_key=LIVEKIT_API_KEY,
+            api_secret=LIVEKIT_API_SECRET
+        ).with_identity(request.participant_name).with_name(request.participant_name).with_grants(
+            VideoGrants(
+                room_join=True,
+                room=request.room_name,
+                can_publish=True,
+                can_subscribe=True,
+                can_publish_data=True
+            )
+        ).to_jwt()
+        
+        return {
+            "status": "success", 
+            "message": f"Token generated for participant: {request.participant_name}",
+            "room_name": request.room_name,
+            "livekit_url": LIVEKIT_URL,
+            "token": token,
+            "participant_name": request.participant_name
+        }
+    except Exception as e:
+        logger.error(f"Error generating participant token: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Background worker mode function
