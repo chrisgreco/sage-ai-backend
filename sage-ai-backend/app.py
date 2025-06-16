@@ -133,17 +133,18 @@ async def connect_to_livekit():
                 status_code=503
             )
             
-        # Initialize LiveKit API client
-        token = AccessToken(
-            api_key=LIVEKIT_API_KEY,
-            api_secret=LIVEKIT_API_SECRET
-        ).with_identity("sage-ai-backend").to_jwt()
+        # Initialize LiveKit API client with correct constructor pattern
+        token = AccessToken(api_key=LIVEKIT_API_KEY, api_secret=LIVEKIT_API_SECRET)
+        token.with_identity("sage-ai-backend")
+        jwt_token = token.to_jwt()
+        
+        logger.info("Generated connect token successfully")
         
         return {
             "status": "success", 
             "message": "Ready to connect to LiveKit",
             "livekit_url": LIVEKIT_URL,
-            "token": token
+            "token": jwt_token
         }
     except Exception as e:
         logger.error(f"Error connecting to LiveKit: {str(e)}")
@@ -166,17 +167,18 @@ async def connect_to_livekit_post(request: FlexibleDebateRequest = None):
                 status_code=503
             )
             
-        # Initialize LiveKit API client
-        token = AccessToken(
-            api_key=LIVEKIT_API_KEY,
-            api_secret=LIVEKIT_API_SECRET
-        ).with_identity("sage-ai-backend").to_jwt()
+        # Initialize LiveKit API client with correct constructor pattern
+        token = AccessToken(api_key=LIVEKIT_API_KEY, api_secret=LIVEKIT_API_SECRET)
+        token.with_identity("sage-ai-backend")
+        jwt_token = token.to_jwt()
+        
+        logger.info("Generated connect token successfully")
         
         return {
             "status": "success", 
             "message": "Ready to connect to LiveKit",
             "livekit_url": LIVEKIT_URL,
-            "token": token
+            "token": jwt_token
         }
     except Exception as e:
         logger.error(f"Error connecting to LiveKit: {str(e)}")
@@ -222,7 +224,7 @@ async def create_debate(request: DebateRequest):
         participant_display_name = request.participant_name or "Participant"
         
         # Create a token for the participant with proper LiveKit grants
-        token = AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
+        token = AccessToken(api_key=LIVEKIT_API_KEY, api_secret=LIVEKIT_API_SECRET)
         token.with_identity(participant_identity)
         token.with_name(participant_display_name)
         
@@ -241,6 +243,7 @@ async def create_debate(request: DebateRequest):
         jwt_token = token.to_jwt()
         
         logger.info(f"Generated token for room: {room_name}, participant: {participant_identity}")
+        logger.info(f"Token grants: room_join=True, can_publish=True, can_subscribe=True, can_publish_data=True, room_create=True")
         
         return {
             "status": "success", 
@@ -281,7 +284,7 @@ async def get_participant_token(request: DebateRequest):
             )
         
         # Create a token for the specific participant using improved pattern
-        token = AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
+        token = AccessToken(api_key=LIVEKIT_API_KEY, api_secret=LIVEKIT_API_SECRET)
         token.with_identity(request.participant_name)
         token.with_name(request.participant_name)
         
@@ -298,6 +301,7 @@ async def get_participant_token(request: DebateRequest):
         jwt_token = token.to_jwt()
         
         logger.info(f"Generated participant token for room: {request.room_name}, participant: {request.participant_name}")
+        logger.info(f"Participant token grants: room_join=True, can_publish=True, can_subscribe=True, can_publish_data=True")
         
         return {
             "status": "success", 
