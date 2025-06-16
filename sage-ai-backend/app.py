@@ -38,6 +38,14 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY", "")
 SERVICE_MODE = os.getenv("SERVICE_MODE", "web").lower()  # Default to web service mode
 
+# Set LiveKit environment variables for the library to use automatically
+if LIVEKIT_API_KEY and LIVEKIT_API_SECRET:
+    os.environ["LIVEKIT_API_KEY"] = LIVEKIT_API_KEY
+    os.environ["LIVEKIT_API_SECRET"] = LIVEKIT_API_SECRET
+    logger.info(f"LiveKit environment variables set: API_KEY={LIVEKIT_API_KEY[:8]}...")
+else:
+    logger.warning("LiveKit API credentials not found in environment")
+
 # Configure OpenAI
 openai.api_key = OPENAI_API_KEY
 
@@ -133,8 +141,8 @@ async def connect_to_livekit():
                 status_code=503
             )
             
-        # Initialize LiveKit API client with correct constructor pattern
-        token = AccessToken(api_key=LIVEKIT_API_KEY, api_secret=LIVEKIT_API_SECRET)
+        # Initialize LiveKit API client using environment variables
+        token = AccessToken()
         token.with_identity("sage-ai-backend")
         jwt_token = token.to_jwt()
         
@@ -167,8 +175,8 @@ async def connect_to_livekit_post(request: FlexibleDebateRequest = None):
                 status_code=503
             )
             
-        # Initialize LiveKit API client with correct constructor pattern
-        token = AccessToken(api_key=LIVEKIT_API_KEY, api_secret=LIVEKIT_API_SECRET)
+        # Initialize LiveKit API client using environment variables
+        token = AccessToken()
         token.with_identity("sage-ai-backend")
         jwt_token = token.to_jwt()
         
@@ -224,7 +232,8 @@ async def create_debate(request: DebateRequest):
         participant_display_name = request.participant_name or "Participant"
         
         # Create a token for the participant with proper LiveKit grants
-        token = AccessToken(api_key=LIVEKIT_API_KEY, api_secret=LIVEKIT_API_SECRET)
+        # Use automatic environment variable detection (LIVEKIT_API_KEY and LIVEKIT_API_SECRET)
+        token = AccessToken()
         token.with_identity(participant_identity)
         token.with_name(participant_display_name)
         
@@ -244,6 +253,7 @@ async def create_debate(request: DebateRequest):
         
         logger.info(f"Generated token for room: {room_name}, participant: {participant_identity}")
         logger.info(f"Token grants: room_join=True, can_publish=True, can_subscribe=True, can_publish_data=True, room_create=True")
+        logger.info(f"Using environment variables: LIVEKIT_API_KEY={LIVEKIT_API_KEY[:8]}..., LIVEKIT_API_SECRET={'***' if LIVEKIT_API_SECRET else 'MISSING'}")
         
         return {
             "status": "success", 
@@ -283,8 +293,8 @@ async def get_participant_token(request: DebateRequest):
                 status_code=400
             )
         
-        # Create a token for the specific participant using improved pattern
-        token = AccessToken(api_key=LIVEKIT_API_KEY, api_secret=LIVEKIT_API_SECRET)
+        # Create a token for the specific participant using environment variables
+        token = AccessToken()
         token.with_identity(request.participant_name)
         token.with_name(request.participant_name)
         
