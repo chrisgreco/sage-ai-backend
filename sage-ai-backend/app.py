@@ -87,7 +87,7 @@ app.add_middleware(
 
 # Define request models
 class DebateRequest(BaseModel):
-    topic: str
+    topic: str = None  # Make topic optional with default
     room_name: str = None
     participant_name: str = None
 
@@ -203,6 +203,17 @@ async def create_debate(request: DebateRequest):
                 status_code=503
             )
         
+        # Handle missing topic by deriving it from room_name or providing default
+        if not request.topic:
+            if request.room_name:
+                # Extract topic from room name (remove timestamp if present)
+                topic_parts = request.room_name.split('-')
+                if topic_parts[-1].isdigit():  # Remove timestamp
+                    topic_parts = topic_parts[:-1]
+                request.topic = ' '.join(topic_parts).replace('-', ' ').title()
+            else:
+                request.topic = "General Debate"
+        
         # Generate a room name if not provided
         room_name = request.room_name or f"debate-{request.topic.replace(' ', '-').lower()}"
         
@@ -210,28 +221,35 @@ async def create_debate(request: DebateRequest):
         participant_identity = request.participant_name or "participant"
         participant_display_name = request.participant_name or "Participant"
         
-        # Create a token for the participant with room join permissions
-        token = AccessToken(
-            api_key=LIVEKIT_API_KEY,
-            api_secret=LIVEKIT_API_SECRET
-        ).with_identity(participant_identity).with_name(participant_display_name).with_grants(
-            VideoGrants(
-                room_join=True,
-                room_create=True,
-                room=room_name,
-                can_publish=True,
-                can_subscribe=True,
-                can_publish_data=True
-            )
-        ).to_jwt()
+        # Create a token for the participant with proper LiveKit grants
+        token = AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
+        token.with_identity(participant_identity)
+        token.with_name(participant_display_name)
+        
+        # Set up proper video grants following LiveKit best practices
+        video_grants = VideoGrants(
+            room_join=True,
+            room=room_name,
+            can_publish=True,
+            can_subscribe=True,
+            can_publish_data=True,
+            # Add room creation permission
+            room_create=True
+        )
+        token.with_grants(video_grants)
+        
+        jwt_token = token.to_jwt()
+        
+        logger.info(f"Generated token for room: {room_name}, participant: {participant_identity}")
         
         return {
             "status": "success", 
             "message": f"Debate created on topic: {request.topic}",
             "room_name": room_name,
             "livekit_url": LIVEKIT_URL,
-            "token": token,
-            "participant_name": participant_display_name
+            "token": jwt_token,
+            "participant_name": participant_display_name,
+            "topic": request.topic
         }
     except Exception as e:
         logger.error(f"Error creating debate: {str(e)}")
@@ -262,26 +280,31 @@ async def get_participant_token(request: DebateRequest):
                 status_code=400
             )
         
-        # Create a token for the specific participant
-        token = AccessToken(
-            api_key=LIVEKIT_API_KEY,
-            api_secret=LIVEKIT_API_SECRET
-        ).with_identity(request.participant_name).with_name(request.participant_name).with_grants(
-            VideoGrants(
-                room_join=True,
-                room=request.room_name,
-                can_publish=True,
-                can_subscribe=True,
-                can_publish_data=True
-            )
-        ).to_jwt()
+        # Create a token for the specific participant using improved pattern
+        token = AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
+        token.with_identity(request.participant_name)
+        token.with_name(request.participant_name)
+        
+        # Set up proper video grants following LiveKit best practices
+        video_grants = VideoGrants(
+            room_join=True,
+            room=request.room_name,
+            can_publish=True,
+            can_subscribe=True,
+            can_publish_data=True
+        )
+        token.with_grants(video_grants)
+        
+        jwt_token = token.to_jwt()
+        
+        logger.info(f"Generated participant token for room: {request.room_name}, participant: {request.participant_name}")
         
         return {
             "status": "success", 
             "message": f"Token generated for participant: {request.participant_name}",
             "room_name": request.room_name,
             "livekit_url": LIVEKIT_URL,
-            "token": token,
+            "token": jwt_token,
             "participant_name": request.participant_name
         }
     except Exception as e:
