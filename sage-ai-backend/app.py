@@ -8,18 +8,26 @@ from dotenv import load_dotenv
 import openai
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+import subprocess
+import sys
 
-# Debug statement to verify imports
-print("Importing LiveKit API...")
-from livekit import api
-print("Successfully imported LiveKit API!")
+# Configure logging first
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Try to import LiveKit API with proper error handling
+try:
+    logger.info("Importing LiveKit API...")
+    from livekit.api import AccessToken, VideoGrants
+    logger.info("Successfully imported LiveKit API!")
+    livekit_available = True
+except ImportError as e:
+    logger.error(f"Error importing LiveKit API: {str(e)}")
+    logger.warning("LiveKit functionality will be limited. Please install with: pip install livekit-api")
+    livekit_available = False
 
 # Load environment variables
 load_dotenv()
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 # Get environment variables
 LIVEKIT_URL = os.getenv("LIVEKIT_URL")
@@ -57,7 +65,7 @@ class DebateRequest(BaseModel):
 async def health_check():
     logger.info("Health check endpoint called")
     try:
-        return JSONResponse(content={"status": "healthy"})
+        return JSONResponse(content={"status": "healthy", "livekit_available": livekit_available})
     except Exception as e:
         logger.error(f"Error in health check endpoint: {str(e)}")
         return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
@@ -66,8 +74,20 @@ async def health_check():
 @app.get("/connect")
 async def connect_to_livekit():
     try:
+        if not livekit_available:
+            return JSONResponse(
+                content={"status": "error", "message": "LiveKit SDK not available"}, 
+                status_code=503
+            )
+            
+        if not all([LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET]):
+            return JSONResponse(
+                content={"status": "error", "message": "LiveKit configuration missing"}, 
+                status_code=503
+            )
+            
         # Initialize LiveKit API client
-        token = api.AccessToken(
+        token = AccessToken(
             api_key=LIVEKIT_API_KEY,
             api_secret=LIVEKIT_API_SECRET
         ).with_identity("sage-ai-backend").to_jwt()
@@ -88,15 +108,27 @@ async def create_debate(request: DebateRequest):
     try:
         logger.info(f"Creating debate on topic: {request.topic}")
         
+        if not livekit_available:
+            return JSONResponse(
+                content={"status": "error", "message": "LiveKit SDK not available"}, 
+                status_code=503
+            )
+            
+        if not all([LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET]):
+            return JSONResponse(
+                content={"status": "error", "message": "LiveKit configuration missing"}, 
+                status_code=503
+            )
+        
         # Generate a room name if not provided
         room_name = request.room_name or f"debate-{request.topic.replace(' ', '-').lower()}"
         
         # Create a token with room creation permissions
-        token = api.AccessToken(
+        token = AccessToken(
             api_key=LIVEKIT_API_KEY,
             api_secret=LIVEKIT_API_SECRET
         ).with_identity("ai-moderator").with_name("AI Moderator").with_grants(
-            api.VideoGrants(
+            VideoGrants(
                 room_join=True,
                 room_create=True,
                 room=room_name
@@ -135,8 +167,9 @@ async def run_background_worker():
 
 if __name__ == "__main__":
     if SERVICE_MODE == "worker":
-        logger.info("Running in background worker mode")
-        asyncio.run(run_background_worker())
+        logger.info("Running in background worker mode (launching LiveKit agent)")
+        # Launch the real agent (main.py) as a subprocess
+        subprocess.run([sys.executable, "-u", "livekit-agents/main.py"])
     else:
         logger.info("Running in web service mode")
         uvicorn.run(app, host="0.0.0.0", port=8000) 
