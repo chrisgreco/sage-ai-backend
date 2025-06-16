@@ -49,7 +49,8 @@ app.add_middleware(
     allow_origins=[
         "https://lovable.dev",
         "https://sage-liquid-glow-design.lovable.app",
-        "https://1e934c03-5a1a-4df1-9eed-2c278b3ec6a8.lovableproject.com",  # EXACT FRONTEND URL
+        "https://1e934c03-5a1a-4df1-9eed-2c278b3ec6a8.lovableproject.com",  # Previous domain
+        "https://id-preview-1e934c03-5a1a-4df1-9eed-2c278b3ec6a8.lovable.app",  # ACTUAL FRONTEND URL
         "https://lovableproject.com",  # Alternative Lovable domain
         "http://localhost:3000",  # Local development
         "http://localhost:5173",  # Vite dev server
@@ -65,6 +66,7 @@ app.add_middleware(
 class DebateRequest(BaseModel):
     topic: str
     room_name: str = None
+    participant_name: str = None
 
 # Health check endpoint
 @app.get("/health")
