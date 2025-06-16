@@ -9,6 +9,7 @@ import UserMenu from './UserMenu';
 import { useAuth } from '@/hooks/useAuth';
 
 const DebateRoom: React.FC = () => {
+  // Move all hooks to the top, before any conditional returns
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -17,8 +18,6 @@ const DebateRoom: React.FC = () => {
   const [lastAudioTimestamp, setLastAudioTimestamp] = useState<number | null>(null);
   const [debateTopic, setDebateTopic] = useState<string | null>(null);
   const [roomName, setRoomName] = useState<string | null>(null);
-  
-  // Create a ref to store the AI moderation callback
   const aiModerationCallbackRef = useRef<((audioData: Float32Array) => void) | null>(null);
 
   const handleLeaveRoom = () => {
