@@ -1,6 +1,6 @@
-
 import asyncio
 import logging
+import time
 from typing import Dict, List
 from livekit.agents import AutoSubscribe, JobContext, WorkerOptions, cli, llm
 from livekit.agents.voice_assistant import VoiceAssistant
@@ -11,6 +11,61 @@ import json
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+class ConversationContext:
+    def __init__(self):
+        self.transcript = []
+        self.agent_interventions = {}  # Track interventions by agent_id
+        
+    def add_user_message(self, user_id, message):
+        self.transcript.append({
+            "role": "user", 
+            "user_id": user_id, 
+            "content": message, 
+            "timestamp": time.time()
+        })
+        logger.info(f"Added user message from {user_id}: {message[:50]}...")
+        
+    def add_agent_intervention(self, agent_id, message):
+        self.transcript.append({
+            "role": "agent", 
+            "agent_id": agent_id, 
+            "content": message, 
+            "timestamp": time.time()
+        })
+        if agent_id not in self.agent_interventions:
+            self.agent_interventions[agent_id] = []
+        self.agent_interventions[agent_id].append(message)
+        logger.info(f"Added agent intervention from {agent_id}: {message[:50]}...")
+        
+    def get_recent_context(self, window_size=10):
+        return self.transcript[-window_size:] if len(self.transcript) > window_size else self.transcript
+        
+    def is_duplicate_message(self, agent_id, message, similarity_threshold=0.8):
+        if agent_id in self.agent_interventions and self.agent_interventions[agent_id]:
+            # Check if this would be a duplicate of any recent message from this agent
+            for prev_message in self.agent_interventions[agent_id][-3:]:  # Check last 3 messages
+                # Simple string comparison for now
+                # In production, consider using semantic similarity
+                if prev_message.lower() == message.lower():
+                    return True
+            
+            # Check for high similarity with the last message
+            last_message = self.agent_interventions[agent_id][-1]
+            # Very basic similarity check - could be improved with NLP techniques
+            if len(message) > 10 and message in last_message or last_message in message:
+                return True
+                
+        return False
+
+# Global session management
+active_sessions = {}  # room_id -> ConversationContext
+
+def get_or_create_session(room_id):
+    if room_id not in active_sessions:
+        active_sessions[room_id] = ConversationContext()
+        logger.info(f"Created new conversation context for room {room_id}")
+    return active_sessions[room_id]
 
 class DebateAgent:
     def __init__(self, name: str, role: str, persona: str, instructions: str):
@@ -90,14 +145,42 @@ Current debate rules:
 - Provide sources for factual claims  
 - Respect speaking turns
 - Stay on topic
+- IMPORTANT: Never repeat yourself or say the same thing twice. Vary your wording and approach.
 
 Listen carefully to the conversation and only interject when necessary according to your role."""
+
+async def generate_agent_response(agent_id, context, instructions):
+    """Generate a response using the LLM with full conversation context"""
+    # Format the conversation history for the LLM
+    messages = [
+        {"role": "system", "content": instructions}
+    ]
+    
+    # Add conversation history
+    for entry in context:
+        role = "assistant" if entry.get("role") == "agent" else "user"
+        messages.append({"role": role, "content": entry.get("content", "")})
+    
+    # Call the LLM with the full conversation context
+    try:
+        response = await openai.ChatCompletion.create(
+            model="gpt-4o",
+            messages=messages,
+            temperature=0.7,
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        logger.error(f"Error generating agent response: {e}")
+        return None
 
 async def entrypoint(ctx: JobContext):
     logger.info("Starting SAGE debate moderation agent")
     
     # Initialize moderation service
     moderation_service = DebateModerationService()
+    
+    # Get or create conversation context for this room
+    conversation_context = get_or_create_session(ctx.room.id)
     
     # Wait for participant to connect
     await ctx.wait_for_participant()
@@ -120,6 +203,44 @@ async def entrypoint(ctx: JobContext):
     @assistant.on("function_calls_finished")
     def on_function_calls_finished(called_functions: list):
         logger.info(f"Function calls finished: {called_functions}")
+        
+    # Handle transcription results to update conversation context
+    @assistant.on("transcription")
+    def on_transcription(participant_id: str, transcript: str):
+        if transcript and transcript.strip():
+            conversation_context.add_user_message(participant_id, transcript)
+            logger.info(f"Transcription from {participant_id}: {transcript}")
+    
+    # Handle agent responses to check for duplicates
+    @assistant.on("before_tts")
+    async def on_before_tts(text: str) -> str:
+        # Determine which agent is speaking
+        agent = moderation_service.determine_appropriate_agent(
+            str(conversation_context.get_recent_context())
+        )
+        agent_id = agent.name
+        
+        # Check if this is a duplicate message
+        if conversation_context.is_duplicate_message(agent_id, text):
+            logger.info(f"Prevented duplicate message from {agent_id}: {text[:50]}...")
+            
+            # Try to generate an alternative response
+            alternative_response = await generate_agent_response(
+                agent_id,
+                conversation_context.get_recent_context(),
+                f"{agent.instructions}\n\nIMPORTANT: Your previous response was too similar to something you've already said. Please provide a completely different response that serves the same purpose."
+            )
+            
+            if alternative_response and not conversation_context.is_duplicate_message(agent_id, alternative_response):
+                conversation_context.add_agent_intervention(agent_id, alternative_response)
+                return alternative_response
+            else:
+                # If we couldn't generate a non-duplicate alternative, skip this response
+                return ""
+        
+        # Record non-duplicate intervention
+        conversation_context.add_agent_intervention(agent_id, text)
+        return text
 
     # Start the voice assistant
     assistant.start(ctx.room)
@@ -144,7 +265,7 @@ async def entrypoint(ctx: JobContext):
                         {"name": agent.name, "role": agent.role, "active": agent.active}
                         for agent in moderation_service.agents.values()
                     ],
-                    "transcript_length": len(moderation_service.transcript)
+                    "transcript_length": len(conversation_context.transcript)
                 }
                 
                 # Publish data to room
