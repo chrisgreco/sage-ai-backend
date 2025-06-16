@@ -49,9 +49,11 @@ app.add_middleware(
     allow_origins=[
         "https://lovable.dev",
         "https://sage-liquid-glow-design.lovable.app",  # Specific Lovable app
-        "https://*.lovable.app",  # All Lovable app subdomains
-        "https://*.lovableproject.com",  # Alternative Lovable domain pattern
-        "http://localhost:3000"  # Local development
+        "https://lovableproject.com",  # Alternative Lovable domain
+        "http://localhost:3000",  # Local development
+        "http://localhost:5173",  # Vite dev server
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:5173",
     ],
     allow_credentials=True,
     allow_methods=["*"],
