@@ -2,7 +2,12 @@ services:
   # Web Service for API endpoints
   - type: web
     name: sage-ai-backend
-    env: docker
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.9.0
     repo: https://github.com/chrisgreco/sage-ai-backend # Your GitHub repository
     region: oregon # Choose your preferred region
     plan: free # Using free plan for web service

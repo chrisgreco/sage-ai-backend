@@ -1,27 +1,20 @@
-FROM python:3.10-slim
+# Use Python 3.9 slim image as base
+FROM python:3.9-slim
 
+# Set working directory
 WORKDIR /app
-
-# Install system dependencies
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends build-essential && \
-    rm -rf /var/lib/apt/lists/*
 
 # Copy requirements file
 COPY requirements.txt .
 
-# Install Python dependencies with verbose output
-RUN pip install --no-cache-dir -v -r requirements.txt
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Verify installation of livekit-api package
-RUN python -c "from livekit import api; print('Successfully imported LiveKit API')"
-
-# Copy application code
+# Copy the rest of the application
 COPY . .
 
-# Expose port for web service
+# Expose port
 EXPOSE 8000
 
-# Command to run the application using uvicorn
-# The application will check SERVICE_MODE env var to determine mode
-CMD ["python", "app.py"] 
+# Command to run the application
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"] 
