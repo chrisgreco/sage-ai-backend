@@ -2,8 +2,9 @@ import os
 import logging
 import uvicorn
 import asyncio
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
+from pydantic import BaseModel, ValidationError
 from dotenv import load_dotenv
 import openai
 from fastapi.middleware.cors import CORSMiddleware
@@ -43,6 +44,28 @@ openai.api_key = OPENAI_API_KEY
 # Create FastAPI instance
 app = FastAPI()
 
+# Add global exception handler for validation errors
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    logger.error(f"Validation error on {request.method} {request.url}: {exc.errors()}")
+    try:
+        body = await request.body()
+        logger.error(f"Request body: {body}")
+        body_str = body.decode('utf-8') if body else "Empty body"
+    except Exception as e:
+        logger.error(f"Could not read request body: {e}")
+        body_str = "Could not read body"
+    
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": exc.errors(),
+            "body": body_str,
+            "url": str(request.url),
+            "method": request.method
+        }
+    )
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -68,6 +91,15 @@ class DebateRequest(BaseModel):
     room_name: str = None
     participant_name: str = None
 
+# Add a more flexible model for debugging
+class FlexibleDebateRequest(BaseModel):
+    topic: str = None
+    room_name: str = None
+    participant_name: str = None
+    # Allow any additional fields for debugging
+    class Config:
+        extra = "allow"
+
 # Health check endpoint
 @app.get("/health")
 async def health_check():
@@ -78,10 +110,50 @@ async def health_check():
         logger.error(f"Error in health check endpoint: {str(e)}")
         return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
 
+# Debug endpoint to see what the frontend is sending
+@app.post("/debug")
+async def debug_request(request: FlexibleDebateRequest):
+    logger.info(f"Debug endpoint received: {request}")
+    return {"received": request.dict(), "status": "debug"}
+
 # LiveKit connection endpoint
 @app.get("/connect")
 async def connect_to_livekit():
     try:
+        logger.info("Connect endpoint called via GET")
+        if not livekit_available:
+            return JSONResponse(
+                content={"status": "error", "message": "LiveKit SDK not available"}, 
+                status_code=503
+            )
+            
+        if not all([LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET]):
+            return JSONResponse(
+                content={"status": "error", "message": "LiveKit configuration missing"}, 
+                status_code=503
+            )
+            
+        # Initialize LiveKit API client
+        token = AccessToken(
+            api_key=LIVEKIT_API_KEY,
+            api_secret=LIVEKIT_API_SECRET
+        ).with_identity("sage-ai-backend").to_jwt()
+        
+        return {
+            "status": "success", 
+            "message": "Ready to connect to LiveKit",
+            "livekit_url": LIVEKIT_URL,
+            "token": token
+        }
+    except Exception as e:
+        logger.error(f"Error connecting to LiveKit: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Also add POST version of connect endpoint
+@app.post("/connect")
+async def connect_to_livekit_post(request: FlexibleDebateRequest = None):
+    try:
+        logger.info(f"Connect endpoint called via POST with data: {request}")
         if not livekit_available:
             return JSONResponse(
                 content={"status": "error", "message": "LiveKit SDK not available"}, 
@@ -114,7 +186,10 @@ async def connect_to_livekit():
 @app.post("/debate")
 async def create_debate(request: DebateRequest):
     try:
-        logger.info(f"Creating debate on topic: {request.topic}")
+        logger.info(f"Creating debate with request: {request}")
+        logger.info(f"Request topic: {request.topic}")
+        logger.info(f"Request room_name: {request.room_name}")
+        logger.info(f"Request participant_name: {request.participant_name}")
         
         if not livekit_available:
             return JSONResponse(
