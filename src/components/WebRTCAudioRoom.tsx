@@ -1,4 +1,3 @@
-
 import React, { useEffect } from 'react';
 import { Mic, MicOff, PhoneOff, Users, Brain } from 'lucide-react';
 import { useWebRTCRoom } from '@/hooks/useWebRTCRoom';
@@ -21,7 +20,7 @@ const WebRTCAudioRoom: React.FC<WebRTCAudioRoomProps> = ({
 
   const {
     isConnected,
-    isConnecting,
+    connecting,
     participants,
     isMicrophoneEnabled,
     error,
@@ -44,21 +43,21 @@ const WebRTCAudioRoom: React.FC<WebRTCAudioRoomProps> = ({
   // Only attempt connection once when component mounts
   useEffect(() => {
     console.log('WebRTCAudioRoom: Attempting to connect to room:', roomId);
-    connectToRoom();
+    connectToRoom(roomId);
     
     // Cleanup on unmount
     return () => {
       console.log('WebRTCAudioRoom: Cleaning up connection');
       disconnectFromRoom();
     };
-  }, []); // Empty dependency array - only run once
+  }, [roomId]); // Connect when roomId changes
 
   const handleLeaveRoom = () => {
     disconnectFromRoom();
     onLeave?.();
   };
 
-  if (isConnecting) {
+  if (connecting) {
     return (
       <div className="glass-panel p-6 max-w-2xl mx-auto">
         <div className="text-center">
@@ -99,7 +98,7 @@ const WebRTCAudioRoom: React.FC<WebRTCAudioRoomProps> = ({
       )}
 
       {/* Participants Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 mb-6">
         {/* Local Participant */}
         {isConnected && (
           <div className="participant-slot speaking text-center">
@@ -133,7 +132,7 @@ const WebRTCAudioRoom: React.FC<WebRTCAudioRoomProps> = ({
         ))}
 
         {/* Empty slots */}
-        {Array.from({ length: Math.max(0, 4 - participants.length - 1) }).map((_, index) => (
+        {Array.from({ length: Math.max(0, 6 - participants.length - (isConnected ? 1 : 0)) }, (_, index) => (
           <div key={`empty-${index}`} className="participant-slot text-center opacity-50">
             <div className="w-12 h-12 border-2 border-dashed border-content-muted rounded-full mx-auto mb-2 flex items-center justify-center">
               <Users className="w-5 h-5 text-content-muted" />

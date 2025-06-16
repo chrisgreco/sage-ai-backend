@@ -6,6 +6,9 @@ import WebRTCAudioRoom from './WebRTCAudioRoom';
 import AIModerationPanel from './AIModerationPanel';
 import DebateTopicSelector from './DebateTopicSelector';
 import UserMenu from './UserMenu';
+import { Button } from './ui/button';
+import { Badge } from './ui/badge';
+import { Card, CardContent, CardHeader, CardTitle } from './ui/card';
 import { useAuth } from '@/hooks/useAuth';
 
 const DebateRoom: React.FC = () => {
@@ -19,6 +22,20 @@ const DebateRoom: React.FC = () => {
   const [debateTopic, setDebateTopic] = useState<string | null>(null);
   const [roomName, setRoomName] = useState<string | null>(null);
   const aiModerationCallbackRef = useRef<((audioData: Float32Array) => void) | null>(null);
+
+  // AI Moderators state
+  const [aiAgentsActive, setAiAgentsActive] = useState(false);
+  const [launchingAgents, setLaunchingAgents] = useState(false);
+  const [stoppingAgents, setStoppingAgents] = useState(false);
+
+  // AI Agent personalities
+  const aiAgents = [
+    { name: "Socrates", role: "Clarifier", status: aiAgentsActive, description: "Asks probing questions to clarify positions" },
+    { name: "Solon", role: "Rule Enforcer", status: aiAgentsActive, description: "Maintains debate structure and civility" },
+    { name: "Buddha", role: "Peacekeeper", status: aiAgentsActive, description: "Promotes understanding and reduces conflict" },
+    { name: "Hermes", role: "Summarizer", status: aiAgentsActive, description: "Synthesizes key points and transitions" },
+    { name: "Aristotle", role: "Fact-Checker", status: aiAgentsActive, description: "Verifies claims and provides evidence" }
+  ];
 
   const handleLeaveRoom = () => {
     navigate('/');
@@ -38,6 +55,58 @@ const DebateRoom: React.FC = () => {
     setDebateTopic(null);
     setRoomName(null);
     setIsWebRTCConnected(false);
+    // Stop AI agents when leaving room
+    if (aiAgentsActive) {
+      stopAIAgents();
+    }
+  };
+
+  // Launch AI Agents
+  const launchAIAgents = async () => {
+    if (!roomName) return;
+    
+    setLaunchingAgents(true);
+    try {
+      const response = await fetch('https://sage-ai-backend-l0en.onrender.com/launch-ai-agents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ room_name: roomName })
+      });
+      
+      if (response.ok) {
+        setAiAgentsActive(true);
+        console.log('AI Agents launched successfully');
+      } else {
+        console.error('Failed to launch AI agents:', response.statusText);
+      }
+    } catch (error) {
+      console.error('Failed to launch AI agents:', error);
+    }
+    setLaunchingAgents(false);
+  };
+
+  // Stop AI Agents
+  const stopAIAgents = async () => {
+    if (!roomName) return;
+    
+    setStoppingAgents(true);
+    try {
+      const response = await fetch('https://sage-ai-backend-l0en.onrender.com/ai-agents/stop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ room_name: roomName })
+      });
+      
+      if (response.ok) {
+        setAiAgentsActive(false);
+        console.log('AI Agents stopped successfully');
+      } else {
+        console.error('Failed to stop AI agents:', response.statusText);
+      }
+    } catch (error) {
+      console.error('Failed to stop AI agents:', error);
+    }
+    setStoppingAgents(false);
   };
 
   const handleAudioData = (audioData: Float32Array) => {
@@ -143,7 +212,66 @@ const DebateRoom: React.FC = () => {
       </div>
 
       {/* Main Content */}
-      <div className="max-w-md mx-auto md:max-w-6xl px-2.5 md:px-4">
+      <div className="max-w-md mx-auto md:max-w-4xl px-2.5 md:px-4 space-y-4">
+        
+        {/* AI Moderators Control Panel */}
+        <div className="glass-panel p-4">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-lg font-semibold text-content-primary">AI Moderators</h2>
+            <div className="flex gap-2 items-center">
+              <Button 
+                onClick={launchAIAgents}
+                disabled={launchingAgents || aiAgentsActive}
+                variant={aiAgentsActive ? "secondary" : "default"}
+                size="sm"
+              >
+                {launchingAgents ? "Launching..." : aiAgentsActive ? "🤖 Agents Active" : "🤖 Launch AI Moderators"}
+              </Button>
+              
+              {aiAgentsActive && (
+                <Badge variant="secondary" className="bg-green-100 text-green-800">
+                  5 AI Agents Active
+                </Badge>
+              )}
+            </div>
+          </div>
+
+          {/* AI Agent Status Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+            {aiAgents.map((agent) => (
+              <div key={agent.name} className={`p-3 rounded-lg border-2 transition-all ${agent.status ? 'border-green-200 bg-green-50' : 'border-gray-200 bg-gray-50'}`}>
+                <div className="text-center">
+                  <div className="font-bold text-sm text-content-primary">{agent.name}</div>
+                  <div className="text-xs text-content-secondary mb-2">{agent.role}</div>
+                  <div className={`text-xs ${agent.status ? 'text-green-600' : 'text-gray-400'}`}>
+                    {agent.status ? '🟢 Active' : '⚪ Inactive'}
+                  </div>
+                </div>
+                <div className="mt-2 text-xs text-content-secondary leading-tight">
+                  {agent.description}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* Advanced AI Controls */}
+          {aiAgentsActive && (
+            <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+              <h3 className="font-bold mb-2 text-sm text-content-primary">AI Agent Controls</h3>
+              <div className="flex gap-2">
+                <Button 
+                  variant="destructive" 
+                  size="sm" 
+                  onClick={stopAIAgents}
+                  disabled={stoppingAgents}
+                >
+                  {stoppingAgents ? "Stopping..." : "Stop All AI Agents"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
           {/* Main Audio Room */}
           <div className="lg:col-span-3">

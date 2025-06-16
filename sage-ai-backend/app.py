@@ -11,6 +11,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import subprocess
 import sys
+import signal
+from typing import Dict, Optional
 
 # Configure logging first
 logging.basicConfig(level=logging.INFO)
@@ -36,6 +38,7 @@ LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY")
 LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY", "")
+CARTESIA_API_KEY = os.getenv("CARTESIA_API_KEY", "")
 SERVICE_MODE = os.getenv("SERVICE_MODE", "web").lower()  # Default to web service mode
 
 # Set LiveKit environment variables for the library to use automatically
@@ -51,6 +54,9 @@ openai.api_key = OPENAI_API_KEY
 
 # Create FastAPI instance
 app = FastAPI()
+
+# Global variable to track running AI agent processes
+running_agents: Dict[str, subprocess.Popen] = {}
 
 # Add global exception handler for validation errors
 @app.exception_handler(RequestValidationError)
@@ -78,15 +84,19 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        # Lovable specific domains
         "https://lovable.dev",
         "https://sage-liquid-glow-design.lovable.app",
         "https://1e934c03-5a1a-4df1-9eed-2c278b3ec6a8.lovableproject.com",  # Previous domain
         "https://id-preview-1e934c03-5a1a-4df1-9eed-2c278b3ec6a8.lovable.app",  # CURRENT FRONTEND URL
         "https://lovableproject.com",  # Alternative Lovable domain
+        # Local development
         "http://localhost:3000",  # Local development
         "http://localhost:5173",  # Vite dev server
         "http://127.0.0.1:3000",
         "http://127.0.0.1:5173",
+        # For production, we could use "*" but it's less secure
+        # "*"  # Uncomment this line if you need to allow all origins (not recommended)
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -98,6 +108,11 @@ class DebateRequest(BaseModel):
     topic: str = None  # Make topic optional with default
     room_name: str = None
     participant_name: str = None
+
+class AIAgentRequest(BaseModel):
+    room_name: str
+    topic: str = None
+    start_agents: bool = True
 
 # Add a more flexible model for debugging
 class FlexibleDebateRequest(BaseModel):
@@ -113,7 +128,16 @@ class FlexibleDebateRequest(BaseModel):
 async def health_check():
     logger.info("Health check endpoint called")
     try:
-        return JSONResponse(content={"status": "healthy", "livekit_available": livekit_available})
+        return JSONResponse(content={
+            "status": "healthy", 
+            "livekit_available": livekit_available,
+            "active_agents": len(running_agents),
+            "ai_keys_configured": {
+                "openai": bool(OPENAI_API_KEY),
+                "deepgram": bool(DEEPGRAM_API_KEY), 
+                "cartesia": bool(CARTESIA_API_KEY)
+            }
+        })
     except Exception as e:
         logger.error(f"Error in health check endpoint: {str(e)}")
         return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
@@ -192,14 +216,197 @@ async def connect_to_livekit_post(request: FlexibleDebateRequest = None):
         logger.error(f"Error connecting to LiveKit: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
+# 🚀 NEW AI AGENTS LAUNCHER ENDPOINT
+@app.post("/launch-ai-agents")
+async def launch_ai_agents(request: AIAgentRequest):
+    """
+    🎯 MAIN AI AGENTS LAUNCHER
+    
+    This endpoint starts the multi-agent AI debate system for a specific room.
+    It will launch 5 AI agents (moderator, expert, challenger, synthesizer, fact-checker)
+    who will intelligently participate in the debate with unique voices and personalities.
+    """
+    try:
+        logger.info(f"🚀 Launching AI agents for room: {request.room_name}")
+        
+        # Check if AI services are available
+        missing_keys = []
+        if not OPENAI_API_KEY:
+            missing_keys.append("OPENAI_API_KEY")
+        if not DEEPGRAM_API_KEY:
+            missing_keys.append("DEEPGRAM_API_KEY")
+        if not CARTESIA_API_KEY:
+            missing_keys.append("CARTESIA_API_KEY")
+        if not all([LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET]):
+            missing_keys.extend(["LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"])
+            
+        if missing_keys:
+            return JSONResponse(
+                content={
+                    "status": "error", 
+                    "message": f"Missing required API keys: {', '.join(missing_keys)}"
+                }, 
+                status_code=503
+            )
+        
+        # Check if agents are already running for this room
+        if request.room_name in running_agents:
+            logger.info(f"AI agents already running for room: {request.room_name}")
+            return {
+                "status": "success",
+                "message": f"AI agents already active in room: {request.room_name}",
+                "room_name": request.room_name,
+                "agents_running": True
+            }
+        
+        if request.start_agents:
+            # Launch the AI agents subprocess
+            topic = request.topic or "General Discussion"
+            
+            # Set environment variables for the agent process
+            agent_env = os.environ.copy()
+            agent_env.update({
+                "LIVEKIT_URL": LIVEKIT_URL,
+                "LIVEKIT_API_KEY": LIVEKIT_API_KEY,
+                "LIVEKIT_API_SECRET": LIVEKIT_API_SECRET,
+                "OPENAI_API_KEY": OPENAI_API_KEY,
+                "DEEPGRAM_API_KEY": DEEPGRAM_API_KEY,
+                "CARTESIA_API_KEY": CARTESIA_API_KEY,
+                "DEBATE_TOPIC": topic,
+                "ROOM_NAME": request.room_name
+            })
+            
+            # Launch AI agents process
+            cmd = [sys.executable, "-u", "start_ai_agents.py"]
+            
+            logger.info(f"Starting AI agents with command: {' '.join(cmd)}")
+            process = subprocess.Popen(
+                cmd,
+                env=agent_env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                cwd=os.path.dirname(os.path.abspath(__file__))
+            )
+            
+            # Store the running process
+            running_agents[request.room_name] = process
+            
+            logger.info(f"✅ AI agents launched successfully for room: {request.room_name}")
+            logger.info(f"🎭 Active agents: Moderator, Expert, Challenger, Synthesizer, Fact-Checker")
+            
+            return {
+                "status": "success",
+                "message": f"Multi-agent AI debate system launched for room: {request.room_name}",
+                "room_name": request.room_name,
+                "topic": topic,
+                "agents_launched": [
+                    "Dr. Alexandra Wright (Moderator)",
+                    "Professor James Chen (Expert)",
+                    "Sarah Rodriguez (Challenger)", 
+                    "Dr. Maya Patel (Synthesizer)",
+                    "Dr. Robert Kim (Fact-Checker)"
+                ],
+                "agent_features": [
+                    "Unique Cartesia voices for each agent",
+                    "Real-time speech recognition via Deepgram",
+                    "Intelligent conversation triggers",
+                    "Contextual debate participation",
+                    "Evidence-based fact checking"
+                ]
+            }
+        else:
+            return {
+                "status": "success",
+                "message": "AI agents configured but not started (start_agents=false)",
+                "room_name": request.room_name
+            }
+            
+    except Exception as e:
+        logger.error(f"❌ Error launching AI agents: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Failed to launch AI agents: {str(e)}")
+
+# AI Agent status endpoint
+@app.get("/ai-agents/status")
+async def get_ai_agents_status():
+    """Check the status of running AI agent processes"""
+    try:
+        active_rooms = []
+        
+        # Clean up dead processes
+        dead_processes = []
+        for room_name, process in running_agents.items():
+            if process.poll() is not None:  # Process has terminated
+                dead_processes.append(room_name)
+            else:
+                active_rooms.append({
+                    "room_name": room_name,
+                    "process_id": process.pid,
+                    "status": "running"
+                })
+        
+        # Remove dead processes
+        for room_name in dead_processes:
+            del running_agents[room_name]
+        
+        return {
+            "status": "success",
+            "active_agent_rooms": len(active_rooms),
+            "rooms": active_rooms,
+            "total_processes_cleaned": len(dead_processes)
+        }
+    except Exception as e:
+        logger.error(f"Error checking AI agent status: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Stop AI agents endpoint
+@app.post("/ai-agents/stop")
+async def stop_ai_agents(request: AIAgentRequest):
+    """Stop AI agents for a specific room"""
+    try:
+        if request.room_name not in running_agents:
+            return {
+                "status": "info",
+                "message": f"No AI agents running for room: {request.room_name}",
+                "room_name": request.room_name
+            }
+        
+        process = running_agents[request.room_name]
+        
+        # Gracefully terminate the process
+        process.terminate()
+        
+        # Wait a bit for graceful shutdown
+        try:
+            process.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            # Force kill if it doesn't shut down gracefully
+            process.kill()
+            process.wait()
+        
+        del running_agents[request.room_name]
+        
+        logger.info(f"AI agents stopped for room: {request.room_name}")
+        
+        return {
+            "status": "success",
+            "message": f"AI agents stopped for room: {request.room_name}",
+            "room_name": request.room_name
+        }
+    except Exception as e:
+        logger.error(f"Error stopping AI agents: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 # Debate creation endpoint
 @app.post("/debate")
 async def create_debate(request: DebateRequest):
     try:
-        logger.info(f"Creating debate with request: {request}")
-        logger.info(f"Request topic: {request.topic}")
-        logger.info(f"Request room_name: {request.room_name}")
-        logger.info(f"Request participant_name: {request.participant_name}")
+        # === LOVABLE'S REQUESTED DEBUGGING ===
+        logger.info('=== DEBATE REQUEST ===')
+        logger.info(f'Request body received: {request}')
+        logger.info(f'Request topic: {request.topic}')
+        logger.info(f'Request room_name: {request.room_name}')
+        logger.info(f'Request participant_name: {request.participant_name}')
         
         if not livekit_available:
             return JSONResponse(
@@ -251,19 +458,29 @@ async def create_debate(request: DebateRequest):
         
         jwt_token = token.to_jwt()
         
-        logger.info(f"Generated token for room: {room_name}, participant: {participant_identity}")
-        logger.info(f"Token grants: room_join=True, can_publish=True, can_subscribe=True, can_publish_data=True, room_create=True")
-        logger.info(f"Using environment variables: LIVEKIT_API_KEY={LIVEKIT_API_KEY[:8]}..., LIVEKIT_API_SECRET={'***' if LIVEKIT_API_SECRET else 'MISSING'}")
+        # === MORE LOVABLE DEBUGGING ===
+        logger.info(f'Generated token participant identity: {participant_identity}')
+        logger.info(f'LiveKit URL being returned: {LIVEKIT_URL}')
+        logger.info(f'Room name being returned: {room_name}')
+        logger.info(f'Token grants: room_join=True, can_publish=True, can_subscribe=True, can_publish_data=True, room_create=True')
+        logger.info(f'Using environment variables: LIVEKIT_API_KEY={LIVEKIT_API_KEY[:8]}..., LIVEKIT_API_SECRET={'***' if LIVEKIT_API_SECRET else 'MISSING'}')
+        logger.info('========================')
         
-        return {
+        response_data = {
             "status": "success", 
             "message": f"Debate created on topic: {request.topic}",
             "room_name": room_name,
             "livekit_url": LIVEKIT_URL,
             "token": jwt_token,
             "participant_name": participant_display_name,
-            "topic": request.topic
+            "topic": request.topic,
+            "ai_agents_ready": bool(OPENAI_API_KEY and DEEPGRAM_API_KEY and CARTESIA_API_KEY),
+            "ai_agents_endpoint": "/launch-ai-agents"
         }
+        
+        logger.info(f'=== RESPONSE BEING SENT: {response_data} ===')
+        return response_data
+        
     except Exception as e:
         logger.error(f"Error creating debate: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))

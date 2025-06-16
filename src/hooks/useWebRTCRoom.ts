@@ -8,130 +8,157 @@ import {
   RemoteTrack,
   AudioTrack,
   LocalTrack,
-  createLocalAudioTrack
+  createLocalAudioTrack,
+  LocalParticipant
 } from 'livekit-client';
-import { useBackendAPI } from './useBackendAPI';
+
+interface UseWebRTCRoomReturn {
+  room: Room | null;
+  isConnected: boolean;
+  connecting: boolean;
+  error: string | null;
+  participants: RemoteParticipant[];
+  localParticipant: LocalParticipant | null;
+  participantName: string | null;
+  isMicrophoneEnabled: boolean;
+  connectToRoom: (roomName: string, debateTopic?: string) => Promise<void>;
+  disconnectFromRoom: () => void;
+  toggleMicrophone: () => Promise<void>;
+}
 
 interface UseWebRTCRoomProps {
   roomName: string;
   participantName: string;
-  serverUrl?: string;
   onAudioData?: (audioData: Float32Array) => void;
 }
 
-export const useWebRTCRoom = ({ roomName, participantName, onAudioData }: UseWebRTCRoomProps) => {
-  const [room] = useState(() => new Room());
+// Generate unique participant name to avoid LiveKit conflicts
+const generateUniqueParticipantName = () => {
+  const timestamp = Date.now();
+  const randomId = Math.random().toString(36).substring(2, 8);
+  return `participant-${timestamp}-${randomId}`;
+};
+
+export const useWebRTCRoom = ({ roomName, participantName, onAudioData }: UseWebRTCRoomProps): UseWebRTCRoomReturn => {
+  const [room, setRoom] = useState<Room | null>(null);
   const [isConnected, setIsConnected] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
+  const [connecting, setConnecting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [participants, setParticipants] = useState<RemoteParticipant[]>([]);
+  const [localParticipant, setLocalParticipant] = useState<LocalParticipant | null>(null);
+  const [uniqueParticipantName, setUniqueParticipantName] = useState<string | null>(null);
   const [isMicrophoneEnabled, setIsMicrophoneEnabled] = useState(false);
   const [localAudioTrack, setLocalAudioTrack] = useState<LocalTrack | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [hasAttemptedConnection, setHasAttemptedConnection] = useState(false);
   const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
   const [processor, setProcessor] = useState<ScriptProcessorNode | null>(null);
 
-  const { connectToRoom: getConnectionToken } = useBackendAPI();
-
-  // Update participants when room state changes
-  useEffect(() => {
-    const updateParticipants = () => {
-      setParticipants(Array.from(room.remoteParticipants.values()));
-    };
-
-    room.on(RoomEvent.ParticipantConnected, updateParticipants);
-    room.on(RoomEvent.ParticipantDisconnected, updateParticipants);
-    room.on(RoomEvent.Connected, () => {
-      console.log('Successfully connected to LiveKit room');
-      setIsConnected(true);
-      setIsConnecting(false);
-      setError(null);
-      updateParticipants();
+  // Get token with unique participant name
+  const getToken = async (roomName: string, debateTopic?: string) => {
+    const uniqueName = generateUniqueParticipantName();
+    
+    console.log('Requesting token for participant:', uniqueName, 'room:', roomName);
+    
+    const response = await fetch('https://sage-ai-backend-l0en.onrender.com/participant-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        room_name: roomName,
+        participant_name: uniqueName,
+        topic: debateTopic || "General Discussion"
+      })
     });
-    room.on(RoomEvent.Disconnected, (reason) => {
-      console.log('Disconnected from LiveKit room:', reason);
-      setIsConnected(false);
-      setIsConnecting(false);
-      // Don't auto-reconnect to prevent loops
-    });
-
-    // Handle connection errors
-    room.on(RoomEvent.ConnectionQualityChanged, (quality, participant) => {
-      console.log('Connection quality changed:', quality, participant?.identity);
-    });
-
-    // Handle incoming audio tracks
-    room.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
-      if (track.kind === Track.Kind.Audio) {
-        const audioElement = track.attach();
-        if (audioElement) {
-          document.body.appendChild(audioElement);
-        }
-      }
-    });
-
-    return () => {
-      room.removeAllListeners();
-    };
-  }, [room]);
-
-  const setupAudioCapture = useCallback(async (track: LocalTrack) => {
-    if (!onAudioData) return;
-
-    try {
-      // Create audio context for capturing microphone data
-      const ctx = new AudioContext({ sampleRate: 24000 });
-      const stream = new MediaStream([track.mediaStreamTrack]);
-      const source = ctx.createMediaStreamSource(stream);
-      const proc = ctx.createScriptProcessor(4096, 1, 1);
-
-      proc.onaudioprocess = (event) => {
-        const inputData = event.inputBuffer.getChannelData(0);
-        onAudioData(new Float32Array(inputData));
-      };
-
-      source.connect(proc);
-      proc.connect(ctx.destination);
-
-      setAudioContext(ctx);
-      setProcessor(proc);
-      
-      console.log('Audio capture setup complete');
-    } catch (err) {
-      console.error('Failed to setup audio capture:', err);
+    
+    if (!response.ok) {
+      throw new Error(`Failed to get token: ${response.statusText}`);
     }
-  }, [onAudioData]);
+    
+    const data = await response.json();
+    console.log('Token received for participant:', uniqueName);
+    return { token: data.token, participantName: uniqueName };
+  };
 
-  const connectToRoom = useCallback(async () => {
-    if (isConnecting || isConnected || hasAttemptedConnection) {
+  const connectToRoom = useCallback(async (roomName: string, debateTopic?: string) => {
+    if (connecting || isConnected || hasAttemptedConnection) {
       console.log('Connection already in progress or established, skipping...');
       return;
     }
-
+    
     try {
-      setIsConnecting(true);
+      setConnecting(true);
       setError(null);
       setHasAttemptedConnection(true);
-      console.log(`Attempting to connect to room: ${roomName}`);
-
-      // Use the new backend API to get connection token
-      const connectionData = await getConnectionToken();
-
-      console.log('Token received successfully, connecting to LiveKit...');
-      console.log('Server URL:', connectionData.livekit_url);
-      console.log('Token length:', connectionData.token.length);
       
-      // Connect to LiveKit server using backend token
-      await room.connect(connectionData.livekit_url, connectionData.token);
-      console.log(`Successfully connected to LiveKit at: ${connectionData.livekit_url}`);
+      // Get token with unique participant name
+      const { token, participantName: uniqueName } = await getToken(roomName, debateTopic);
+      setUniqueParticipantName(uniqueName);
+      
+      console.log('Connecting to LiveKit with participant:', uniqueName);
+      
+      const newRoom = new Room({
+        adaptiveStream: true,
+        dynacast: true,
+        publishDefaults: {
+          videoSimulcastLayers: [
+            { width: 640, height: 360, encoding: { maxBitrate: 1000000 } },
+            { width: 320, height: 180, encoding: { maxBitrate: 500000 } },
+          ],
+        },
+      });
+      
+      // Set up room event listeners
+      newRoom.on(RoomEvent.Connected, () => {
+        console.log('Connected to room:', roomName, 'as participant:', uniqueName);
+        setIsConnected(true);
+        setConnecting(false);
+        setLocalParticipant(newRoom.localParticipant);
+        setError(null);
+        setParticipants(Array.from(newRoom.remoteParticipants.values()));
+      });
+      
+      newRoom.on(RoomEvent.Disconnected, (reason) => {
+        console.log('Disconnected from room:', reason);
+        setIsConnected(false);
+        setConnecting(false);
+        setLocalParticipant(null);
+        setUniqueParticipantName(null);
+      });
+      
+      newRoom.on(RoomEvent.ParticipantConnected, (participant) => {
+        console.log('Participant connected:', participant.identity);
+        setParticipants(prev => [...prev, participant]);
+      });
+      
+      newRoom.on(RoomEvent.ParticipantDisconnected, (participant) => {
+        console.log('Participant disconnected:', participant.identity);
+        setParticipants(prev => prev.filter(p => p.identity !== participant.identity));
+      });
 
+      // Handle incoming audio tracks
+      newRoom.on(RoomEvent.TrackSubscribed, (track: RemoteTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
+        if (track.kind === Track.Kind.Audio) {
+          const audioElement = track.attach();
+          if (audioElement) {
+            document.body.appendChild(audioElement);
+          }
+        }
+      });
+      
+      // Connect to LiveKit
+      await newRoom.connect('wss://sage-2kpu4z1y.livekit.cloud', token, {
+        autoSubscribe: true,
+      });
+      
+      setRoom(newRoom);
+      
     } catch (err) {
       console.error('Failed to connect to room:', err);
-      setError(err instanceof Error ? err.message : 'Failed to connect to room');
-      setIsConnecting(false);
+      const errorMessage = err instanceof Error ? err.message : 'Failed to connect to debate room';
+      setError(errorMessage);
+      setConnecting(false);
       setHasAttemptedConnection(false);
     }
-  }, [room, roomName, isConnecting, isConnected, hasAttemptedConnection, getConnectionToken]);
+  }, [connecting, isConnected, hasAttemptedConnection]);
 
   const disconnectFromRoom = useCallback(() => {
     console.log('Disconnecting from room...');
@@ -146,57 +173,120 @@ export const useWebRTCRoom = ({ roomName, participantName, onAudioData }: UseWeb
       setAudioContext(null);
     }
     
-    room.disconnect();
+    if (room) {
+      room.disconnect();
+      setRoom(null);
+    }
     if (localAudioTrack) {
       localAudioTrack.stop();
       setLocalAudioTrack(null);
     }
+    
+    setIsConnected(false);
+    setParticipants([]);
+    setLocalParticipant(null);
+    setUniqueParticipantName(null);
     setIsMicrophoneEnabled(false);
-    setHasAttemptedConnection(false); // Reset for potential reconnection
+    setHasAttemptedConnection(false);
+    setError(null);
   }, [room, localAudioTrack, processor, audioContext]);
 
-  const toggleMicrophone = useCallback(async () => {
-    if (!isConnected) {
-      console.log('Not connected, cannot toggle microphone');
-      return;
+  // Set up audio processing when microphone is enabled
+  useEffect(() => {
+    if (isMicrophoneEnabled && localAudioTrack && onAudioData) {
+      console.log('Setting up audio processing for AI moderation');
+      
+      const setupAudioProcessing = async () => {
+        try {
+          const context = new (window.AudioContext || (window as any).webkitAudioContext)();
+          const source = context.createMediaStreamSource(new MediaStream([localAudioTrack.mediaStreamTrack]));
+          const scriptProcessor = context.createScriptProcessor(4096, 1, 1);
+          
+          scriptProcessor.onaudioprocess = (audioProcessingEvent) => {
+            const inputBuffer = audioProcessingEvent.inputBuffer;
+            const channelData = inputBuffer.getChannelData(0);
+            
+            // Send audio data to AI moderation
+            if (onAudioData) {
+              onAudioData(channelData);
+            }
+          };
+          
+          source.connect(scriptProcessor);
+          scriptProcessor.connect(context.destination);
+          
+          setAudioContext(context);
+          setProcessor(scriptProcessor);
+          
+        } catch (err) {
+          console.error('Failed to setup audio processing:', err);
+        }
+      };
+      
+      setupAudioProcessing();
     }
+  }, [isMicrophoneEnabled, localAudioTrack, onAudioData]);
+
+  const toggleMicrophone = useCallback(async () => {
+    if (!room) return;
 
     try {
-      if (isMicrophoneEnabled && localAudioTrack) {
+      if (isMicrophoneEnabled) {
         // Disable microphone
-        await room.localParticipant.unpublishTrack(localAudioTrack);
-        localAudioTrack.stop();
-        setLocalAudioTrack(null);
+        if (localAudioTrack) {
+          await room.localParticipant.unpublishTrack(localAudioTrack);
+          localAudioTrack.stop();
+          setLocalAudioTrack(null);
+        }
         setIsMicrophoneEnabled(false);
-        console.log('Microphone disabled');
       } else {
         // Enable microphone
-        console.log('Enabling microphone...');
-        const audioTrack = await createLocalAudioTrack();
+        const audioTrack = await createLocalAudioTrack({
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        });
+        
         await room.localParticipant.publishTrack(audioTrack);
         setLocalAudioTrack(audioTrack);
         setIsMicrophoneEnabled(true);
-        
-        // Setup audio capture for AI
-        await setupAudioCapture(audioTrack);
-        
-        console.log('Microphone enabled');
       }
     } catch (err) {
       console.error('Failed to toggle microphone:', err);
-      setError(err instanceof Error ? err.message : 'Failed to toggle microphone');
+      setError('Failed to toggle microphone');
     }
-  }, [room, isMicrophoneEnabled, localAudioTrack, isConnected, setupAudioCapture]);
+  }, [room, isMicrophoneEnabled, localAudioTrack]);
+
+  // Auto-connect when roomName is provided
+  useEffect(() => {
+    if (roomName && !hasAttemptedConnection) {
+      connectToRoom(roomName);
+    }
+  }, [roomName, connectToRoom, hasAttemptedConnection]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (room) {
+        room.disconnect();
+      }
+      if (audioContext) {
+        audioContext.close();
+      }
+    };
+  }, [room, audioContext]);
 
   return {
     room,
     isConnected,
-    isConnecting,
-    participants,
-    isMicrophoneEnabled,
+    connecting,
     error,
+    participants,
+    localParticipant,
+    participantName: uniqueParticipantName,
+    isMicrophoneEnabled,
     connectToRoom,
     disconnectFromRoom,
-    toggleMicrophone
+    toggleMicrophone,
   };
 };
