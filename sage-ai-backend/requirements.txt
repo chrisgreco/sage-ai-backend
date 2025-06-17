@@ -1,9 +1,18 @@
-livekit-api==1.0.3  
-openai 
-python-dotenv 
-requests 
-websockets 
-fastapi 
-uvicorn 
-pydantic 
-deepgram-sdk
+# Core LiveKit dependencies for new agent architecture
+livekit-agents[openai,turn-detector]>=1.0.0
+livekit-api>=1.0.3
+
+# Core web framework
+fastapi>=0.95.0
+uvicorn>=0.21.0
+pydantic>=1.10.0
+python-multipart>=0.0.6
+
+# Environment and utilities
+python-dotenv>=1.0.0
+requests>=2.28.0
+websockets>=10.3
+
+# AI providers (optional for fallback)
+openai>=1.0.0
+deepgram-sdk>=2.11.0
