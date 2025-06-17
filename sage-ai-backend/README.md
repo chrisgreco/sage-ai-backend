@@ -80,4 +80,40 @@ The service will start on port 8000 by default.
 
 ## Current Status
 
-The API endpoints for token generation and room creation are working. The background worker service is currently a placeholder that will be expanded in future versions to provide real-time AI moderation capabilities. 
+The API endpoints for token generation and room creation are working. The background worker service is currently a placeholder that will be expanded in future versions to provide real-time AI moderation capabilities.
+
+## Critical Deployment Fix Needed
+
+Based on analysis of the LiveKit voice assistant example, our current architecture is incorrect:
+
+### Current (Wrong) Pattern:
+- Frontend calls `/launch-ai-agents` endpoint
+- Backend spawns agent subprocess per request
+- Agents try to join specific rooms
+
+### Correct Pattern (From LiveKit Example):
+- Agents run as **persistent workers** using `python multi_personality_agent.py start`
+- Agents **automatically join ALL new rooms**
+- Frontend connects directly to LiveKit rooms using tokens
+- No "launch agents" - they're always running
+
+### Required Changes:
+
+1. **Deploy Persistent Agent Worker:**
+   ```bash
+   # Run this on Render as a separate service
+   python multi_personality_agent.py start
+   ```
+
+2. **Remove Agent Launching:**
+   - Remove `/launch-ai-agents` endpoint
+   - Frontend should only get room tokens
+   - Agents join automatically when rooms are created
+
+3. **Frontend Pattern:**
+   - Use @livekit/components-react
+   - Connect directly to LiveKit rooms
+   - Monitor participants (agents will appear automatically)
+
+### Immediate Fix:
+Run agents as persistent workers on Render, not subprocess per request. 
