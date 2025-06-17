@@ -17,6 +17,9 @@ import os
 from typing import Dict
 from dotenv import load_dotenv
 
+# Knowledge base integration
+from knowledge_base_manager import initialize_knowledge_bases, get_agent_knowledge
+
 # Core LiveKit Agents imports (correct pattern)
 try:
     from livekit.agents import (
@@ -139,10 +142,80 @@ class DebateAgent(Agent):
         topic = os.getenv("DEBATE_TOPIC", "The impact of AI on society")
         return {"topic": topic}
 
+    @function_tool
+    async def access_knowledge(
+        self,
+        context: RunContext,
+        query: str,
+    ):
+        """Access specialized knowledge for the current personality
+        
+        Args:
+            query: The query or context to search for relevant knowledge
+        """
+        try:
+            agent_name = self.personality["name"].lower()
+            knowledge_items = await get_agent_knowledge(agent_name, query, max_items=3)
+            
+            if knowledge_items:
+                knowledge_text = "\n\n".join([
+                    f"Source: {item['source']}\n{item['content'][:500]}..." 
+                    for item in knowledge_items
+                ])
+                return {
+                    "knowledge": knowledge_text,
+                    "sources": [item['source'] for item in knowledge_items]
+                }
+            else:
+                return {"knowledge": "No relevant knowledge found", "sources": []}
+                
+        except Exception as e:
+            logger.error(f"Knowledge access error: {e}")
+            return {"error": f"Knowledge access failed: {str(e)}"}
+
+    @function_tool
+    async def summarize_key_points(
+        self,
+        context: RunContext,
+        topic: str = "",
+    ):
+        """Summarize key points from the debate so far for memory retention
+        
+        Args:
+            topic: Optional specific topic to focus the summary on
+        """
+        try:
+            # This would be enhanced to maintain conversation summaries
+            # For now, it helps with memory management instructions
+            summary_instruction = f"""As {self.personality['name']}, I maintain awareness of:
+            
+1. Key arguments made by each participant
+2. Important questions raised (especially by Socrates)
+3. Logical frameworks presented (especially by Aristotle)  
+4. Conflict resolution points (especially by Buddha)
+5. Synthesis attempts (especially by Hermes)
+6. Moderation decisions (especially by Solon)
+
+Focus: {topic if topic else 'Overall debate progression'}"""
+
+            return {"summary_context": summary_instruction}
+            
+        except Exception as e:
+            logger.error(f"Summarization error: {e}")
+            return {"error": f"Summarization failed: {str(e)}"}
+
 async def entrypoint(ctx: JobContext):
     """Main entrypoint following official LiveKit Agents pattern"""
     
     logger.info("Starting Sage AI Multi-Personality Debate Agent")
+    
+    # Initialize knowledge bases
+    logger.info("🧠 Initializing knowledge bases...")
+    knowledge_ready = await initialize_knowledge_bases()
+    if knowledge_ready:
+        logger.info("✅ Knowledge bases loaded successfully")
+    else:
+        logger.warning("⚠️ Knowledge bases failed to load, continuing without specialized knowledge")
     
     # Connect to room
     await ctx.connect()
