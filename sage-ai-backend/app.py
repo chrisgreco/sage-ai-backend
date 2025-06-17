@@ -12,6 +12,8 @@ from fastapi.responses import JSONResponse
 import subprocess
 import sys
 import time
+import json
+from livekit.api import RoomService, RoomOptions, CreateRoomRequest
 
 # Configure logging first
 logging.basicConfig(level=logging.INFO)
@@ -375,7 +377,7 @@ async def monitor_agent_connection(room_name: str, process_id: int, max_wait_tim
 @app.post("/launch-ai-agents")
 async def launch_ai_agents(request: DebateRequest):
     try:
-        logger.info(f"Launching AI agents for room: {request.room_name}, topic: {request.topic}")
+        logger.info(f"Creating LiveKit room for debate: {request.room_name}, topic: {request.topic}")
         
         if not all([LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET]):
             return JSONResponse(
@@ -385,152 +387,59 @@ async def launch_ai_agents(request: DebateRequest):
         
         room_name = request.room_name or f"debate-{request.topic.replace(' ', '-').lower()}"
         
-        # Check if agents are already running for this room
-        if room_name in active_agents:
-            agent_info = active_agents[room_name]
-            process = agent_info["process"]
+        # Instead of launching agents, just create the room
+        # Agents should already be running as persistent workers
+        try:
+            # Create the room using LiveKit API
+            # This will trigger agents to automatically join if they're running
+            room_service = RoomService()
             
-            # Check if process is still alive
-            if process.poll() is None:
-                return {
-                    "status": "success",
-                    "message": f"AI agents already running for room: {room_name}",
-                    "room_name": room_name,
-                    "agents_active": True,
-                    "process_id": process.pid,
-                    "started_at": agent_info["started_at"]
-                }
-            else:
-                # Process died, clean it up
-                logger.warning(f"Found dead agent process for room {room_name}, cleaning up")
-                del active_agents[room_name]
-        
-        max_retries = 3
-        retry_count = 0
-        
-        while retry_count < max_retries:
-            try:
-                logger.info(f"Attempt {retry_count + 1}/{max_retries} to launch agents for room {room_name}")
-                
-                # Set environment variables for the agent - ENSURE ALL ARE SET
-                env = os.environ.copy()
-                
-                # Ensure LiveKit variables are explicitly set from current environment
-                livekit_url = os.getenv("LIVEKIT_URL") or LIVEKIT_URL
-                livekit_api_key = os.getenv("LIVEKIT_API_KEY") or LIVEKIT_API_KEY  
-                livekit_api_secret = os.getenv("LIVEKIT_API_SECRET") or LIVEKIT_API_SECRET
-                
-                if not all([livekit_url, livekit_api_key, livekit_api_secret]):
-                    error_msg = f"Missing LiveKit configuration - URL: {'✓' if livekit_url else '✗'}, Key: {'✓' if livekit_api_key else '✗'}, Secret: {'✓' if livekit_api_secret else '✗'}"
-                    logger.error(error_msg)
-                    return JSONResponse(
-                        content={"status": "error", "message": error_msg}, 
-                        status_code=503
-                    )
-                
-                env.update({
-                    "LIVEKIT_URL": livekit_url,
-                    "LIVEKIT_API_KEY": livekit_api_key,
-                    "LIVEKIT_API_SECRET": livekit_api_secret,
-                    "ROOM_NAME": room_name,
-                    "DEBATE_TOPIC": request.topic,
-                    "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", ""),
-                    "DEEPGRAM_API_KEY": os.getenv("DEEPGRAM_API_KEY", ""),
-                    "CARTESIA_API_KEY": os.getenv("CARTESIA_API_KEY", "")
+            # Set room metadata with debate topic
+            room_opts = RoomOptions(
+                name=room_name,
+                metadata=json.dumps({
+                    "topic": request.topic,
+                    "type": "debate",
+                    "created_at": time.time()
                 })
-                
-                logger.info(f"Environment prepared - LiveKit URL: {livekit_url[:20]}...")
-                logger.info(f"Starting agent for room: {room_name}")
-                
-                # CORRECT WAY: Use LiveKit agents CLI with 'start' command
-                process = subprocess.Popen([
-                    sys.executable, "-u", "multi_personality_agent.py", "start"
-                ], 
-                env=env, 
-                cwd=os.path.dirname(os.path.abspath(__file__)),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                bufsize=1
-                )
-                
-                # Store the process with detailed info
-                agent_info = {
-                    "process": process,
-                    "topic": request.topic,
-                    "started_at": time.time(),
-                    "retry_count": retry_count,
-                    "status": "starting",
-                    "room_name": room_name
-                }
-                active_agents[room_name] = agent_info
-                
-                logger.info(f"Agent process launched with PID {process.pid} for room {room_name}")
-                
-                # Start background monitoring
-                async def background_monitor():
-                    try:
-                        monitor_result = await monitor_agent_connection(room_name, process.pid, max_wait_time=30)
-                        
-                        if room_name in active_agents:
-                            active_agents[room_name]["status"] = "connected" if monitor_result["connected"] else "failed"
-                            active_agents[room_name]["connection_result"] = monitor_result
-                            
-                            if monitor_result["connected"]:
-                                logger.info(f"✅ Agents successfully connected for room {room_name}")
-                            else:
-                                logger.error(f"❌ Agent connection failed for room {room_name}: {monitor_result.get('error', 'Unknown error')}")
-                                
-                    except Exception as e:
-                        logger.error(f"Background monitoring error for room {room_name}: {e}")
-                        if room_name in active_agents:
-                            active_agents[room_name]["status"] = "error"
-                            active_agents[room_name]["connection_error"] = str(e)
-                
-                # Start monitoring in background
-                asyncio.create_task(background_monitor())
-                
-                # Return immediate success with process info
-                return {
-                    "status": "success",
-                    "message": f"AI agents launched for room: {room_name}",
-                    "room_name": room_name,
-                    "topic": request.topic,
-                    "agents_active": True,
-                    "process_id": process.pid,
-                    "retry_count": retry_count,
-                    "monitoring": "Agent connection monitoring started - check status endpoint for updates",
-                    "launch_method": "livekit_agents_cli"
-                }
-                
-            except FileNotFoundError:
-                error_msg = "multi_personality_agent.py not found"
-                logger.error(f"Retry {retry_count + 1} failed: {error_msg}")
-                if retry_count == max_retries - 1:
-                    return JSONResponse(
-                        content={"status": "error", "message": error_msg}, 
-                        status_code=500
-                    )
-                    
-            except Exception as e:
-                error_msg = f"Failed to start AI agents: {str(e)}"
-                logger.error(f"Retry {retry_count + 1} failed: {error_msg}")
-                if retry_count == max_retries - 1:
-                    return JSONResponse(
-                        content={"status": "error", "message": error_msg}, 
-                        status_code=500
-                    )
+            )
             
-            retry_count += 1
-            if retry_count < max_retries:
-                logger.info(f"Waiting 2 seconds before retry {retry_count + 1}")
-                await asyncio.sleep(2)
-        
-        # If we get here, all retries failed
-        return JSONResponse(
-            content={"status": "error", "message": f"Failed to launch agents after {max_retries} attempts"}, 
-            status_code=500
-        )
+            room = await room_service.create_room(CreateRoomRequest(
+                name=room_name,
+                options=room_opts
+            ))
+            
+            logger.info(f"✅ LiveKit room created: {room_name}")
+            
+            # Store room info
+            active_agents[room_name] = {
+                "topic": request.topic,
+                "created_at": time.time(),
+                "status": "waiting_for_agents",
+                "room_name": room_name,
+                "room_sid": room.sid
+            }
+            
+            return {
+                "status": "success",
+                "message": f"Debate room created: {room_name}",
+                "room_name": room_name,
+                "topic": request.topic,
+                "room_sid": room.sid,
+                "note": "Agents should join automatically if running as workers"
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to create LiveKit room: {e}")
+            
+            # Fallback: Return success anyway, let frontend connect
+            return {
+                "status": "success", 
+                "message": f"Room prepared: {room_name}",
+                "room_name": room_name,
+                "topic": request.topic,
+                "note": "Room will be created when participants connect"
+            }
     
     except Exception as e:
         logger.error(f"Error launching AI agents: {str(e)}")

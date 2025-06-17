@@ -10,8 +10,8 @@ COPY . .
 # Copy the agent file to root level for easy access
 COPY sage-ai-backend/multi_personality_agent.py ./multi_personality_agent.py
 
-# Install dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install dependencies from the correct requirements file (force rebuild)
+RUN pip install --no-cache-dir -r sage-ai-backend/requirements.txt
 
 # Expose port
 EXPOSE 8000

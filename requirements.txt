@@ -1,5 +1,6 @@
-livekit-api
-livekit
+livekit-agents[openai,turn-detector]>=1.0.0
+livekit-api>=0.5.0
+livekit>=0.5.0
 openai>=1.0.0
 python-dotenv>=1.0.0
 requests>=2.28.0
