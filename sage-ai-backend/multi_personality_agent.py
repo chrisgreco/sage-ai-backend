@@ -17,16 +17,35 @@ import os
 from typing import Dict
 from dotenv import load_dotenv
 
+# Load environment variables first
+load_dotenv()
+
+# Configure logging early
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # Knowledge base integration
 from knowledge_base_manager import initialize_knowledge_bases, get_agent_knowledge
 
 # Supabase memory integration for persistent conversation memory
-from supabase_memory_manager import (
-    create_or_get_debate_room, 
-    store_debate_segment, 
-    get_debate_memory, 
-    store_ai_memory
-)
+try:
+    from supabase_memory_manager import (
+        create_or_get_debate_room, 
+        store_debate_segment, 
+        get_debate_memory, 
+        store_ai_memory,
+        memory_manager
+    )
+    SUPABASE_AVAILABLE = True
+    logger.info("✅ Supabase memory manager available")
+except ImportError as e:
+    SUPABASE_AVAILABLE = False
+    logger.warning(f"⚠️ Supabase memory manager not available: {e}")
+    # Create dummy functions to prevent errors
+    async def create_or_get_debate_room(*args, **kwargs): return None
+    async def store_debate_segment(*args, **kwargs): return False
+    async def get_debate_memory(*args, **kwargs): return {"recent_segments": [], "session_summaries": [], "personality_memories": {}}
+    async def store_ai_memory(*args, **kwargs): return False
 
 # Core LiveKit Agents imports (correct pattern)
 try:
@@ -49,13 +68,6 @@ except ImportError as e:
     LIVEKIT_AVAILABLE = False
     print(f"LiveKit Agents not available: {e}")
     print("Install with: pip install 'livekit-agents[openai,turn-detector]>=1.0'")
-
-# Load environment variables
-load_dotenv()
-
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 class DebatePersonalities:
     """AI Debate Personalities with distinct characteristics"""
@@ -235,14 +247,50 @@ async def entrypoint(ctx: JobContext):
     logger.info(f"Room: {room_name}")
     logger.info(f"Topic: {topic}")
     
+    # Initialize Supabase memory for persistent conversation storage
+    room_id = None
+    if SUPABASE_AVAILABLE:
+        try:
+            # Create or retrieve debate room in Supabase
+            room_token = room_name  # Using room name as token for now
+            room_id = await create_or_get_debate_room(
+                room_token=room_token,
+                topic=topic,
+                max_duration_hours=24  # Allow up to 24-hour debates
+            )
+            
+            # Load existing conversation memory 
+            memory_data = await get_debate_memory(room_id)
+            if memory_data["recent_segments"]:
+                logger.info(f"📚 Loaded {len(memory_data['recent_segments'])} conversation segments from memory")
+            
+            logger.info(f"✅ Supabase memory initialized for room {room_id}")
+        except Exception as e:
+            logger.warning(f"⚠️ Supabase memory initialization failed: {e}")
+            room_id = None
+    
     # Start with Solon as moderator
     moderator = DebateAgent(DebatePersonalities.SOLON)
+    
+    # Add memory context to agent instructions if available
+    memory_context = ""
+    if room_id and SUPABASE_AVAILABLE:
+        try:
+            memory_data = await get_debate_memory(room_id)
+            if memory_data["session_summaries"]:
+                memory_context = f"\n\nConversation Memory:\n{memory_data['session_summaries'][-1] if memory_data['session_summaries'] else ''}"
+        except Exception as e:
+            logger.warning(f"Memory context loading failed: {e}")
+    
+    # Enhanced instructions with memory awareness
+    enhanced_instructions = moderator.personality["instructions"] + memory_context
     
     # Create agent session with OpenAI Realtime API
     session = AgentSession(
         llm=openai.realtime.RealtimeModel(
             voice="shimmer",
-            temperature=0.7
+            temperature=0.7,
+            instructions=enhanced_instructions
         ),
         turn_detection=EnglishModel(),  # Proper turn-taking management
         min_endpointing_delay=0.5,
@@ -267,9 +315,22 @@ We have five AI personalities ready to engage:
 - Hermes: The synthesizer who connects different viewpoints
 - And myself, Solon: Your moderator ensuring fair discourse
 
-Let's begin our philosophical exploration!"""
+{"Continuing our previous discussion..." if memory_context else "Let's begin our philosophical exploration!"}"""
     
     await session.generate_reply(instructions=greeting)
+    
+    # Store initial greeting in memory if available
+    if room_id and SUPABASE_AVAILABLE:
+        try:
+            await store_debate_segment(
+                room_id=room_id,
+                speaker_name="Solon",
+                speaker_type="ai",
+                content=greeting,
+                segment_type="greeting"
+            )
+        except Exception as e:
+            logger.warning(f"Failed to store greeting in memory: {e}")
     
     logger.info("Debate session started successfully")
 
