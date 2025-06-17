@@ -397,13 +397,37 @@ class MultiAgentDebateSystem:
             agent = self.agents[agent_id]
             await session.start(agent=agent, room=self.room)
             
-        # Have moderator introduce the topic
+        # Wait a moment for connections to stabilize
+        await asyncio.sleep(2)
+        
+        # Have moderator introduce the topic immediately to test audio
         moderator_session = self.agent_sessions["moderator"]
-        await moderator_session.generate_reply(
-            instructions=f"""Introduce today's debate topic: "{self.debate_context.topic}". 
-            Welcome the participants and set the stage for a thoughtful, evidence-based discussion. 
-            Mention that we have experts from various perspectives who will share insights. 
-            Keep it brief (30 seconds) and engaging."""
+        await moderator_session.say(
+            f"""Hello everyone! I'm Solon, your debate moderator. 
+            Today we're discussing: "{self.debate_context.topic}". 
+            I'll be facilitating our discussion with help from my fellow philosophers: 
+            Aristotle, Socrates, Hermes, and Buddha. Let's begin this thoughtful exploration.""",
+            allow_interruptions=True
+        )
+        
+        # After introduction, have Aristotle provide opening thoughts
+        await asyncio.sleep(3)
+        aristotle_session = self.agent_sessions["expert"]
+        await aristotle_session.say(
+            f"""Thank you, Solon. As Aristotle, I believe we should examine this topic through the lens of logic and evidence. 
+            When considering {self.debate_context.topic.lower()}, we must look at both the practical implications 
+            and the philosophical foundations. What empirical evidence supports different positions?""",
+            allow_interruptions=True
+        )
+        
+        # Then have Socrates ask probing questions
+        await asyncio.sleep(4)
+        socrates_session = self.agent_sessions["challenger"]
+        await socrates_session.say(
+            f"""Interesting perspective, Aristotle. But as Socrates, I must ask: 
+            What do we actually *know* about this topic? What assumptions are we making? 
+            Perhaps we should question our fundamental premises before drawing conclusions.""",
+            allow_interruptions=True
         )
         
         # Start the conversation monitoring loop

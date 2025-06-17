@@ -290,12 +290,27 @@ async def launch_ai_agents(request: AIAgentRequest):
             # Launch the AI agents subprocess
             topic = request.topic or "General Discussion"
             
+            # Generate agent token with proper permissions
+            agent_token = AccessToken()
+            agent_token.with_identity("sage-ai-agent")
+            agent_token.with_name("Sage AI Agent")
+            agent_token.with_grants(VideoGrants(
+                room_join=True,
+                room=request.room_name,
+                can_publish=True,
+                can_subscribe=True,
+                can_publish_data=True,
+                agent=True  # This is crucial for agent permissions
+            ))
+            agent_jwt = agent_token.to_jwt()
+            
             # Set environment variables for the agent process
             agent_env = os.environ.copy()
             agent_env.update({
                 "LIVEKIT_URL": LIVEKIT_URL,
                 "LIVEKIT_API_KEY": LIVEKIT_API_KEY,
                 "LIVEKIT_API_SECRET": LIVEKIT_API_SECRET,
+                "LIVEKIT_AGENT_TOKEN": agent_jwt,  # Add the agent token
                 "OPENAI_API_KEY": OPENAI_API_KEY,
                 "DEEPGRAM_API_KEY": DEEPGRAM_API_KEY,
                 "CARTESIA_API_KEY": CARTESIA_API_KEY,
