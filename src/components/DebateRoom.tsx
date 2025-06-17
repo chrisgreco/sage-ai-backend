@@ -67,7 +67,7 @@ const DebateRoom: React.FC = () => {
     
     setLaunchingAgents(true);
     try {
-              const response = await fetch('http://localhost:8000/launch-ai-agents', {
+              const response = await fetch('https://sage-ai-backend-l0en.onrender.com/launch-ai-agents', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
@@ -94,7 +94,7 @@ const DebateRoom: React.FC = () => {
     
     setStoppingAgents(true);
     try {
-              const response = await fetch('http://localhost:8000/ai-agents/stop', {
+              const response = await fetch('https://sage-ai-backend-l0en.onrender.com/ai-agents/stop', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ room_name: roomName })
