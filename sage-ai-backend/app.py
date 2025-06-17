@@ -11,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import subprocess
 import sys
+import time
 
 # Configure logging first
 logging.basicConfig(level=logging.INFO)
@@ -307,11 +308,176 @@ async def run_background_worker():
         await asyncio.sleep(5)
         return await run_background_worker()  # Reconnect
 
+# AI Agents Management - Store active agent processes
+active_agents = {}
+
+# Launch AI Agents endpoint
+@app.post("/launch-ai-agents")
+async def launch_ai_agents(request: DebateRequest):
+    try:
+        logger.info(f"Launching AI agents for room: {request.room_name}, topic: {request.topic}")
+        
+        if not all([LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET]):
+            return JSONResponse(
+                content={"status": "error", "message": "LiveKit configuration missing"}, 
+                status_code=503
+            )
+        
+        room_name = request.room_name or f"debate-{request.topic.replace(' ', '-').lower()}"
+        
+        # Check if agents are already running for this room
+        if room_name in active_agents:
+            return {
+                "status": "success",
+                "message": f"AI agents already running for room: {room_name}",
+                "room_name": room_name,
+                "agents_active": True
+            }
+        
+        try:
+            # Set environment variables for the agent
+            env = os.environ.copy()
+            env.update({
+                "LIVEKIT_URL": LIVEKIT_URL,
+                "LIVEKIT_API_KEY": LIVEKIT_API_KEY,
+                "LIVEKIT_API_SECRET": LIVEKIT_API_SECRET,
+                "ROOM_NAME": room_name,
+                "DEBATE_TOPIC": request.topic,
+                "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", "")
+            })
+            
+            # Start the multi-personality agent as a subprocess
+            process = subprocess.Popen([
+                sys.executable, "-u", "multi_personality_agent.py", "start"
+            ], env=env, cwd=os.path.dirname(os.path.abspath(__file__)))
+            
+            # Store the process
+            active_agents[room_name] = {
+                "process": process,
+                "topic": request.topic,
+                "started_at": time.time()
+            }
+            
+            logger.info(f"AI agents launched successfully for room {room_name} with PID {process.pid}")
+            
+            return {
+                "status": "success",
+                "message": f"AI agents launched for room: {room_name}",
+                "room_name": room_name,
+                "topic": request.topic,
+                "agents_active": True,
+                "process_id": process.pid
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to start AI agents: {str(e)}")
+            return JSONResponse(
+                content={"status": "error", "message": f"Failed to start AI agents: {str(e)}"}, 
+                status_code=500
+            )
+    
+    except Exception as e:
+        logger.error(f"Error launching AI agents: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Stop AI Agents endpoint
+@app.post("/ai-agents/stop")
+async def stop_ai_agents(request: DebateRequest):
+    try:
+        logger.info(f"Stopping AI agents for room: {request.room_name}")
+        
+        room_name = request.room_name
+        if not room_name:
+            return JSONResponse(
+                content={"status": "error", "message": "room_name is required"}, 
+                status_code=400
+            )
+        
+        if room_name not in active_agents:
+            return {
+                "status": "success",
+                "message": f"No AI agents running for room: {room_name}",
+                "room_name": room_name,
+                "agents_active": False
+            }
+        
+        try:
+            # Get the process
+            agent_info = active_agents[room_name]
+            process = agent_info["process"]
+            
+            # Terminate the process
+            process.terminate()
+            
+            # Wait for it to finish (with timeout)
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                # Force kill if it doesn't terminate gracefully
+                process.kill()
+                process.wait()
+            
+            # Remove from active agents
+            del active_agents[room_name]
+            
+            logger.info(f"AI agents stopped successfully for room {room_name}")
+            
+            return {
+                "status": "success",
+                "message": f"AI agents stopped for room: {room_name}",
+                "room_name": room_name,
+                "agents_active": False
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to stop AI agents: {str(e)}")
+            # Clean up the entry even if stopping failed
+            if room_name in active_agents:
+                del active_agents[room_name]
+            
+            return JSONResponse(
+                content={"status": "error", "message": f"Failed to stop AI agents: {str(e)}"}, 
+                status_code=500
+            )
+    
+    except Exception as e:
+        logger.error(f"Error stopping AI agents: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# Get AI Agents Status endpoint
+@app.get("/ai-agents/status")
+async def get_ai_agents_status():
+    try:
+        # Clean up any dead processes
+        dead_rooms = []
+        for room_name, agent_info in active_agents.items():
+            if agent_info["process"].poll() is not None:
+                dead_rooms.append(room_name)
+        
+        for room_name in dead_rooms:
+            del active_agents[room_name]
+        
+        return {
+            "status": "success",
+            "active_rooms": len(active_agents),
+            "rooms": {
+                room_name: {
+                    "topic": agent_info["topic"],
+                    "started_at": agent_info["started_at"],
+                    "running": agent_info["process"].poll() is None
+                }
+                for room_name, agent_info in active_agents.items()
+            }
+        }
+    except Exception as e:
+        logger.error(f"Error getting AI agents status: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
     if SERVICE_MODE == "worker":
         logger.info("Running in background worker mode (launching LiveKit agent)")
-        # Launch the real agent (main.py) as a subprocess
-        subprocess.run([sys.executable, "-u", "livekit-agents/main.py"])
+        # Launch the real agent (multi_personality_agent.py) as a subprocess
+        subprocess.run([sys.executable, "-u", "multi_personality_agent.py", "start"])
     else:
         logger.info("Running in web service mode")
         uvicorn.run(app, host="0.0.0.0", port=8000) 

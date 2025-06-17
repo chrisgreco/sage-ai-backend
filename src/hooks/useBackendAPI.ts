@@ -1,4 +1,3 @@
-
 import { useState, useCallback, useEffect } from 'react';
 
 interface CreateDebateResponse {
@@ -16,7 +15,8 @@ interface ConnectResponse {
   token: string;
 }
 
-const BACKEND_API_URL = 'http://localhost:8000';
+// Backend API configuration
+const BACKEND_API_URL = 'https://sage-ai-backend-l0en.onrender.com';
 
 // Fetch with retry logic for handling sleeping backend
 const fetchWithRetry = async (url: string, options: RequestInit, retries = 3, delay = 2000): Promise<Response> => {

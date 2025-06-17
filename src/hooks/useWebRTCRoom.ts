@@ -139,8 +139,21 @@ export const useWebRTCRoom = ({ roomName, participantName, onAudioData }: UseWeb
         if (track.kind === Track.Kind.Audio) {
           const audioElement = track.attach();
           if (audioElement) {
+            audioElement.setAttribute('data-participant', participant.identity);
             document.body.appendChild(audioElement);
+            console.log('Audio track attached for participant:', participant.identity);
           }
+        }
+      });
+      
+      // Handle audio track cleanup
+      newRoom.on(RoomEvent.TrackUnsubscribed, (track: RemoteTrack, publication: RemoteTrackPublication, participant: RemoteParticipant) => {
+        if (track.kind === Track.Kind.Audio) {
+          const audioElements = document.querySelectorAll(`audio[data-participant="${participant.identity}"]`);
+          audioElements.forEach(element => {
+            element.remove();
+            console.log('Audio track cleaned up for participant:', participant.identity);
+          });
         }
       });
       
