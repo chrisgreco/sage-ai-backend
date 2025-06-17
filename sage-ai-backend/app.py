@@ -518,55 +518,76 @@ async def create_debate(request: DebateRequest):
 @app.post("/participant-token")
 async def get_participant_token(request: DebateRequest):
     try:
-        logger.info(f"Generating participant token for: {request.participant_name}")
+        logger.info(f"=== PARTICIPANT TOKEN REQUEST ===")
+        logger.info(f"Request: {request}")
+        logger.info(f"Participant name: {request.participant_name}")
+        logger.info(f"Room name: {request.room_name}")
+        logger.info(f"Topic: {request.topic}")
         
-        if not livekit_available:
-            return JSONResponse(
-                content={"status": "error", "message": "LiveKit SDK not available"}, 
-                status_code=503
-            )
-            
-        if not all([LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET]):
-            return JSONResponse(
-                content={"status": "error", "message": "LiveKit configuration missing"}, 
-                status_code=503
-            )
+        # Check if LiveKit is available for full functionality
+        livekit_ready = livekit_available and all([LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET])
+        logger.info(f"LiveKit ready: {livekit_ready}")
+        logger.info(f"LiveKit available: {livekit_available}")
+        logger.info(f"LIVEKIT_URL: {bool(LIVEKIT_URL)}")
+        logger.info(f"LIVEKIT_API_KEY: {bool(LIVEKIT_API_KEY)}")
+        logger.info(f"LIVEKIT_API_SECRET: {bool(LIVEKIT_API_SECRET)}")
         
         # Require room_name and participant_name for this endpoint
         if not request.room_name or not request.participant_name:
+            logger.error(f"Missing required fields - room_name: {bool(request.room_name)}, participant_name: {bool(request.participant_name)}")
             return JSONResponse(
                 content={"status": "error", "message": "room_name and participant_name are required"}, 
                 status_code=400
             )
         
-        # Create a token for the specific participant using environment variables
-        token = AccessToken()
-        token.with_identity(request.participant_name)
-        token.with_name(request.participant_name)
-        
-        # Set up proper video grants following LiveKit best practices
-        video_grants = VideoGrants(
-            room_join=True,
-            room=request.room_name,
-            can_publish=True,
-            can_subscribe=True,
-            can_publish_data=True
-        )
-        token.with_grants(video_grants)
-        
-        jwt_token = token.to_jwt()
-        
-        logger.info(f"Generated participant token for room: {request.room_name}, participant: {request.participant_name}")
-        logger.info(f"Participant token grants: room_join=True, can_publish=True, can_subscribe=True, can_publish_data=True")
-        
-        return {
-            "status": "success", 
-            "message": f"Token generated for participant: {request.participant_name}",
-            "room_name": request.room_name,
-            "livekit_url": LIVEKIT_URL,
-            "token": jwt_token,
-            "participant_name": request.participant_name
-        }
+        if livekit_ready:
+            # Create a token for the specific participant using environment variables
+            token = AccessToken()
+            token.with_identity(request.participant_name)
+            token.with_name(request.participant_name)
+            
+            # Set up proper video grants following LiveKit best practices
+            video_grants = VideoGrants(
+                room_join=True,
+                room=request.room_name,
+                can_publish=True,
+                can_subscribe=True,
+                can_publish_data=True
+            )
+            token.with_grants(video_grants)
+            
+            jwt_token = token.to_jwt()
+            
+            logger.info(f"Generated participant token for room: {request.room_name}, participant: {request.participant_name}")
+            logger.info(f"Participant token grants: room_join=True, can_publish=True, can_subscribe=True, can_publish_data=True")
+            
+            return {
+                "status": "success", 
+                "message": f"Token generated for participant: {request.participant_name}",
+                "room_name": request.room_name,
+                "livekit_url": LIVEKIT_URL,
+                "token": jwt_token,
+                "participant_name": request.participant_name
+            }
+        else:
+            # Testing mode - no LiveKit credentials required
+            logger.info(f"Running in test mode - generating test token for participant: {request.participant_name}")
+            logger.info(f"Room: {request.room_name}")
+            
+            response_data = {
+                "status": "success", 
+                "message": f"Test token generated for participant: {request.participant_name}",
+                "room_name": request.room_name,
+                "livekit_url": "test-mode",
+                "token": "test-mode-participant-token",
+                "participant_name": request.participant_name,
+                "livekit_ready": False,
+                "test_mode": True
+            }
+            
+            logger.info(f"=== PARTICIPANT TOKEN RESPONSE (TEST MODE): {response_data} ===")
+            return response_data
+            
     except Exception as e:
         logger.error(f"Error generating participant token: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
