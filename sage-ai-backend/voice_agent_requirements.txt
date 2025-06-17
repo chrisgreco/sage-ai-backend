@@ -1,0 +1,21 @@
+# Required LiveKit Agents dependencies for voice functionality
+# Based on official LiveKit Agents documentation
+
+# Core LiveKit Agents framework
+livekit-agents[openai,deepgram,cartesia,silero,turn-detector]>=1.0
+
+# Individual plugin packages (alternative to the bundle above)
+# livekit-plugins-openai>=0.8.0
+# livekit-plugins-deepgram>=0.8.0  
+# livekit-plugins-cartesia>=0.8.0
+# livekit-plugins-silero>=0.8.0
+# livekit-plugins-turn-detector>=0.8.0
+
+# Environment management
+python-dotenv>=1.0
+
+# HTTP requests for our chat API integration
+requests>=2.31.0
+
+# Async utilities
+aiohttp>=3.8.0 

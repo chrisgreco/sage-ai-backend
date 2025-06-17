@@ -13,10 +13,25 @@ import subprocess
 import sys
 import signal
 from typing import Dict, Optional
+import numpy as np
+import base64
+import io
 
 # Configure logging first
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Import audio bridge integration
+try:
+    from audio_bridge_integration import (
+        initialize_audio_bridge_manager,
+        get_audio_bridge_manager,
+        process_webrtc_audio_for_agents
+    )
+    AUDIO_BRIDGE_AVAILABLE = True
+except ImportError:
+    AUDIO_BRIDGE_AVAILABLE = False
+    logger.warning("Audio bridge integration not available")
 
 # Try to import LiveKit API with proper error handling
 try:
@@ -57,6 +72,17 @@ app = FastAPI()
 
 # Global variable to track running AI agent processes
 running_agents: Dict[str, subprocess.Popen] = {}
+
+# Initialize audio bridge manager if available
+if AUDIO_BRIDGE_AVAILABLE and LIVEKIT_URL and LIVEKIT_API_KEY and LIVEKIT_API_SECRET:
+    try:
+        initialize_audio_bridge_manager(LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET)
+        logger.info("✅ Audio bridge manager initialized")
+    except Exception as e:
+        logger.warning(f"Failed to initialize audio bridge manager: {e}")
+        AUDIO_BRIDGE_AVAILABLE = False
+else:
+    logger.warning("Audio bridge not available - missing LiveKit credentials or integration")
 
 # Add global exception handler for validation errors
 @app.exception_handler(RequestValidationError)
@@ -126,6 +152,13 @@ class FlexibleDebateRequest(BaseModel):
     # Allow any additional fields for debugging
     class Config:
         extra = "allow"
+
+# Add the new request model after existing models
+class AudioBridgeRequest(BaseModel):
+    room_name: str
+    audio_data: str  # Base64 encoded Float32Array
+    participant_name: str
+    timestamp: Optional[float] = None
 
 # Health check endpoint
 @app.get("/health")
@@ -606,6 +639,89 @@ async def get_participant_token(request: DebateRequest):
     except Exception as e:
         logger.error(f"Error generating participant token: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# Audio Bridge endpoint - forwards WebRTC audio to AI agents
+@app.post("/audio-bridge")
+async def audio_bridge(request: AudioBridgeRequest):
+    """
+    Bridge WebRTC audio data to AI agents in LiveKit room.
+    Converts Float32Array audio data to format consumable by AI agents.
+    """
+    try:
+        logger.info(f"🎤 Audio bridge called for room: {request.room_name}, participant: {request.participant_name}")
+        
+        # Check if AI agents are running for this room
+        if request.room_name not in running_agents:
+            logger.warning(f"No AI agents running for room: {request.room_name}")
+            return {
+                "status": "warning",
+                "message": f"No AI agents running for room: {request.room_name}",
+                "room_name": request.room_name,
+                "audio_processed": False
+            }
+        
+        # Use the audio bridge integration to process and forward audio
+        if AUDIO_BRIDGE_AVAILABLE:
+            try:
+                result = await process_webrtc_audio_for_agents(
+                    request.room_name,
+                    request.audio_data,
+                    request.participant_name
+                )
+                
+                # Add timestamp to result
+                result["timestamp"] = request.timestamp
+                
+                logger.info(f"📊 Audio bridge result: {result['status']} - {result['message']}")
+                return result
+                
+            except Exception as bridge_error:
+                logger.error(f"Audio bridge processing error: {str(bridge_error)}")
+                return JSONResponse(
+                    content={
+                        "status": "error",
+                        "message": f"Audio bridge processing failed: {str(bridge_error)}",
+                        "room_name": request.room_name
+                    },
+                    status_code=500
+                )
+        else:
+            # Fallback: Basic audio data parsing without LiveKit forwarding
+            try:
+                # The frontend sends Float32Array as base64 encoded string
+                audio_bytes = base64.b64decode(request.audio_data)
+                
+                # Convert bytes back to numpy Float32Array
+                audio_array = np.frombuffer(audio_bytes, dtype=np.float32)
+                
+                logger.info(f"📊 Audio data received (fallback mode): {len(audio_array)} samples, duration: ~{len(audio_array)/16000:.2f}s")
+                
+                return {
+                    "status": "warning",
+                    "message": f"Audio data received but not forwarded (audio bridge unavailable) for room: {request.room_name}",
+                    "room_name": request.room_name,
+                    "participant_name": request.participant_name,
+                    "audio_samples": len(audio_array),
+                    "audio_duration_seconds": round(len(audio_array) / 16000, 2),
+                    "timestamp": request.timestamp,
+                    "audio_processed": False,
+                    "bridge_available": False
+                }
+                
+            except Exception as decode_error:
+                logger.error(f"Error decoding audio data: {str(decode_error)}")
+                return JSONResponse(
+                    content={
+                        "status": "error",
+                        "message": f"Failed to decode audio data: {str(decode_error)}",
+                        "room_name": request.room_name
+                    },
+                    status_code=400
+                )
+            
+    except Exception as e:
+        logger.error(f"❌ Error in audio bridge: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Audio bridge error: {str(e)}")
 
 # Background worker mode function
 async def run_background_worker():

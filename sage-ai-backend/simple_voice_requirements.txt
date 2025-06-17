@@ -1,0 +1,10 @@
+# Simple LiveKit Voice Agent Requirements
+# Based on OpenAI Realtime API - much simpler than our complex approach!
+
+# Core LiveKit Agents with essential plugins
+livekit-agents[openai,silero]>=1.0
+
+# Environment management
+python-dotenv>=1.0
+
+# That's it! No audio bridge complexity needed! 
