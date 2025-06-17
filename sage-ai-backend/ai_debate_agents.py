@@ -47,7 +47,6 @@ from livekit.agents import (
     Agent,
     AgentSession, 
     JobContext,
-    RunContext,
     WorkerOptions,
     cli,
     function_tool,
@@ -295,14 +294,20 @@ class MultiAgentDebateSystem:
         
         for agent_id, personality in AGENT_PERSONALITIES.items():
             # Create agent with personality-specific configuration
+            # Create tools list, filtering out None values
+            tools = [
+                self.get_debate_status_tool,
+                self.request_speaking_turn_tool, 
+                self.add_key_point_tool
+            ]
+            
+            # Add fact-checker specific tool only for fact_checker agent
+            if agent_id == "fact_checker":
+                tools.append(self.flag_claim_for_verification_tool)
+            
             agent = Agent(
                 instructions=personality.instructions,
-                tools=[
-                    self.get_debate_status_tool,
-                    self.request_speaking_turn_tool, 
-                    self.add_key_point_tool,
-                    self.flag_claim_for_verification_tool if agent_id == "fact_checker" else None
-                ]
+                tools=tools
             )
             
             # Create agent session with Cartesia TTS and Deepgram STT
@@ -345,7 +350,7 @@ class MultiAgentDebateSystem:
         return emotions.get(agent_id, ["neutral:medium"])
         
     @function_tool
-    async def get_debate_status_tool(self, context: RunContext) -> Dict[str, Any]:
+    async def get_debate_status_tool(self) -> Dict[str, Any]:
         """Tool for agents to get current debate status and context"""
         return {
             "topic": self.debate_context.topic,
@@ -356,7 +361,7 @@ class MultiAgentDebateSystem:
         }
         
     @function_tool 
-    async def request_speaking_turn_tool(self, context: RunContext, agent_name: str, urgency: str = "normal") -> bool:
+    async def request_speaking_turn_tool(self, agent_name: str, urgency: str = "normal") -> bool:
         """Tool for agents to request a speaking turn"""
         if urgency == "high" or len(self.debate_context.speaking_queue) < 2:
             if agent_name not in self.debate_context.speaking_queue:
@@ -365,7 +370,7 @@ class MultiAgentDebateSystem:
         return False
         
     @function_tool
-    async def add_key_point_tool(self, context: RunContext, point: str, category: str = "general") -> bool:
+    async def add_key_point_tool(self, point: str, category: str = "general") -> bool:
         """Tool for agents to flag important points raised"""
         self.debate_context.key_points_raised.append({
             "point": point,
@@ -375,7 +380,7 @@ class MultiAgentDebateSystem:
         return True
         
     @function_tool
-    async def flag_claim_for_verification_tool(self, context: RunContext, claim: str, speaker: str) -> bool:
+    async def flag_claim_for_verification_tool(self, claim: str, speaker: str) -> bool:
         """Tool for fact-checker to flag claims needing verification"""
         self.debate_context.claims_to_verify.append({
             "claim": claim,

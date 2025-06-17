@@ -335,7 +335,7 @@ async def launch_ai_agents(request: AIAgentRequest):
             running_agents[request.room_name] = process
             
             logger.info(f"✅ AI agents launched successfully for room: {request.room_name}")
-            logger.info(f"🎭 Active agents: Moderator, Expert, Challenger, Synthesizer, Fact-Checker")
+            logger.info(f"🎭 Active agents: Solon (Moderator), Aristotle (Expert), Socrates (Challenger), Hermes (Synthesizer), Buddha (Peacekeeper)")
             
             return {
                 "status": "success",
