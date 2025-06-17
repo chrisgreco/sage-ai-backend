@@ -1,0 +1,4 @@
+[33m4a46d5e[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m fix(cors): Add CORS middleware with explicit allowed origins for secure credentials handling
+[33mb31e976[m Fix Dockerfile by adding missing FROM instruction
+[33m9f817a5[m Add requirements.txt file with livekit-api==1.0.2
+[33mf8e630f[m Create backend for Sage AI moderator with LiveKit integration

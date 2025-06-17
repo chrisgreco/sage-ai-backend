@@ -23,6 +23,8 @@ services:
         sync: false
       - key: DEEPGRAM_API_KEY
         sync: false
+      - key: CARTESIA_API_KEY
+        sync: false
       - key: PORT
         value: 8000
       - key: PYTHONVERBOSE
@@ -50,6 +52,8 @@ services:
       - key: OPENAI_API_KEY
         sync: false
       - key: DEEPGRAM_API_KEY
+        sync: false
+      - key: CARTESIA_API_KEY
         sync: false
       - key: PYTHONVERBOSE
         value: "1" 

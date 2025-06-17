@@ -1,277 +1,159 @@
+<<<<<<< HEAD
 # Sage AI Backend
 
-A sophisticated multi-agent AI debate system powered by LiveKit, featuring 5 distinct AI personalities that participate in intelligent voice debates.
+This repository contains the backend services for the Sage AI debate moderator application.
 
-## 🎭 AI Agent Personalities
+## Architecture
 
-### 1. **Dr. Alexandra Wright** - The Moderator
-- **Voice**: Professional, clear
-- **Role**: Guides discussions, maintains balance, asks clarifying questions
-- **Speaking Style**: "That's an interesting point, let's explore...", "I'd like to hear more about..."
+The backend is built with a dual-service architecture on Render:
 
-### 2. **Professor James Chen** - The Expert
-- **Voice**: Authoritative, warm
-- **Role**: Provides in-depth analysis, explains complex concepts, references research
-- **Speaking Style**: "Research indicates...", "From an analytical perspective..."
+1. **Web Service**: A FastAPI application that provides API endpoints for token generation and room creation.
+2. **Background Worker**: A service that will eventually connect to LiveKit rooms and provide real-time AI moderation.
 
-### 3. **Sarah Rodriguez** - The Challenger
-- **Voice**: Dynamic, engaging
-- **Role**: Questions assumptions, plays devil's advocate, identifies logical flaws
-- **Speaking Style**: "But what if...", "Have we considered...", "Playing devil's advocate..."
+## Dependencies
 
-### 4. **Dr. Maya Patel** - The Synthesizer
-- **Voice**: Thoughtful, harmonious
-- **Role**: Finds common ground, synthesizes viewpoints, proposes frameworks
-- **Speaking Style**: "Building on both perspectives...", "What I'm hearing is..."
+- Python 3.10+
+- FastAPI
+- LiveKit Python SDK (`livekit-api`)
+- OpenAI
+- Deepgram (for future speech-to-text capabilities)
 
-### 5. **Dr. Robert Kim** - The Fact-Checker
-- **Voice**: Precise, trustworthy
-- **Role**: Verifies claims, provides evidence, corrects misinformation
-- **Speaking Style**: "To verify that claim...", "According to reliable sources..."
+## Environment Variables
 
-## 🚀 Features
+The following environment variables are required:
 
-- **Multi-Agent AI System**: 5 unique AI personalities with distinct voices and roles
-- **Real-time Voice AI**: Powered by Cartesia TTS and Deepgram STT
-- **Intelligent Conversation**: Context-aware triggers and natural debate flow
-- **LiveKit Integration**: Scalable real-time communication infrastructure
-- **RESTful API**: Easy integration with frontend applications
-
-## 📋 Prerequisites
-
-### Required API Keys
-
-1. **LiveKit**: Get from [LiveKit Cloud](https://cloud.livekit.io/)
-   - `LIVEKIT_URL`
-   - `LIVEKIT_API_KEY`
-   - `LIVEKIT_API_SECRET`
-
-2. **OpenAI**: Get from [OpenAI Platform](https://platform.openai.com/api-keys)
-   - `OPENAI_API_KEY`
-
-3. **Deepgram**: Get from [Deepgram](https://deepgram.com/)
-   - `DEEPGRAM_API_KEY`
-
-4. **Cartesia**: Get from [Cartesia AI](https://cartesia.ai/)
-   - `CARTESIA_API_KEY`
-
-## 🛠️ Installation
-
-### 1. Clone and Setup
-```bash
-cd sage-ai-backend
-pip install -r requirements.txt
+```
+LIVEKIT_URL=https://your-livekit-server.livekit.cloud
+LIVEKIT_API_KEY=your-livekit-api-key
+LIVEKIT_API_SECRET=your-livekit-api-secret
+OPENAI_API_KEY=your-openai-api-key
+DEEPGRAM_API_KEY=your-deepgram-api-key (optional for now)
+SERVICE_MODE=web or worker
 ```
 
-### 2. Environment Configuration
-```bash
-# Copy the example environment file
-cp example.env .env
-
-# Edit .env with your actual API keys
-nano .env
-```
-
-### 3. Install Dependencies
-```bash
-# Install core dependencies
-pip install livekit-api livekit-agents[openai,cartesia,deepgram,silero,turn-detector]
-
-# Install specific plugins
-pip install livekit-plugins-openai livekit-plugins-cartesia livekit-plugins-deepgram
-```
-
-## 🏃‍♂️ Usage
-
-### Web Service Mode (Default)
-```bash
-python app.py
-```
-
-The API will be available at `http://localhost:8000`
-
-### Key Endpoints
-
-#### 1. Create Debate Room
-```bash
-POST /debate
-{
-  "topic": "The future of artificial intelligence",
-  "room_name": "ai-debate-2024",
-  "participant_name": "John"
-}
-```
-
-#### 2. Launch AI Agents 🎯
-```bash
-POST /launch-ai-agents
-{
-  "room_name": "ai-debate-2024",
-  "topic": "The future of artificial intelligence",
-  "start_agents": true
-}
-```
-
-#### 3. Check Agent Status
-```bash
-GET /ai-agents/status
-```
-
-#### 4. Stop AI Agents
-```bash
-POST /ai-agents/stop
-{
-  "room_name": "ai-debate-2024"
-}
-```
-
-### Direct Agent Mode
-```bash
-# Start AI agents directly for a specific room
-python ai_debate_agents.py start --room "debate-room-name"
-
-# Alternative startup script
-python start_ai_agents.py
-```
-
-## 🔧 API Documentation
+## API Endpoints
 
 ### Health Check
-- **GET** `/health` - Service health and configuration status
-
-### Debate Management
-- **POST** `/debate` - Create a new debate room and participant token
-- **POST** `/participant-token` - Generate token for additional participants
-
-### AI Agent Management
-- **POST** `/launch-ai-agents` - Start multi-agent AI system for a room
-- **GET** `/ai-agents/status` - Check running agent processes
-- **POST** `/ai-agents/stop` - Stop agents for a specific room
-
-### Debug
-- **POST** `/debug` - Debug endpoint to inspect requests
-
-## 🏗️ Architecture
 
 ```
-Frontend (Lovable) 
-    ↓
-FastAPI Backend (Token Generation)
-    ↓
-LiveKit Cloud (Real-time Communication)
-    ↓
-AI Agents Process (Multi-Agent Debate System)
-    ├── Cartesia TTS (Voice Synthesis)
-    ├── Deepgram STT (Speech Recognition)
-    ├── OpenAI GPT (Language Model)
-    └── Agent Orchestration
+GET /health
 ```
 
-## 🎯 AI Agent Features
+Returns a simple health status to verify the service is running.
 
-### Intelligent Triggers
-Each agent has specific conversation triggers:
-- **Moderator**: "unclear", "confusing", "off-topic"
-- **Expert**: "research", "study", "explain", "analysis"
-- **Challenger**: "always", "never", "assumption", "bias"
-- **Synthesizer**: "disagree", "common ground", "synthesis"
-- **Fact-Checker**: "statistics", "evidence", "verify"
+### LiveKit Connection
 
-### Voice Emotions
-- **Moderator**: Professional, calm
-- **Expert**: Thoughtful, authoritative
-- **Challenger**: Engaging, curious
-- **Synthesizer**: Warm, understanding
-- **Fact-Checker**: Precise, trustworthy
-
-### Conversation Management
-- Automatic speaking queue management
-- Silence detection and intervention
-- Context-aware response generation
-- Balanced participation enforcement
-
-## 🐳 Docker Deployment
-
-```bash
-# Build and run
-docker build -t sage-ai-backend .
-docker run -p 8000:8000 --env-file .env sage-ai-backend
+```
+GET /connect
 ```
 
-## 🌐 Render Deployment
+Returns a LiveKit token for the backend service, along with connection details.
 
-The backend is configured for Render deployment with:
-- `render.yaml` configuration
-- Health check endpoint
-- CORS for Lovable domains
-- Environment variable management
+### Create Debate Room
 
-## 🧪 Testing
-
-```bash
-# Test API endpoints
-curl -X GET http://localhost:8000/health
-
-# Test debate creation
-curl -X POST http://localhost:8000/debate \
-  -H "Content-Type: application/json" \
-  -d '{"topic": "AI Ethics", "participant_name": "TestUser"}'
-
-# Test AI agent launch
-curl -X POST http://localhost:8000/launch-ai-agents \
-  -H "Content-Type: application/json" \
-  -d '{"room_name": "test-room", "topic": "AI Ethics"}'
+```
+POST /debate
+{
+  "topic": "Should AI be regulated?",
+  "room_name": "ai-debate-123" (optional)
+}
 ```
 
-## 🔍 Troubleshooting
+Creates a new debate room in LiveKit and returns a token with room creation permissions.
 
-### Common Issues
+## Deployment
 
-1. **Missing API Keys**
-   ```
-   Error: Missing required environment variables: CARTESIA_API_KEY
-   ```
-   Solution: Ensure all required API keys are set in your `.env` file
+This project is set up for deployment on Render with the included `render.yaml` blueprint file. 
 
-2. **LiveKit Connection Issues**
-   ```
-   Error: LiveKit configuration missing
-   ```
-   Solution: Verify `LIVEKIT_URL`, `LIVEKIT_API_KEY`, and `LIVEKIT_API_SECRET`
+The deployment creates:
 
-3. **Agent Launch Failures**
-   ```
-   Error: Failed to launch AI agents
-   ```
-   Solution: Check logs for specific import errors or missing dependencies
+1. A Web Service for API endpoints (on the free plan)
+2. A Background Worker for AI moderation (on the starter plan - $7/month)
 
-### Debug Mode
-Enable detailed logging:
-```bash
-export LIVEKIT_LOG_LEVEL=debug
-python app.py
+## Local Development
+
+1. Clone the repository
+2. Create a `.env` file with the required environment variables
+3. Install dependencies: `pip install -r requirements.txt`
+4. Run the service: `python app.py`
+
+The service will start on port 8000 by default.
+
+## Current Status
+
+The API endpoints for token generation and room creation are working. The background worker service is currently a placeholder that will be expanded in future versions to provide real-time AI moderation capabilities. 
+=======
+# Welcome to your Lovable project
+
+## Project info
+
+**URL**: https://lovable.dev/projects/1e934c03-5a1a-4df1-9eed-2c278b3ec6a8
+
+## How can I edit this code?
+
+There are several ways of editing your application.
+
+**Use Lovable**
+
+Simply visit the [Lovable Project](https://lovable.dev/projects/1e934c03-5a1a-4df1-9eed-2c278b3ec6a8) and start prompting.
+
+Changes made via Lovable will be committed automatically to this repo.
+
+**Use your preferred IDE**
+
+If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+
+The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+
+Follow these steps:
+
+```sh
+# Step 1: Clone the repository using the project's Git URL.
+git clone <YOUR_GIT_URL>
+
+# Step 2: Navigate to the project directory.
+cd <YOUR_PROJECT_NAME>
+
+# Step 3: Install the necessary dependencies.
+npm i
+
+# Step 4: Start the development server with auto-reloading and an instant preview.
+npm run dev
 ```
 
-## 📚 Dependencies
+**Edit a file directly in GitHub**
 
-Core AI & Voice:
-- `livekit-agents` - AI agent framework
-- `livekit-plugins-cartesia` - Text-to-speech
-- `livekit-plugins-deepgram` - Speech-to-text
-- `livekit-plugins-openai` - Language models
+- Navigate to the desired file(s).
+- Click the "Edit" button (pencil icon) at the top right of the file view.
+- Make your changes and commit the changes.
 
-Web Service:
-- `fastapi` - Web framework
-- `uvicorn` - ASGI server
-- `pydantic` - Data validation
+**Use GitHub Codespaces**
 
-## 🤝 Contributing
+- Navigate to the main page of your repository.
+- Click on the "Code" button (green button) near the top right.
+- Select the "Codespaces" tab.
+- Click on "New codespace" to launch a new Codespace environment.
+- Edit files directly within the Codespace and commit and push your changes once you're done.
 
-1. Ensure all API keys are configured
-2. Test with a simple debate topic first
-3. Monitor agent logs for conversation flow
-4. Report issues with specific error messages
+## What technologies are used for this project?
 
-## 📄 License
+This project is built with:
 
-MIT License - see LICENSE file for details 
+- Vite
+- TypeScript
+- React
+- shadcn-ui
+- Tailwind CSS
+
+## How can I deploy this project?
+
+Simply open [Lovable](https://lovable.dev/projects/1e934c03-5a1a-4df1-9eed-2c278b3ec6a8) and click on Share -> Publish.
+
+## Can I connect a custom domain to my Lovable project?
+
+Yes, you can!
+
+To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+
+Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+>>>>>>> f9c00ce7acd928a1089fc02ab4cdf9e509bf5fc5

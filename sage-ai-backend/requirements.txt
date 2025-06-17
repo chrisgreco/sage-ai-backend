@@ -1,10 +1,5 @@
+<<<<<<< HEAD
 livekit-api==1.0.3  
-livekit-agents[openai,cartesia,deepgram,silero,turn-detector]>=1.0
-livekit-plugins-openai>=1.0
-livekit-plugins-cartesia>=1.0
-livekit-plugins-deepgram>=1.0
-livekit-plugins-silero>=1.0
-livekit-plugins-turn-detector>=1.0
 openai 
 python-dotenv 
 requests 
@@ -13,9 +8,15 @@ fastapi
 uvicorn 
 pydantic 
 deepgram-sdk
-cartesia
-asyncio
-aiohttp
-chromadb
-PyPDF2
-PyMuPDF
+=======
+livekit-api
+livekit
+openai>=1.0.0
+python-dotenv>=1.0.0
+requests>=2.28.0
+websockets>=10.3
+fastapi>=0.95.0
+uvicorn>=0.21.0
+pydantic>=1.10.0
+deepgram-sdk>=2.11.0
+>>>>>>> f9c00ce7acd928a1089fc02ab4cdf9e509bf5fc5
