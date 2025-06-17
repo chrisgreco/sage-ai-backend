@@ -1,73 +1,78 @@
 #!/usr/bin/env python3
 
 """
-Multi-Personality Debate Agent for Sage AI
-==========================================
-
-This is the CORRECT implementation following LiveKit Agents official patterns.
-It replaces our complex audio bridge system with a simple, standard approach
-that manages all 5 AI debate personalities in a single worker.
-
-Based on Context7 MCP analysis of official LiveKit Agents documentation.
+Sage AI Multi-Personality Debate Agent
+Provides 5 distinct AI personalities for structured philosophical debates
 """
 
+import os
+import sys
 import asyncio
 import logging
-import os
-from typing import Dict
+import time
+from typing import Dict, List, Optional
+from dataclasses import dataclass
 from dotenv import load_dotenv
 
 # Load environment variables first
 load_dotenv()
 
-# Configure logging early
-logging.basicConfig(level=logging.INFO)
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
-# Knowledge base integration
-from knowledge_base_manager import initialize_knowledge_bases, get_agent_knowledge
-
-# Supabase memory integration for persistent conversation memory
+# LiveKit Agents imports - these MUST be available
 try:
-    from supabase_memory_manager import (
-        create_or_get_debate_room, 
-        store_debate_segment, 
-        get_debate_memory, 
-        store_ai_memory,
-        memory_manager
-    )
-    SUPABASE_AVAILABLE = True
-    logger.info("✅ Supabase memory manager available")
-except ImportError as e:
-    SUPABASE_AVAILABLE = False
-    logger.warning(f"⚠️ Supabase memory manager not available: {e}")
-    # Create dummy functions to prevent errors
-    async def create_or_get_debate_room(*args, **kwargs): return None
-    async def store_debate_segment(*args, **kwargs): return False
-    async def get_debate_memory(*args, **kwargs): return {"recent_segments": [], "session_summaries": [], "personality_memories": {}}
-    async def store_ai_memory(*args, **kwargs): return False
-
-# Core LiveKit Agents imports (correct pattern)
-try:
+    from livekit import agents
     from livekit.agents import (
-        Agent,
+        Agent, 
         AgentSession, 
-        JobContext,
-        RunContext,
-        WorkerOptions,
-        cli,
-        function_tool,
+        JobContext, 
+        RunContext, 
+        WorkerOptions, 
+        cli, 
+        function_tool
     )
-    
-    # OpenAI Realtime API and turn detection (simplified approach)
     from livekit.plugins import openai
     from livekit.plugins.turn_detector.english import EnglishModel
-    
     LIVEKIT_AVAILABLE = True
+    logger.info("✅ LiveKit Agents successfully imported")
 except ImportError as e:
+    logger.error(f"❌ LiveKit Agents import failed: {e}")
+    logger.error("Install with: pip install 'livekit-agents[openai,turn-detector]>=1.0'")
     LIVEKIT_AVAILABLE = False
-    print(f"LiveKit Agents not available: {e}")
-    print("Install with: pip install 'livekit-agents[openai,turn-detector]>=1.0'")
+
+# Memory system imports (optional)
+try:
+    from supabase_memory_manager import (
+        create_or_get_debate_room,
+        store_debate_segment,
+        get_debate_memory,
+        SUPABASE_AVAILABLE
+    )
+    logger.info("✅ Supabase memory system available")
+except ImportError as e:
+    logger.warning(f"⚠️ Supabase memory system not available: {e}")
+    SUPABASE_AVAILABLE = False
+
+# Knowledge system imports (optional)
+try:
+    from knowledge_base_manager import initialize_knowledge_bases, get_agent_knowledge
+    KNOWLEDGE_AVAILABLE = True
+    logger.info("✅ Knowledge system available")
+except ImportError as e:
+    logger.warning(f"⚠️ Knowledge system not available: {e}")
+    KNOWLEDGE_AVAILABLE = False
+    
+    # Provide fallback functions
+    async def initialize_knowledge_bases():
+        return False
+    
+    async def get_agent_knowledge(agent_name, query, max_items=3):
+        return []
 
 class DebatePersonalities:
     """AI Debate Personalities with distinct characteristics"""
@@ -109,35 +114,34 @@ class DebatePersonalities:
     }
     
     SOLON = {
-        "name": "Solon", 
+        "name": "Solon",
         "voice": "shimmer",
-        "instructions": """You are Solon, the ancient lawgiver and moderator. Your role is to ensure 
-        fair discourse, enforce speaking order, and guide the debate structure. You maintain civility 
-        and ensure all voices are heard. Keep discussions on track, manage time, and ensure productive 
-        dialogue. Step in when debates become unproductive."""
+        "instructions": """You are Solon, the wise lawgiver and moderator. Your role is to maintain 
+        order, ensure all voices are heard, and guide the discussion constructively. You facilitate 
+        fair debate, summarize key points, and help the group reach meaningful conclusions. 
+        Maintain neutrality while encouraging productive discourse."""
     }
 
 class DebateAgent(Agent):
-    """Single agent that can embody different personalities"""
+    """Enhanced Agent with personality switching and knowledge access"""
     
     def __init__(self, personality: Dict):
+        super().__init__(instructions=personality["instructions"])
         self.personality = personality
-        super().__init__(
-            instructions=personality["instructions"]
-        )
-        
+        logger.info(f"Initialized {personality['name']} agent")
+
     @function_tool
     async def switch_personality(
         self,
         context: RunContext,
         new_personality: str,
     ):
-        """Switch to a different debate personality
+        """Switch to a different AI personality during the debate
         
         Args:
-            new_personality: The personality to switch to (socrates, aristotle, buddha, hermes, solon)
+            new_personality: Name of personality to switch to (Socrates, Aristotle, Buddha, Hermes, Solon)
         """
-        personalities = {
+        personality_map = {
             "socrates": DebatePersonalities.SOCRATES,
             "aristotle": DebatePersonalities.ARISTOTLE, 
             "buddha": DebatePersonalities.BUDDHA,
@@ -145,13 +149,12 @@ class DebateAgent(Agent):
             "solon": DebatePersonalities.SOLON
         }
         
-        if new_personality.lower() in personalities:
-            selected = personalities[new_personality.lower()]
-            new_agent = DebateAgent(selected)
-            logger.info(f"Switching to {selected['name']}")
-            return new_agent, f"Now speaking as {selected['name']}"
-        
-        return None, f"Unknown personality: {new_personality}"
+        new_personality_lower = new_personality.lower()
+        if new_personality_lower in personality_map:
+            self.personality = personality_map[new_personality_lower]
+            return f"Switched to {self.personality['name']}. {self.personality['instructions'][:100]}..."
+        else:
+            return f"Personality '{new_personality}' not found. Available: {', '.join(personality_map.keys())}"
 
     @function_tool
     async def get_debate_topic(
@@ -160,7 +163,7 @@ class DebateAgent(Agent):
     ):
         """Get the current debate topic"""
         topic = os.getenv("DEBATE_TOPIC", "The impact of AI on society")
-        return {"topic": topic}
+        return f"Current debate topic: {topic}"
 
     @function_tool
     async def access_knowledge(
@@ -173,6 +176,9 @@ class DebateAgent(Agent):
         Args:
             query: The query or context to search for relevant knowledge
         """
+        if not KNOWLEDGE_AVAILABLE:
+            return {"knowledge": "Knowledge system not available", "sources": []}
+            
         try:
             agent_name = self.personality["name"].lower()
             knowledge_items = await get_agent_knowledge(agent_name, query, max_items=3)
@@ -193,66 +199,40 @@ class DebateAgent(Agent):
             logger.error(f"Knowledge access error: {e}")
             return {"error": f"Knowledge access failed: {str(e)}"}
 
-    @function_tool
-    async def summarize_key_points(
-        self,
-        context: RunContext,
-        topic: str = "",
-    ):
-        """Summarize key points from the debate so far for memory retention
-        
-        Args:
-            topic: Optional specific topic to focus the summary on
-        """
-        try:
-            # This would be enhanced to maintain conversation summaries
-            # For now, it helps with memory management instructions
-            summary_instruction = f"""As {self.personality['name']}, I maintain awareness of:
-            
-1. Key arguments made by each participant
-2. Important questions raised (especially by Socrates)
-3. Logical frameworks presented (especially by Aristotle)  
-4. Conflict resolution points (especially by Buddha)
-5. Synthesis attempts (especially by Hermes)
-6. Moderation decisions (especially by Solon)
-
-Focus: {topic if topic else 'Overall debate progression'}"""
-
-            return {"summary_context": summary_instruction}
-            
-        except Exception as e:
-            logger.error(f"Summarization error: {e}")
-            return {"error": f"Summarization failed: {str(e)}"}
-
 async def entrypoint(ctx: JobContext):
     """Main entrypoint following official LiveKit Agents pattern"""
     
-    logger.info("Starting Sage AI Multi-Personality Debate Agent")
+    logger.info("🎭 Starting Sage AI Multi-Personality Debate Agent")
     
-    # Initialize knowledge bases
-    logger.info("🧠 Initializing knowledge bases...")
-    knowledge_ready = await initialize_knowledge_bases()
-    if knowledge_ready:
-        logger.info("✅ Knowledge bases loaded successfully")
-    else:
-        logger.warning("⚠️ Knowledge bases failed to load, continuing without specialized knowledge")
+    # Initialize knowledge bases if available
+    if KNOWLEDGE_AVAILABLE:
+        logger.info("🧠 Initializing knowledge bases...")
+        knowledge_ready = await initialize_knowledge_bases()
+        if knowledge_ready:
+            logger.info("✅ Knowledge bases loaded successfully")
+        else:
+            logger.warning("⚠️ Knowledge bases failed to load, continuing without specialized knowledge")
     
-    # Connect to room
+    # Connect to room - this is critical for LiveKit agents
+    logger.info("🔗 Connecting to LiveKit room...")
     await ctx.connect()
+    logger.info(f"✅ Connected to room: {ctx.room.name}")
     
-    # Get debate topic from environment or use default
+    # Get debate configuration from environment
     topic = os.getenv("DEBATE_TOPIC", "The impact of AI on society")
     room_name = os.getenv("ROOM_NAME", ctx.room.name)
     
-    logger.info(f"Room: {room_name}")
-    logger.info(f"Topic: {topic}")
+    logger.info(f"🏛️ Room: {room_name}")
+    logger.info(f"💬 Topic: {topic}")
     
     # Initialize Supabase memory for persistent conversation storage
     room_id = None
+    memory_context = ""
+    
     if SUPABASE_AVAILABLE:
         try:
             # Create or retrieve debate room in Supabase
-            room_token = room_name  # Using room name as token for now
+            room_token = room_name  # Using room name as token
             room_id = await create_or_get_debate_room(
                 room_token=room_token,
                 topic=topic,
@@ -263,6 +243,10 @@ async def entrypoint(ctx: JobContext):
             memory_data = await get_debate_memory(room_id)
             if memory_data["recent_segments"]:
                 logger.info(f"📚 Loaded {len(memory_data['recent_segments'])} conversation segments from memory")
+                # Add memory context to instructions
+                recent_summary = memory_data.get("session_summaries", [])
+                if recent_summary:
+                    memory_context = f"\n\nConversation Memory:\n{recent_summary[-1]}"
             
             logger.info(f"✅ Supabase memory initialized for room {room_id}")
         except Exception as e:
@@ -272,20 +256,11 @@ async def entrypoint(ctx: JobContext):
     # Start with Solon as moderator
     moderator = DebateAgent(DebatePersonalities.SOLON)
     
-    # Add memory context to agent instructions if available
-    memory_context = ""
-    if room_id and SUPABASE_AVAILABLE:
-        try:
-            memory_data = await get_debate_memory(room_id)
-            if memory_data["session_summaries"]:
-                memory_context = f"\n\nConversation Memory:\n{memory_data['session_summaries'][-1] if memory_data['session_summaries'] else ''}"
-        except Exception as e:
-            logger.warning(f"Memory context loading failed: {e}")
-    
     # Enhanced instructions with memory awareness
     enhanced_instructions = moderator.personality["instructions"] + memory_context
     
     # Create agent session with OpenAI Realtime API
+    logger.info("🤖 Creating agent session with OpenAI Realtime API...")
     session = AgentSession(
         llm=openai.realtime.RealtimeModel(
             voice="shimmer",
@@ -298,6 +273,7 @@ async def entrypoint(ctx: JobContext):
     )
     
     # Start the session
+    logger.info("🚀 Starting agent session...")
     await session.start(
         agent=moderator,
         room=ctx.room
@@ -317,6 +293,7 @@ We have five AI personalities ready to engage:
 
 {"Continuing our previous discussion..." if memory_context else "Let's begin our philosophical exploration!"}"""
     
+    logger.info("💬 Generating initial greeting...")
     await session.generate_reply(instructions=greeting)
     
     # Store initial greeting in memory if available
@@ -329,38 +306,44 @@ We have five AI personalities ready to engage:
                 content=greeting,
                 segment_type="greeting"
             )
+            logger.info("💾 Stored greeting in memory")
         except Exception as e:
             logger.warning(f"Failed to store greeting in memory: {e}")
     
-    logger.info("Debate session started successfully")
+    logger.info("✅ Debate session started successfully! Agents are now active in the room.")
 
 def main():
-    """Main function to run the agent"""
+    """Main function to run the agent with proper error handling"""
     
+    # Check if LiveKit is available
     if not LIVEKIT_AVAILABLE:
-        logger.error("LiveKit Agents not available")
+        logger.error("❌ LiveKit Agents not available")
         logger.error("Install with: pip install 'livekit-agents[openai,turn-detector]>=1.0'")
-        return
+        sys.exit(1)
     
     # Verify environment variables
     required_vars = ["LIVEKIT_API_KEY", "LIVEKIT_API_SECRET", "LIVEKIT_URL", "OPENAI_API_KEY"]
     missing_vars = [var for var in required_vars if not os.getenv(var)]
     
     if missing_vars:
-        logger.error(f"Missing required environment variables: {missing_vars}")
+        logger.error(f"❌ Missing required environment variables: {missing_vars}")
         logger.error("Please set these in your environment or .env file")
-        return
+        sys.exit(1)
     
-    logger.info("All required environment variables found")
-    logger.info("Starting Multi-Personality Debate Agent...")
+    logger.info("✅ All required environment variables found")
+    logger.info("🚀 Starting Multi-Personality Debate Agent...")
     
-    # Run with proper WorkerOptions
-    cli.run_app(
-        WorkerOptions(
-            entrypoint_fnc=entrypoint,
-            agent_name="sage-debate-agent"
+    # Run with proper WorkerOptions - this handles CLI commands like 'start', 'dev', 'console'
+    try:
+        cli.run_app(
+            WorkerOptions(
+                entrypoint_fnc=entrypoint,
+                agent_name="sage-debate-agent"
+            )
         )
-    )
+    except Exception as e:
+        logger.error(f"❌ Failed to start agent: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
     main() 

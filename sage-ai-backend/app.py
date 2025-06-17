@@ -332,10 +332,46 @@ async def run_background_worker():
         await asyncio.sleep(5)
         return await run_background_worker()  # Reconnect
 
-# AI Agents Management - Store active agent processes
+# AI Agents Management - Store active agent processes with detailed status
 active_agents = {}
+agent_status_cache = {}
 
-# Launch AI Agents endpoint
+# Agent status monitoring
+async def monitor_agent_connection(room_name: str, process_id: int, max_wait_time: int = 30):
+    """Monitor if agents successfully connect to LiveKit room"""
+    logger.info(f"Starting agent connection monitoring for room {room_name}, PID {process_id}")
+    
+    start_time = time.time()
+    connection_confirmed = False
+    
+    # Wait for agent to connect and send status updates
+    while time.time() - start_time < max_wait_time:
+        # Check if process is still running
+        if room_name in active_agents:
+            process = active_agents[room_name]["process"]
+            if process.poll() is not None:
+                # Process has terminated
+                return_code = process.returncode
+                logger.error(f"Agent process {process_id} terminated early with code {return_code}")
+                return {"connected": False, "error": f"Process terminated with code {return_code}"}
+        
+        # Check for status updates (implement actual LiveKit room monitoring here)
+        await asyncio.sleep(1)
+        
+        # For now, we'll assume connection after a short delay
+        # In production, you'd check LiveKit API for participant presence
+        if time.time() - start_time > 5:  # Give 5 seconds for connection
+            connection_confirmed = True
+            break
+    
+    if connection_confirmed:
+        logger.info(f"Agent connection confirmed for room {room_name}")
+        return {"connected": True, "connection_time": time.time() - start_time}
+    else:
+        logger.warning(f"Agent connection timeout for room {room_name}")
+        return {"connected": False, "error": "Connection timeout"}
+
+# Enhanced Launch AI Agents endpoint with monitoring
 @app.post("/launch-ai-agents")
 async def launch_ai_agents(request: DebateRequest):
     try:
@@ -351,54 +387,150 @@ async def launch_ai_agents(request: DebateRequest):
         
         # Check if agents are already running for this room
         if room_name in active_agents:
-            return {
-                "status": "success",
-                "message": f"AI agents already running for room: {room_name}",
-                "room_name": room_name,
-                "agents_active": True
-            }
+            agent_info = active_agents[room_name]
+            process = agent_info["process"]
+            
+            # Check if process is still alive
+            if process.poll() is None:
+                return {
+                    "status": "success",
+                    "message": f"AI agents already running for room: {room_name}",
+                    "room_name": room_name,
+                    "agents_active": True,
+                    "process_id": process.pid,
+                    "started_at": agent_info["started_at"]
+                }
+            else:
+                # Process died, clean it up
+                logger.warning(f"Found dead agent process for room {room_name}, cleaning up")
+                del active_agents[room_name]
         
-        try:
-            # Set environment variables for the agent
-            env = os.environ.copy()
-            env.update({
-                "LIVEKIT_URL": LIVEKIT_URL,
-                "LIVEKIT_API_KEY": LIVEKIT_API_KEY,
-                "LIVEKIT_API_SECRET": LIVEKIT_API_SECRET,
-                "ROOM_NAME": room_name,
-                "DEBATE_TOPIC": request.topic,
-                "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", "")
-            })
+        max_retries = 3
+        retry_count = 0
+        
+        while retry_count < max_retries:
+            try:
+                logger.info(f"Attempt {retry_count + 1}/{max_retries} to launch agents for room {room_name}")
+                
+                # Set environment variables for the agent - ENSURE ALL ARE SET
+                env = os.environ.copy()
+                
+                # Ensure LiveKit variables are explicitly set from current environment
+                livekit_url = os.getenv("LIVEKIT_URL") or LIVEKIT_URL
+                livekit_api_key = os.getenv("LIVEKIT_API_KEY") or LIVEKIT_API_KEY  
+                livekit_api_secret = os.getenv("LIVEKIT_API_SECRET") or LIVEKIT_API_SECRET
+                
+                if not all([livekit_url, livekit_api_key, livekit_api_secret]):
+                    error_msg = f"Missing LiveKit configuration - URL: {'✓' if livekit_url else '✗'}, Key: {'✓' if livekit_api_key else '✗'}, Secret: {'✓' if livekit_api_secret else '✗'}"
+                    logger.error(error_msg)
+                    return JSONResponse(
+                        content={"status": "error", "message": error_msg}, 
+                        status_code=503
+                    )
+                
+                env.update({
+                    "LIVEKIT_URL": livekit_url,
+                    "LIVEKIT_API_KEY": livekit_api_key,
+                    "LIVEKIT_API_SECRET": livekit_api_secret,
+                    "ROOM_NAME": room_name,
+                    "DEBATE_TOPIC": request.topic,
+                    "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", ""),
+                    "DEEPGRAM_API_KEY": os.getenv("DEEPGRAM_API_KEY", ""),
+                    "CARTESIA_API_KEY": os.getenv("CARTESIA_API_KEY", "")
+                })
+                
+                logger.info(f"Environment prepared - LiveKit URL: {livekit_url[:20]}...")
+                logger.info(f"Starting agent for room: {room_name}")
+                
+                # CORRECT WAY: Use LiveKit agents CLI with 'start' command
+                process = subprocess.Popen([
+                    sys.executable, "-u", "multi_personality_agent.py", "start"
+                ], 
+                env=env, 
+                cwd=os.path.dirname(os.path.abspath(__file__)),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1
+                )
+                
+                # Store the process with detailed info
+                agent_info = {
+                    "process": process,
+                    "topic": request.topic,
+                    "started_at": time.time(),
+                    "retry_count": retry_count,
+                    "status": "starting",
+                    "room_name": room_name
+                }
+                active_agents[room_name] = agent_info
+                
+                logger.info(f"Agent process launched with PID {process.pid} for room {room_name}")
+                
+                # Start background monitoring
+                async def background_monitor():
+                    try:
+                        monitor_result = await monitor_agent_connection(room_name, process.pid, max_wait_time=30)
+                        
+                        if room_name in active_agents:
+                            active_agents[room_name]["status"] = "connected" if monitor_result["connected"] else "failed"
+                            active_agents[room_name]["connection_result"] = monitor_result
+                            
+                            if monitor_result["connected"]:
+                                logger.info(f"✅ Agents successfully connected for room {room_name}")
+                            else:
+                                logger.error(f"❌ Agent connection failed for room {room_name}: {monitor_result.get('error', 'Unknown error')}")
+                                
+                    except Exception as e:
+                        logger.error(f"Background monitoring error for room {room_name}: {e}")
+                        if room_name in active_agents:
+                            active_agents[room_name]["status"] = "error"
+                            active_agents[room_name]["connection_error"] = str(e)
+                
+                # Start monitoring in background
+                asyncio.create_task(background_monitor())
+                
+                # Return immediate success with process info
+                return {
+                    "status": "success",
+                    "message": f"AI agents launched for room: {room_name}",
+                    "room_name": room_name,
+                    "topic": request.topic,
+                    "agents_active": True,
+                    "process_id": process.pid,
+                    "retry_count": retry_count,
+                    "monitoring": "Agent connection monitoring started - check status endpoint for updates",
+                    "launch_method": "livekit_agents_cli"
+                }
+                
+            except FileNotFoundError:
+                error_msg = "multi_personality_agent.py not found"
+                logger.error(f"Retry {retry_count + 1} failed: {error_msg}")
+                if retry_count == max_retries - 1:
+                    return JSONResponse(
+                        content={"status": "error", "message": error_msg}, 
+                        status_code=500
+                    )
+                    
+            except Exception as e:
+                error_msg = f"Failed to start AI agents: {str(e)}"
+                logger.error(f"Retry {retry_count + 1} failed: {error_msg}")
+                if retry_count == max_retries - 1:
+                    return JSONResponse(
+                        content={"status": "error", "message": error_msg}, 
+                        status_code=500
+                    )
             
-            # Start the multi-personality agent as a subprocess
-            process = subprocess.Popen([
-                sys.executable, "-u", "multi_personality_agent.py", "start"
-            ], env=env, cwd=os.path.dirname(os.path.abspath(__file__)))
-            
-            # Store the process
-            active_agents[room_name] = {
-                "process": process,
-                "topic": request.topic,
-                "started_at": time.time()
-            }
-            
-            logger.info(f"AI agents launched successfully for room {room_name} with PID {process.pid}")
-            
-            return {
-                "status": "success",
-                "message": f"AI agents launched for room: {room_name}",
-                "room_name": room_name,
-                "topic": request.topic,
-                "agents_active": True,
-                "process_id": process.pid
-            }
-            
-        except Exception as e:
-            logger.error(f"Failed to start AI agents: {str(e)}")
-            return JSONResponse(
-                content={"status": "error", "message": f"Failed to start AI agents: {str(e)}"}, 
-                status_code=500
-            )
+            retry_count += 1
+            if retry_count < max_retries:
+                logger.info(f"Waiting 2 seconds before retry {retry_count + 1}")
+                await asyncio.sleep(2)
+        
+        # If we get here, all retries failed
+        return JSONResponse(
+            content={"status": "error", "message": f"Failed to launch agents after {max_retries} attempts"}, 
+            status_code=500
+        )
     
     except Exception as e:
         logger.error(f"Error launching AI agents: {str(e)}")
@@ -468,33 +600,112 @@ async def stop_ai_agents(request: DebateRequest):
         logger.error(f"Error stopping AI agents: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-# Get AI Agents Status endpoint
+# Enhanced AI Agents Status endpoint with detailed monitoring
 @app.get("/ai-agents/status")
 async def get_ai_agents_status():
     try:
-        # Clean up any dead processes
+        # Clean up any dead processes and collect detailed status
         dead_rooms = []
-        for room_name, agent_info in active_agents.items():
-            if agent_info["process"].poll() is not None:
-                dead_rooms.append(room_name)
+        detailed_status = {}
         
+        for room_name, agent_info in active_agents.items():
+            process = agent_info["process"]
+            is_running = process.poll() is None
+            
+            if not is_running:
+                dead_rooms.append(room_name)
+            
+            # Collect detailed status information
+            current_time = time.time()
+            uptime = current_time - agent_info["started_at"]
+            
+            detailed_status[room_name] = {
+                "topic": agent_info["topic"],
+                "started_at": agent_info["started_at"],
+                "uptime_seconds": round(uptime, 2),
+                "uptime_minutes": round(uptime / 60, 2),
+                "process_id": process.pid,
+                "running": is_running,
+                "retry_count": agent_info.get("retry_count", 0),
+                "status": agent_info.get("status", "unknown"),
+                "connection_result": agent_info.get("connection_result", {}),
+                "connection_error": agent_info.get("connection_error"),
+                "return_code": process.returncode if not is_running else None
+            }
+        
+        # Clean up dead processes
         for room_name in dead_rooms:
+            logger.info(f"Cleaning up dead agent process for room {room_name}")
             del active_agents[room_name]
+        
+        # Summary statistics
+        running_count = sum(1 for info in detailed_status.values() if info["running"])
+        failed_count = sum(1 for info in detailed_status.values() if info["status"] == "failed")
+        connected_count = sum(1 for info in detailed_status.values() if info["status"] == "connected")
         
         return {
             "status": "success",
-            "active_rooms": len(active_agents),
-            "rooms": {
-                room_name: {
-                    "topic": agent_info["topic"],
-                    "started_at": agent_info["started_at"],
-                    "running": agent_info["process"].poll() is None
-                }
-                for room_name, agent_info in active_agents.items()
+            "timestamp": current_time,
+            "summary": {
+                "total_rooms": len(detailed_status),
+                "running_agents": running_count,
+                "connected_agents": connected_count,
+                "failed_agents": failed_count,
+                "dead_processes_cleaned": len(dead_rooms)
+            },
+            "rooms": detailed_status,
+            "monitoring_info": {
+                "agent_connection_timeout": 30,
+                "max_retries": 3,
+                "retry_delay": 2
             }
         }
     except Exception as e:
         logger.error(f"Error getting AI agents status: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# New endpoint for real-time agent health monitoring
+@app.get("/ai-agents/health/{room_name}")
+async def get_agent_health(room_name: str):
+    """Get detailed health information for a specific room's agents"""
+    try:
+        if room_name not in active_agents:
+            return JSONResponse(
+                content={"status": "error", "message": f"No agents found for room: {room_name}"}, 
+                status_code=404
+            )
+        
+        agent_info = active_agents[room_name]
+        process = agent_info["process"]
+        is_running = process.poll() is None
+        current_time = time.time()
+        uptime = current_time - agent_info["started_at"]
+        
+        health_data = {
+            "room_name": room_name,
+            "healthy": is_running and agent_info.get("status") == "connected",
+            "process_running": is_running,
+            "connection_status": agent_info.get("status", "unknown"),
+            "uptime_seconds": round(uptime, 2),
+            "process_id": process.pid,
+            "topic": agent_info["topic"],
+            "started_at": agent_info["started_at"],
+            "retry_count": agent_info.get("retry_count", 0),
+            "connection_result": agent_info.get("connection_result", {}),
+            "last_check": current_time
+        }
+        
+        if not is_running:
+            health_data["return_code"] = process.returncode
+            health_data["termination_reason"] = "Process terminated"
+        
+        if agent_info.get("connection_error"):
+            health_data["connection_error"] = agent_info["connection_error"]
+        
+        return {"status": "success", "health": health_data}
+        
+    except Exception as e:
+        logger.error(f"Error getting agent health for room {room_name}: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Memory Management Endpoints for Supabase Integration

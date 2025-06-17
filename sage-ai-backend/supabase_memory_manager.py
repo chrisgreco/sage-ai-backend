@@ -321,6 +321,9 @@ class SupabaseMemoryManager:
 # Global memory manager instance
 memory_manager = SupabaseMemoryManager()
 
+# Export availability flag for easy import
+SUPABASE_AVAILABLE = memory_manager.client is not None
+
 # Convenience functions for easy import
 async def create_or_get_debate_room(room_name: str, debate_topic: str, livekit_token: str, participants: List[Dict] = None) -> Optional[str]:
     """Convenience function to create or get a debate room"""
