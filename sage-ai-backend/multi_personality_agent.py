@@ -20,6 +20,14 @@ from dotenv import load_dotenv
 # Knowledge base integration
 from knowledge_base_manager import initialize_knowledge_bases, get_agent_knowledge
 
+# Supabase memory integration for persistent conversation memory
+from supabase_memory_manager import (
+    create_or_get_debate_room, 
+    store_debate_segment, 
+    get_debate_memory, 
+    store_ai_memory
+)
+
 # Core LiveKit Agents imports (correct pattern)
 try:
     from livekit.agents import (
