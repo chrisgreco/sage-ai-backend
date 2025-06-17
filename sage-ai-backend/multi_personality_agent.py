@@ -333,12 +333,11 @@ def main():
     logger.info("✅ All required environment variables found")
     logger.info("🚀 Starting Multi-Personality Debate Agent...")
     
-    # Run with proper WorkerOptions - this handles CLI commands like 'start', 'dev', 'console'
+    # Run with proper WorkerOptions - REMOVE agent_name for automatic dispatch
     try:
         cli.run_app(
             WorkerOptions(
-                entrypoint_fnc=entrypoint,
-                agent_name="sage-debate-agent"
+                entrypoint_fnc=entrypoint
             )
         )
     except Exception as e:
