@@ -298,10 +298,10 @@ class MultiAgentDebateSystem:
             agent = Agent(
                 instructions=personality.instructions,
                 tools=[
-                    self.get_debate_status_tool(),
-                    self.request_speaking_turn_tool(), 
-                    self.add_key_point_tool(),
-                    self.flag_claim_for_verification_tool() if agent_id == "fact_checker" else None
+                    self.get_debate_status_tool,
+                    self.request_speaking_turn_tool, 
+                    self.add_key_point_tool,
+                    self.flag_claim_for_verification_tool if agent_id == "fact_checker" else None
                 ]
             )
             
