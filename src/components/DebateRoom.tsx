@@ -118,7 +118,6 @@ const DebateRoom: React.FC = () => {
     
     // Forward audio data to AI moderation if available
     if (aiModerationCallbackRef.current) {
-      console.log('DebateRoom: Forwarding audio to AI moderation, length:', audioData.length);
       aiModerationCallbackRef.current(audioData);
     } else {
       console.warn('DebateRoom: AI moderation callback not available');

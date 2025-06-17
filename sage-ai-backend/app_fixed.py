@@ -407,18 +407,6 @@ async def get_participant_token(request: DebateRequest):
         logger.error(f"Error generating participant token: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error generating token: {str(e)}")
 
-async def run_background_worker():
-    logger.info("Background worker started - monitoring for requests...")
-    try:
-        while True:
-            await asyncio.sleep(10)
-            logger.debug("Background worker heartbeat")
-    except KeyboardInterrupt:
-        logger.info("Background worker stopped")
-    except Exception as e:
-        logger.error(f"Background worker error: {e}")
-        raise
-
 # Main execution
 if __name__ == "__main__":
     # Register signal handlers for graceful shutdown
@@ -441,4 +429,16 @@ if __name__ == "__main__":
         uvicorn.run(app, host="0.0.0.0", port=8000)
     else:
         logger.info("Running in background worker mode")
-        asyncio.run(run_background_worker()) 
+        asyncio.run(run_background_worker())
+
+async def run_background_worker():
+    logger.info("Background worker started - monitoring for requests...")
+    try:
+        while True:
+            await asyncio.sleep(10)
+            logger.debug("Background worker heartbeat")
+    except KeyboardInterrupt:
+        logger.info("Background worker stopped")
+    except Exception as e:
+        logger.error(f"Background worker error: {e}")
+        raise 

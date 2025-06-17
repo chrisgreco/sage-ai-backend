@@ -79,25 +79,29 @@ export const useAIModeration = ({ roomId, isConnected, agents }: UseAIModeration
           new TextEncoder().encode(JSON.stringify(audioMessage))
         );
         
-        console.log('Sent audio data notification to agent:', {
-          length: audioData.length,
-          timestamp: audioMessage.timestamp,
-          count: audioDataReceived
-        });
+        // // console.log('Sent audio data notification to agent:', {
+        //   length: audioData.length,
+        //   timestamp: audioMessage.timestamp,
+        //   count: audioDataReceived
+        // });
 
-        // Add a test transcript entry every 100 audio packets to verify the pipeline
-        if (audioDataReceived % 100 === 0 && audioDataReceived > 0) {
-          console.log(`Audio pipeline test: sent ${audioDataReceived} audio packets`);
+        // Add a test transcript entry every 1000 audio packets to verify the pipeline
+        if (audioDataReceived % 1000 === 0 && audioDataReceived > 0) {
+          console.log(`Audio pipeline: processed ${audioDataReceived} packets`);
         }
+
       } catch (err) {
         console.error('Error sending audio data to agent:', err);
       }
     } else {
-      console.log('Room not ready for audio data, state:', { 
-        roomExists: !!room, 
-        aiConnected,
-        audioLength: audioData.length 
-      });
+      // Only log room state issues every 100th packet
+      if (audioDataReceived % 100 === 0) {
+        console.log('Room not ready for audio data, state:', { 
+          roomExists: !!room, 
+          aiConnected,
+          packetsDropped: audioDataReceived
+        });
+      }
     }
   }, [room, aiConnected, audioDataReceived]);
 
