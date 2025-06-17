@@ -11,8 +11,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import subprocess
 import sys
-import signal
-from typing import Dict, Optional
 
 # Configure logging first
 logging.basicConfig(level=logging.INFO)
@@ -38,25 +36,13 @@ LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY")
 LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY", "")
-CARTESIA_API_KEY = os.getenv("CARTESIA_API_KEY", "")
 SERVICE_MODE = os.getenv("SERVICE_MODE", "web").lower()  # Default to web service mode
-
-# Set LiveKit environment variables for the library to use automatically
-if LIVEKIT_API_KEY and LIVEKIT_API_SECRET:
-    os.environ["LIVEKIT_API_KEY"] = LIVEKIT_API_KEY
-    os.environ["LIVEKIT_API_SECRET"] = LIVEKIT_API_SECRET
-    logger.info(f"LiveKit environment variables set: API_KEY={LIVEKIT_API_KEY[:8]}...")
-else:
-    logger.warning("LiveKit API credentials not found in environment")
 
 # Configure OpenAI
 openai.api_key = OPENAI_API_KEY
 
 # Create FastAPI instance
 app = FastAPI()
-
-# Global variable to track running AI agent processes
-running_agents: Dict[str, subprocess.Popen] = {}
 
 # Add global exception handler for validation errors
 @app.exception_handler(RequestValidationError)
@@ -84,23 +70,19 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        # Lovable specific domains
         "https://lovable.dev",
         "https://sage-liquid-glow-design.lovable.app",
         "https://1e934c03-5a1a-4df1-9eed-2c278b3ec6a8.lovableproject.com",  # Previous domain
-        "https://id-preview-1e934c03-5a1a-4df1-9eed-2c278b3ec6a8.lovable.app",  # CURRENT FRONTEND URL
+        "https://id-preview-1e934c03-5a1a-4df1-9eed-2c278b3ec6a8.lovable.app",  # ACTUAL FRONTEND URL
         "https://lovableproject.com",  # Alternative Lovable domain
-        # Local development
         "http://localhost:3000",  # Local development
         "http://localhost:5173",  # Vite dev server
-        "http://localhost:8080",  # Vite dev server (alternate port)
-        "http://localhost:8081",  # Vite dev server (when 8080 is in use)
+        "http://localhost:8080",  # Local frontend (default port)
+        "http://localhost:8081",  # Local frontend (alternate port)
         "http://127.0.0.1:3000",
         "http://127.0.0.1:5173",
         "http://127.0.0.1:8080",
         "http://127.0.0.1:8081",
-        # For production, we could use "*" but it's less secure
-        # "*"  # Uncomment this line if you need to allow all origins (not recommended)
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -109,14 +91,9 @@ app.add_middleware(
 
 # Define request models
 class DebateRequest(BaseModel):
-    topic: str = None  # Make topic optional with default
+    topic: str
     room_name: str = None
     participant_name: str = None
-
-class AIAgentRequest(BaseModel):
-    room_name: str
-    topic: str = None
-    start_agents: bool = True
 
 # Add a more flexible model for debugging
 class FlexibleDebateRequest(BaseModel):
@@ -132,42 +109,10 @@ class FlexibleDebateRequest(BaseModel):
 async def health_check():
     logger.info("Health check endpoint called")
     try:
-        return JSONResponse(content={
-            "status": "healthy", 
-            "livekit_available": livekit_available,
-            "active_agents": len(running_agents),
-            "ai_keys_configured": {
-                "openai": bool(OPENAI_API_KEY),
-                "deepgram": bool(DEEPGRAM_API_KEY), 
-                "cartesia": bool(CARTESIA_API_KEY)
-            }
-        })
+        return JSONResponse(content={"status": "healthy", "livekit_available": livekit_available})
     except Exception as e:
         logger.error(f"Error in health check endpoint: {str(e)}")
         return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
-
-@app.options("/health")
-async def health_check_options():
-    logger.info("Health check OPTIONS endpoint called")
-    headers = {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "*",
-        "Access-Control-Max-Age": "86400"
-    }
-    return JSONResponse(content={"status": "ok"}, headers=headers)
-
-# General OPTIONS handler for all endpoints
-@app.options("/{path:path}")
-async def options_handler(path: str):
-    logger.info(f"OPTIONS request for path: /{path}")
-    headers = {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
-        "Access-Control-Allow-Headers": "*",
-        "Access-Control-Max-Age": "86400"
-    }
-    return JSONResponse(content={"status": "ok"}, headers=headers)
 
 # Debug endpoint to see what the frontend is sending
 @app.post("/debug")
@@ -192,18 +137,17 @@ async def connect_to_livekit():
                 status_code=503
             )
             
-        # Initialize LiveKit API client using environment variables
-        token = AccessToken()
-        token.with_identity("sage-ai-backend")
-        jwt_token = token.to_jwt()
-        
-        logger.info("Generated connect token successfully")
+        # Initialize LiveKit API client
+        token = AccessToken(
+            api_key=LIVEKIT_API_KEY,
+            api_secret=LIVEKIT_API_SECRET
+        ).with_identity("sage-ai-backend").to_jwt()
         
         return {
             "status": "success", 
             "message": "Ready to connect to LiveKit",
             "livekit_url": LIVEKIT_URL,
-            "token": jwt_token
+            "token": token
         }
     except Exception as e:
         logger.error(f"Error connecting to LiveKit: {str(e)}")
@@ -226,243 +170,42 @@ async def connect_to_livekit_post(request: FlexibleDebateRequest = None):
                 status_code=503
             )
             
-        # Initialize LiveKit API client using environment variables
-        token = AccessToken()
-        token.with_identity("sage-ai-backend")
-        jwt_token = token.to_jwt()
-        
-        logger.info("Generated connect token successfully")
+        # Initialize LiveKit API client
+        token = AccessToken(
+            api_key=LIVEKIT_API_KEY,
+            api_secret=LIVEKIT_API_SECRET
+        ).with_identity("sage-ai-backend").to_jwt()
         
         return {
             "status": "success", 
             "message": "Ready to connect to LiveKit",
             "livekit_url": LIVEKIT_URL,
-            "token": jwt_token
+            "token": token
         }
     except Exception as e:
         logger.error(f"Error connecting to LiveKit: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-# 🚀 NEW AI AGENTS LAUNCHER ENDPOINT
-@app.post("/launch-ai-agents")
-async def launch_ai_agents(request: AIAgentRequest):
-    """
-    🎯 MAIN AI AGENTS LAUNCHER
-    
-    This endpoint starts the multi-agent AI debate system for a specific room.
-    It will launch 5 AI agents (moderator, expert, challenger, synthesizer, fact-checker)
-    who will intelligently participate in the debate with unique voices and personalities.
-    """
-    try:
-        logger.info(f"🚀 Launching AI agents for room: {request.room_name}")
-        
-        # Check if AI services are available
-        missing_keys = []
-        if not OPENAI_API_KEY:
-            missing_keys.append("OPENAI_API_KEY")
-        if not DEEPGRAM_API_KEY:
-            missing_keys.append("DEEPGRAM_API_KEY")
-        if not CARTESIA_API_KEY:
-            missing_keys.append("CARTESIA_API_KEY")
-        if not all([LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET]):
-            missing_keys.extend(["LIVEKIT_URL", "LIVEKIT_API_KEY", "LIVEKIT_API_SECRET"])
-            
-        if missing_keys:
-            return JSONResponse(
-                content={
-                    "status": "error", 
-                    "message": f"Missing required API keys: {', '.join(missing_keys)}"
-                }, 
-                status_code=503
-            )
-        
-        # Check if agents are already running for this room
-        if request.room_name in running_agents:
-            logger.info(f"AI agents already running for room: {request.room_name}")
-            return {
-                "status": "success",
-                "message": f"AI agents already active in room: {request.room_name}",
-                "room_name": request.room_name,
-                "agents_running": True
-            }
-        
-        if request.start_agents:
-            # Launch the AI agents subprocess
-            topic = request.topic or "General Discussion"
-            
-            # Generate agent token with proper permissions
-            agent_token = AccessToken()
-            agent_token.with_identity("sage-ai-agent")
-            agent_token.with_name("Sage AI Agent")
-            agent_token.with_grants(VideoGrants(
-                room_join=True,
-                room=request.room_name,
-                can_publish=True,
-                can_subscribe=True,
-                can_publish_data=True,
-                agent=True  # This is crucial for agent permissions
-            ))
-            agent_jwt = agent_token.to_jwt()
-            
-            # Set environment variables for the agent process
-            agent_env = os.environ.copy()
-            agent_env.update({
-                "LIVEKIT_URL": LIVEKIT_URL,
-                "LIVEKIT_API_KEY": LIVEKIT_API_KEY,
-                "LIVEKIT_API_SECRET": LIVEKIT_API_SECRET,
-                "LIVEKIT_AGENT_TOKEN": agent_jwt,  # Add the agent token
-                "OPENAI_API_KEY": OPENAI_API_KEY,
-                "DEEPGRAM_API_KEY": DEEPGRAM_API_KEY,
-                "CARTESIA_API_KEY": CARTESIA_API_KEY,
-                "DEBATE_TOPIC": topic,
-                "ROOM_NAME": request.room_name
-            })
-            
-            # Launch AI agents process
-            cmd = [sys.executable, "-u", "start_ai_agents.py"]
-            
-            logger.info(f"Starting AI agents with command: {' '.join(cmd)}")
-            process = subprocess.Popen(
-                cmd,
-                env=agent_env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                cwd=os.path.dirname(os.path.abspath(__file__))
-            )
-            
-            # Store the running process
-            running_agents[request.room_name] = process
-            
-            logger.info(f"✅ AI agents launched successfully for room: {request.room_name}")
-            logger.info(f"🎭 Active agents: Solon (Moderator), Aristotle (Expert), Socrates (Challenger), Hermes (Synthesizer), Buddha (Peacekeeper)")
-            
-            return {
-                "status": "success",
-                "message": f"Multi-agent AI debate system launched for room: {request.room_name}",
-                "room_name": request.room_name,
-                "topic": topic,
-                "agents_launched": [
-                    "Solon (Rule Enforcer/Moderator)",
-                    "Aristotle (Fact-Checker/Expert)",
-                    "Socrates (Clarifier/Challenger)", 
-                    "Hermes (Summarizer/Synthesizer)",
-                    "Buddha (Peacekeeper)"
-                ],
-                "agent_features": [
-                    "Unique Cartesia voices for each agent",
-                    "Real-time speech recognition via Deepgram",
-                    "Intelligent conversation triggers",
-                    "Contextual debate participation",
-                    "Evidence-based fact checking"
-                ]
-            }
-        else:
-            return {
-                "status": "success",
-                "message": "AI agents configured but not started (start_agents=false)",
-                "room_name": request.room_name
-            }
-            
-    except Exception as e:
-        logger.error(f"❌ Error launching AI agents: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Failed to launch AI agents: {str(e)}")
-
-# AI Agent status endpoint
-@app.get("/ai-agents/status")
-async def get_ai_agents_status():
-    """Check the status of running AI agent processes"""
-    try:
-        active_rooms = []
-        
-        # Clean up dead processes
-        dead_processes = []
-        for room_name, process in running_agents.items():
-            if process.poll() is not None:  # Process has terminated
-                dead_processes.append(room_name)
-            else:
-                active_rooms.append({
-                    "room_name": room_name,
-                    "process_id": process.pid,
-                    "status": "running"
-                })
-        
-        # Remove dead processes
-        for room_name in dead_processes:
-            del running_agents[room_name]
-        
-        return {
-            "status": "success",
-            "active_agent_rooms": len(active_rooms),
-            "rooms": active_rooms,
-            "total_processes_cleaned": len(dead_processes)
-        }
-    except Exception as e:
-        logger.error(f"Error checking AI agent status: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-# Stop AI agents endpoint
-@app.post("/ai-agents/stop")
-async def stop_ai_agents(request: AIAgentRequest):
-    """Stop AI agents for a specific room"""
-    try:
-        if request.room_name not in running_agents:
-            return {
-                "status": "info",
-                "message": f"No AI agents running for room: {request.room_name}",
-                "room_name": request.room_name
-            }
-        
-        process = running_agents[request.room_name]
-        
-        # Gracefully terminate the process
-        process.terminate()
-        
-        # Wait a bit for graceful shutdown
-        try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            # Force kill if it doesn't shut down gracefully
-            process.kill()
-            process.wait()
-        
-        del running_agents[request.room_name]
-        
-        logger.info(f"AI agents stopped for room: {request.room_name}")
-        
-        return {
-            "status": "success",
-            "message": f"AI agents stopped for room: {request.room_name}",
-            "room_name": request.room_name
-        }
-    except Exception as e:
-        logger.error(f"Error stopping AI agents: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Debate creation endpoint
 @app.post("/debate")
 async def create_debate(request: DebateRequest):
     try:
-        # === LOVABLE'S REQUESTED DEBUGGING ===
-        logger.info('=== DEBATE REQUEST ===')
-        logger.info(f'Request body received: {request}')
-        logger.info(f'Request topic: {request.topic}')
-        logger.info(f'Request room_name: {request.room_name}')
-        logger.info(f'Request participant_name: {request.participant_name}')
+        logger.info(f"Creating debate with request: {request}")
+        logger.info(f"Request topic: {request.topic}")
+        logger.info(f"Request room_name: {request.room_name}")
+        logger.info(f"Request participant_name: {request.participant_name}")
         
-        # For testing knowledge-enhanced agents, we'll allow debate creation even without LiveKit
-        # This enables testing the AI agent knowledge features
-        
-        # Handle missing topic by deriving it from room_name or providing default
-        if not request.topic:
-            if request.room_name:
-                # Extract topic from room name (remove timestamp if present)
-                topic_parts = request.room_name.split('-')
-                if topic_parts[-1].isdigit():  # Remove timestamp
-                    topic_parts = topic_parts[:-1]
-                request.topic = ' '.join(topic_parts).replace('-', ' ').title()
-            else:
-                request.topic = "General Debate"
+        if not livekit_available:
+            return JSONResponse(
+                content={"status": "error", "message": "LiveKit SDK not available"}, 
+                status_code=503
+            )
+            
+        if not all([LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET]):
+            return JSONResponse(
+                content={"status": "error", "message": "LiveKit configuration missing"}, 
+                status_code=503
+            )
         
         # Generate a room name if not provided
         room_name = request.room_name or f"debate-{request.topic.replace(' ', '-').lower()}"
@@ -471,60 +214,29 @@ async def create_debate(request: DebateRequest):
         participant_identity = request.participant_name or "participant"
         participant_display_name = request.participant_name or "Participant"
         
-        # Check if LiveKit is available for full functionality
-        livekit_ready = livekit_available and all([LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET])
-        
-        if livekit_ready:
-            # Create a token for the participant with proper LiveKit grants
-            token = AccessToken()
-            token.with_identity(participant_identity)
-            token.with_name(participant_display_name)
-            
-            # Set up proper video grants following LiveKit best practices
-            video_grants = VideoGrants(
+        # Create a token for the participant with room join permissions
+        token = AccessToken(
+            api_key=LIVEKIT_API_KEY,
+            api_secret=LIVEKIT_API_SECRET
+        ).with_identity(participant_identity).with_name(participant_display_name).with_grants(
+            VideoGrants(
                 room_join=True,
+                room_create=True,
                 room=room_name,
                 can_publish=True,
                 can_subscribe=True,
-                can_publish_data=True,
-                room_create=True
+                can_publish_data=True
             )
-            token.with_grants(video_grants)
-            
-            jwt_token = token.to_jwt()
-            
-            # === MORE LOVABLE DEBUGGING ===
-            logger.info(f'Generated token participant identity: {participant_identity}')
-            logger.info(f'LiveKit URL being returned: {LIVEKIT_URL}')
-            logger.info(f'Room name being returned: {room_name}')
-            logger.info(f'Token grants: room_join=True, can_publish=True, can_subscribe=True, can_publish_data=True, room_create=True')
-            logger.info(f'Using environment variables: LIVEKIT_API_KEY={LIVEKIT_API_KEY[:8]}..., LIVEKIT_API_SECRET={("***" if LIVEKIT_API_SECRET else "MISSING")}')
-        else:
-            # Testing mode - no LiveKit credentials required
-            jwt_token = "test-mode-no-livekit"
-            logger.info(f'Running in test mode - LiveKit credentials not configured')
-            logger.info(f'Room name: {room_name}')
-            logger.info(f'Participant: {participant_display_name}')
+        ).to_jwt()
         
-        logger.info('========================')
-        
-        response_data = {
+        return {
             "status": "success", 
             "message": f"Debate created on topic: {request.topic}",
             "room_name": room_name,
-            "livekit_url": LIVEKIT_URL if livekit_ready else "test-mode",
-            "token": jwt_token,
-            "participant_name": participant_display_name,
-            "topic": request.topic,
-            "ai_agents_ready": bool(OPENAI_API_KEY),
-            "ai_agents_endpoint": "/launch-ai-agents",
-            "livekit_ready": livekit_ready,
-            "knowledge_agents_available": True  # Our knowledge-enhanced agents are available
+            "livekit_url": LIVEKIT_URL,
+            "token": token,
+            "participant_name": participant_display_name
         }
-        
-        logger.info(f'=== RESPONSE BEING SENT: {response_data} ===')
-        return response_data
-        
     except Exception as e:
         logger.error(f"Error creating debate: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -533,76 +245,49 @@ async def create_debate(request: DebateRequest):
 @app.post("/participant-token")
 async def get_participant_token(request: DebateRequest):
     try:
-        logger.info(f"=== PARTICIPANT TOKEN REQUEST ===")
-        logger.info(f"Request: {request}")
-        logger.info(f"Participant name: {request.participant_name}")
-        logger.info(f"Room name: {request.room_name}")
-        logger.info(f"Topic: {request.topic}")
+        logger.info(f"Generating participant token for: {request.participant_name}")
         
-        # Check if LiveKit is available for full functionality
-        livekit_ready = livekit_available and all([LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET])
-        logger.info(f"LiveKit ready: {livekit_ready}")
-        logger.info(f"LiveKit available: {livekit_available}")
-        logger.info(f"LIVEKIT_URL: {bool(LIVEKIT_URL)}")
-        logger.info(f"LIVEKIT_API_KEY: {bool(LIVEKIT_API_KEY)}")
-        logger.info(f"LIVEKIT_API_SECRET: {bool(LIVEKIT_API_SECRET)}")
+        if not livekit_available:
+            return JSONResponse(
+                content={"status": "error", "message": "LiveKit SDK not available"}, 
+                status_code=503
+            )
+            
+        if not all([LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET]):
+            return JSONResponse(
+                content={"status": "error", "message": "LiveKit configuration missing"}, 
+                status_code=503
+            )
         
         # Require room_name and participant_name for this endpoint
         if not request.room_name or not request.participant_name:
-            logger.error(f"Missing required fields - room_name: {bool(request.room_name)}, participant_name: {bool(request.participant_name)}")
             return JSONResponse(
                 content={"status": "error", "message": "room_name and participant_name are required"}, 
                 status_code=400
             )
         
-        if livekit_ready:
-            # Create a token for the specific participant using environment variables
-            token = AccessToken()
-            token.with_identity(request.participant_name)
-            token.with_name(request.participant_name)
-            
-            # Set up proper video grants following LiveKit best practices
-            video_grants = VideoGrants(
+        # Create a token for the specific participant
+        token = AccessToken(
+            api_key=LIVEKIT_API_KEY,
+            api_secret=LIVEKIT_API_SECRET
+        ).with_identity(request.participant_name).with_name(request.participant_name).with_grants(
+            VideoGrants(
                 room_join=True,
                 room=request.room_name,
                 can_publish=True,
                 can_subscribe=True,
                 can_publish_data=True
             )
-            token.with_grants(video_grants)
-            
-            jwt_token = token.to_jwt()
-            
-            logger.info(f"Generated participant token for room: {request.room_name}, participant: {request.participant_name}")
-            logger.info(f"Participant token grants: room_join=True, can_publish=True, can_subscribe=True, can_publish_data=True")
-            
-            return {
-                "status": "success", 
-                "message": f"Token generated for participant: {request.participant_name}",
-                "room_name": request.room_name,
-                "livekit_url": LIVEKIT_URL,
-                "token": jwt_token,
-                "participant_name": request.participant_name
-            }
-        else:
-            # Testing mode - no LiveKit credentials required
-            logger.info(f"Running in test mode - generating test token for participant: {request.participant_name}")
-            logger.info(f"Room: {request.room_name}")
-            
-            response_data = {
-                "status": "success", 
-                "message": f"Test token generated for participant: {request.participant_name}",
-                "room_name": request.room_name,
-                "livekit_url": "test-mode",
-                "token": "test-mode-participant-token",
-                "participant_name": request.participant_name,
-                "livekit_ready": False,
-                "test_mode": True
-            }
-            
-            logger.info(f"=== PARTICIPANT TOKEN RESPONSE (TEST MODE): {response_data} ===")
-            return response_data
-            
+        ).to_jwt()
+        
+        return {
+            "status": "success", 
+            "message": f"Token generated for participant: {request.participant_name}",
+            "room_name": request.room_name,
+            "livekit_url": LIVEKIT_URL,
+            "token": token,
+            "participant_name": request.participant_name
+        }
     except Exception as e:
         logger.error(f"Error generating participant token: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
