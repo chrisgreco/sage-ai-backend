@@ -93,8 +93,12 @@ app.add_middleware(
         # Local development
         "http://localhost:3000",  # Local development
         "http://localhost:5173",  # Vite dev server
+        "http://localhost:8080",  # Vite dev server (alternate port)
+        "http://localhost:8081",  # Vite dev server (when 8080 is in use)
         "http://127.0.0.1:3000",
         "http://127.0.0.1:5173",
+        "http://127.0.0.1:8080",
+        "http://127.0.0.1:8081",
         # For production, we could use "*" but it's less secure
         # "*"  # Uncomment this line if you need to allow all origins (not recommended)
     ],
@@ -141,6 +145,29 @@ async def health_check():
     except Exception as e:
         logger.error(f"Error in health check endpoint: {str(e)}")
         return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
+
+@app.options("/health")
+async def health_check_options():
+    logger.info("Health check OPTIONS endpoint called")
+    headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Max-Age": "86400"
+    }
+    return JSONResponse(content={"status": "ok"}, headers=headers)
+
+# General OPTIONS handler for all endpoints
+@app.options("/{path:path}")
+async def options_handler(path: str):
+    logger.info(f"OPTIONS request for path: /{path}")
+    headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Max-Age": "86400"
+    }
+    return JSONResponse(content={"status": "ok"}, headers=headers)
 
 # Debug endpoint to see what the frontend is sending
 @app.post("/debug")
