@@ -17,6 +17,10 @@ import time
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Force redeploy to pick up Supabase environment variables - 2025-01-17
+
+# Force redeploy to pick up Supabase environment variables - 2025-01-17
+
 # Supabase memory integration for persistent conversation storage
 try:
     from supabase_memory_manager import (
@@ -108,7 +112,7 @@ app.add_middleware(
 
 # Define request models
 class DebateRequest(BaseModel):
-    topic: str
+    topic: str = "The impact of AI on society"  # Make optional with default
     room_name: str = None
     participant_name: str = None
 
