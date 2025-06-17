@@ -16,7 +16,7 @@ interface ConnectResponse {
   token: string;
 }
 
-const BACKEND_API_URL = 'https://sage-ai-backend.onrender.com';
+const BACKEND_API_URL = 'http://localhost:8000';
 
 // Fetch with retry logic for handling sleeping backend
 const fetchWithRetry = async (url: string, options: RequestInit, retries = 3, delay = 2000): Promise<Response> => {

@@ -16,3 +16,6 @@ deepgram-sdk
 cartesia
 asyncio
 aiohttp
+chromadb
+PyPDF2
+PyMuPDF

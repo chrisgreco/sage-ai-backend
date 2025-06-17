@@ -27,6 +27,22 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from datetime import datetime
 
+# Import knowledge base system
+try:
+    from knowledge_base_manager import initialize_knowledge_bases, get_agent_knowledge
+    KNOWLEDGE_BASE_AVAILABLE = True
+except ImportError:
+    KNOWLEDGE_BASE_AVAILABLE = False
+    logging.warning("Knowledge base system not available")
+
+# Import Perplexity research system
+try:
+    from perplexity_research import get_aristotle_research
+    PERPLEXITY_RESEARCH_AVAILABLE = True
+except ImportError:
+    PERPLEXITY_RESEARCH_AVAILABLE = False
+    logging.warning("Perplexity research system not available")
+
 from livekit.agents import (
     Agent,
     AgentSession, 
@@ -131,28 +147,37 @@ AGENT_PERSONALITIES = {
         instructions="""You are Aristotle, the great philosopher and father of logic, known for systematic thinking and empirical observation.
 
         Your role is to:
-        - Verify claims and provide evidence-based analysis
-        - Apply logical reasoning to examine arguments
-        - Reference established facts and credible sources
-        - Identify logical fallacies and weak reasoning
-        - Provide systematic, methodical analysis of complex issues
-        - Speak for 45-90 seconds to provide thorough verification
+        - Verify claims and provide evidence-based analysis using both your knowledge base AND real-time research
+        - Apply logical reasoning to examine arguments systematically
+        - Reference established facts, credible sources, and current data via Perplexity research
+        - Identify logical fallacies and weak reasoning with precision
+        - Provide systematic, methodical analysis combining classical logic with modern evidence
+        - Use real-time research to verify statistics, claims, and provide current information
+        - Speak for 45-90 seconds to provide thorough, research-backed verification
         
-        Speaking style: Logical, systematic, evidence-based. Use phrases like "Let us examine the evidence...", "Logic dictates that...", "The facts show us...", "We must be precise in our reasoning..."
+        Research Integration: When claims are made, you can:
+        1. Search your specialized knowledge base for relevant logical frameworks
+        2. Conduct real-time research via Perplexity for current data and evidence
+        3. Cross-reference multiple sources for comprehensive analysis
+        4. Provide both timeless logical principles and current empirical evidence
         
-        Provide rigorous, fact-based analysis while maintaining clarity and accessibility.""",
+        Speaking style: Logical, systematic, evidence-based, research-informed. Use phrases like "Let us examine the evidence...", "Current research shows...", "Logic dictates that...", "According to recent studies...", "The empirical data indicates..."
+        
+        Always combine classical philosophical rigor with modern research capabilities for the most authoritative analysis.""",
         knowledge_base="academic_research",
         speaking_triggers=[
             "aristotle", "research", "study", "data", "evidence", "how does", "why does", 
             "what is", "explain", "analysis", "expert opinion", "scientific",
-            "academic", "peer-reviewed", "statistics", "empirical"
+            "academic", "peer-reviewed", "statistics", "empirical", "fact-check",
+            "verify", "prove", "source", "methodology", "study shows"
         ],
         interruption_threshold=0.6,
         response_delay=3.0,
         personality_traits={
             "explanation_depth": "comprehensive",
             "max_speaking_time": 90,
-            "citation_frequency": "high"
+            "citation_frequency": "high",
+            "research_enabled": True
         }
     ),
     
@@ -444,16 +469,20 @@ class MultiAgentDebateSystem:
         # Generate contextual response based on recent conversation
         recent_context = self.get_recent_conversation_context()
         
-        context_instruction = f"""
-        Based on the recent conversation about {self.debate_context.topic}, 
-        provide your perspective as {personality.name}, the {personality.role}.
-        
-        Recent context: {recent_context}
-        
-        Remember your role: {personality.instructions}
-        
-        Keep your response to approximately {personality.personality_traits.get('max_speaking_time', 60)} seconds.
-        """
+        # Enhanced context for Aristotle with research capabilities
+        if agent_id == "expert" and personality.personality_traits.get("research_enabled"):
+            context_instruction = await self._get_aristotle_enhanced_context(recent_context)
+        else:
+            context_instruction = f"""
+            Based on the recent conversation about {self.debate_context.topic}, 
+            provide your perspective as {personality.name}, the {personality.role}.
+            
+            Recent context: {recent_context}
+            
+            Remember your role: {personality.instructions}
+            
+            Keep your response to approximately {personality.personality_traits.get('max_speaking_time', 60)} seconds.
+            """
         
         try:
             await session.generate_reply(instructions=context_instruction)
@@ -463,7 +492,52 @@ class MultiAgentDebateSystem:
             self.active_speakers.discard(agent_id)
             if self.debate_context.current_speaker == agent_id:
                 self.debate_context.current_speaker = None
-                
+    
+    async def _get_aristotle_enhanced_context(self, recent_context: str) -> str:
+        """Get enhanced context for Aristotle with research and knowledge base integration"""
+        base_instruction = f"""
+        Based on the recent conversation about {self.debate_context.topic}, 
+        provide your perspective as Aristotle, the Fact-Checker and philosopher of logic.
+        
+        Recent context: {recent_context}
+        """
+        
+        # Extract potential claims for research
+        research_context = ""
+        knowledge_context = ""
+        
+        try:
+            # Get knowledge base information if available
+            if KNOWLEDGE_BASE_AVAILABLE:
+                knowledge_items = await get_agent_knowledge("aristotle", recent_context, 2)
+                if knowledge_items:
+                    knowledge_context = f"\n\nRelevant knowledge from your studies:\n" + "\n".join([f"- {item[:200]}..." for item in knowledge_items])
+            
+            # Get real-time research if available and recent context contains claims
+            if PERPLEXITY_RESEARCH_AVAILABLE and any(trigger in recent_context.lower() for trigger in ["claim", "study", "research", "data", "%", "statistics", "proves", "shows"]):
+                research_result = await get_aristotle_research(recent_context, self.debate_context.topic)
+                if research_result.get("status") == "success":
+                    research_context = f"\n\nCurrent research findings:\n{research_result['analysis'][:300]}..."
+                    if research_result.get("sources"):
+                        research_context += f"\nSources: {', '.join(research_result['sources'][:2])}"
+        
+        except Exception as e:
+            logger.error(f"Error in Aristotle research enhancement: {e}")
+        
+        enhanced_instruction = base_instruction + knowledge_context + research_context + f"""
+        
+        As Aristotle, apply your systematic approach:
+        1. Use logical analysis to examine any claims made
+        2. Reference both classical principles and current evidence
+        3. Identify any logical fallacies or weak reasoning
+        4. Provide evidence-based verification where possible
+        5. Maintain intellectual rigor while being accessible
+        
+        Keep your response to approximately 75 seconds, combining wisdom with research.
+        """
+        
+        return enhanced_instruction
+        
     def get_recent_conversation_context(self) -> str:
         """Get recent conversation context for agent responses"""
         if not self.debate_context.debate_history:
@@ -499,6 +573,14 @@ class MultiAgentDebateSystem:
 async def entrypoint(ctx: JobContext):
     """Main entrypoint for the multi-agent debate system"""
     logger.info("Starting Sage AI Multi-Agent Debate System...")
+    
+    # Initialize knowledge bases first
+    if KNOWLEDGE_BASE_AVAILABLE:
+        try:
+            await initialize_knowledge_bases()
+            logger.info("✅ Knowledge bases initialized successfully")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize knowledge bases: {e}")
     
     await ctx.connect()
     
