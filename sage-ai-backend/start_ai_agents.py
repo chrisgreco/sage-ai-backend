@@ -59,7 +59,6 @@ def main():
         cli.run_app(
             WorkerOptions(
                 entrypoint_fnc=entrypoint,
-                prewarm_connections=5,
             )
         )
         

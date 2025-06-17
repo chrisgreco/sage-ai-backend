@@ -328,11 +328,11 @@ async def launch_ai_agents(request: AIAgentRequest):
                 "room_name": request.room_name,
                 "topic": topic,
                 "agents_launched": [
-                    "Dr. Alexandra Wright (Moderator)",
-                    "Professor James Chen (Expert)",
-                    "Sarah Rodriguez (Challenger)", 
-                    "Dr. Maya Patel (Synthesizer)",
-                    "Dr. Robert Kim (Fact-Checker)"
+                    "Solon (Rule Enforcer/Moderator)",
+                    "Aristotle (Fact-Checker/Expert)",
+                    "Socrates (Clarifier/Challenger)", 
+                    "Hermes (Summarizer/Synthesizer)",
+                    "Buddha (Peacekeeper)"
                 ],
                 "agent_features": [
                     "Unique Cartesia voices for each agent",
