@@ -1,15 +1,4 @@
-<<<<<<< HEAD
-livekit-api==1.0.3  
-openai 
-python-dotenv 
-requests 
-websockets 
-fastapi 
-uvicorn 
-pydantic 
-deepgram-sdk
-=======
-livekit-api
+livekit-api==1.0.3
 livekit
 openai>=1.0.0
 python-dotenv>=1.0.0
@@ -19,4 +8,3 @@ fastapi>=0.95.0
 uvicorn>=0.21.0
 pydantic>=1.10.0
 deepgram-sdk>=2.11.0
->>>>>>> f9c00ce7acd928a1089fc02ab4cdf9e509bf5fc5
