@@ -59,7 +59,7 @@ export const useWebRTCRoom = ({ roomName, participantName, onAudioData }: UseWeb
     
     console.log('Requesting token for participant:', uniqueName, 'room:', roomName);
     
-    const response = await fetch('https://sage-ai-backend-l0en.onrender.com/participant-token', {
+          const response = await fetch('http://localhost:8000/participant-token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
