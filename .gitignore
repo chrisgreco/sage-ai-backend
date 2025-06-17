@@ -89,4 +89,4 @@ coverage/
 # TaskMaster (keep the important files)
 .taskmaster/
 tasks.json
-tasks/ 
+tasks/ "sage-ai-backend/API Keys ENV.env.txt" 
