@@ -7,6 +7,9 @@ WORKDIR /app
 # Copy everything
 COPY . .
 
+# Copy the agent file to root level for easy access
+COPY sage-ai-backend/multi_personality_agent.py ./multi_personality_agent.py
+
 # Install dependencies
 RUN pip install --no-cache-dir -r requirements.txt
 
