@@ -67,6 +67,18 @@ temp*/
 *.bak
 *.backup
 
+# Temporary config files and artifacts
+.roo/
+.roomodes
+.windsurfrules
+push-changes.bat
+
+# Test and debug files
+test_*.py
+debug_*.py
+*_test.py
+*_debug.py
+
 # Logs
 *.log
 logs/
@@ -89,4 +101,19 @@ coverage/
 # TaskMaster (keep the important files)
 .taskmaster/
 tasks.json
-tasks/ "sage-ai-backend/API Keys ENV.env.txt" 
+tasks/ "sage-ai-backend/API Keys ENV.env.txt"
+
+# Added by Task Master AI
+logs
+dev-debug.log
+# Dependency directories
+# Environment variables
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+# OS specific

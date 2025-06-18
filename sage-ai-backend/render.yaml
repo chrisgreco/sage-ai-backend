@@ -1,55 +1,101 @@
 services:
-  # Web Service for API endpoints
+  # Main web service - handles HTTP API, tokens, and agent spawning
   - type: web
     name: sage-ai-backend
-    env: docker
-    repo: https://github.com/chrisgreco/sage-ai-backend
-    region: oregon
-    plan: free # Using free plan for web service
-    branch: main # Your primary branch
-    dockerfilePath: ./Dockerfile
-    numInstances: 1
-    healthCheckPath: /health
+    env: python
+    repo: https://github.com/chrisgreco/sage-ai-backend.git  # Replace with your repo URL
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    plan: starter
     envVars:
-      - key: SERVICE_MODE
-        value: web
-      - key: LIVEKIT_URL
-        sync: false
-      - key: LIVEKIT_API_KEY
-        sync: false
-      - key: LIVEKIT_API_SECRET
-        sync: false
-      - key: OPENAI_API_KEY
-        sync: false
-      - key: DEEPGRAM_API_KEY
-        sync: false
       - key: PORT
         value: 8000
-      - key: PYTHONVERBOSE
-        value: "1"
-
-  # Background Worker for continuous processing
-  - type: worker
-    name: sage-ai-moderator
-    env: docker
-    repo: https://github.com/chrisgreco/sage-ai-backend # Your GitHub repository
-    region: oregon # Choose your preferred region
-    plan: starter # Using starter plan ($7/month) for worker
-    branch: main # Your primary branch
-    dockerfilePath: ./Dockerfile
-    numInstances: 1
-    envVars:
-      - key: SERVICE_MODE
-        value: worker
       - key: LIVEKIT_URL
-        sync: false
-      - key: LIVEKIT_API_KEY
-        sync: false
+        fromGroup: sage-ai-env
+      - key: LIVEKIT_API_KEY  
+        fromGroup: sage-ai-env
       - key: LIVEKIT_API_SECRET
-        sync: false
+        fromGroup: sage-ai-env
       - key: OPENAI_API_KEY
-        sync: false
+        fromGroup: sage-ai-env
       - key: DEEPGRAM_API_KEY
-        sync: false
-      - key: PYTHONVERBOSE
-        value: "1" 
+        fromGroup: sage-ai-env
+      - key: SUPABASE_URL
+        fromGroup: sage-ai-env
+      - key: SUPABASE_ANON_KEY
+        fromGroup: sage-ai-env
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        fromGroup: sage-ai-env
+
+  # Background Worker 1: Aristotle (Moderator) Agent
+  - type: background
+    name: aristotle-agent
+    env: python
+    repo: https://github.com/chrisgreco/sage-ai-backend.git  # Same repo
+    buildCommand: pip install -r requirements.txt
+    startCommand: python debate_moderator_agent.py start
+    plan: starter
+    envVars:
+      - key: LIVEKIT_URL
+        fromGroup: sage-ai-env
+      - key: LIVEKIT_API_KEY
+        fromGroup: sage-ai-env
+      - key: LIVEKIT_API_SECRET
+        fromGroup: sage-ai-env
+      - key: OPENAI_API_KEY
+        fromGroup: sage-ai-env
+      - key: DEEPGRAM_API_KEY
+        fromGroup: sage-ai-env
+      - key: SUPABASE_URL
+        fromGroup: sage-ai-env
+      - key: SUPABASE_ANON_KEY
+        fromGroup: sage-ai-env
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        fromGroup: sage-ai-env
+
+  # Background Worker 2: Socrates (Philosopher) Agent  
+  - type: background
+    name: socrates-agent
+    env: python
+    repo: https://github.com/chrisgreco/sage-ai-backend.git  # Same repo
+    buildCommand: pip install -r requirements.txt
+    startCommand: python debate_philosopher_agent.py start
+    plan: starter
+    envVars:
+      - key: LIVEKIT_URL
+        fromGroup: sage-ai-env
+      - key: LIVEKIT_API_KEY
+        fromGroup: sage-ai-env
+      - key: LIVEKIT_API_SECRET
+        fromGroup: sage-ai-env
+      - key: OPENAI_API_KEY
+        fromGroup: sage-ai-env
+      - key: DEEPGRAM_API_KEY
+        fromGroup: sage-ai-env
+      - key: SUPABASE_URL
+        fromGroup: sage-ai-env
+      - key: SUPABASE_ANON_KEY
+        fromGroup: sage-ai-env
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        fromGroup: sage-ai-env
+
+# Environment Variable Groups (create this in Render dashboard)
+envVarGroups:
+  - name: sage-ai-env
+    envVars:
+      - key: LIVEKIT_URL
+        value: "wss://your-livekit-url.livekit.cloud"
+      - key: LIVEKIT_API_KEY
+        value: "your-livekit-api-key"
+      - key: LIVEKIT_API_SECRET
+        value: "your-livekit-api-secret"
+      - key: OPENAI_API_KEY
+        value: "your-openai-api-key"
+      - key: DEEPGRAM_API_KEY
+        value: "your-deepgram-api-key"
+      - key: SUPABASE_URL
+        value: "your-supabase-url"
+      - key: SUPABASE_ANON_KEY
+        value: "your-supabase-anon-key"
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        value: "your-supabase-service-role-key" 

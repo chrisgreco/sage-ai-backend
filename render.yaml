@@ -38,6 +38,7 @@ services:
     branch: main # Your primary branch
     dockerfilePath: ./Dockerfile
     numInstances: 1
+    startCommand: python multi_personality_agent.py
     envVars:
       - key: SERVICE_MODE
         value: worker

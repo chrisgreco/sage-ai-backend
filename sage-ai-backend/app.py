@@ -6,14 +6,14 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ValidationError
 from dotenv import load_dotenv
-import openai
+# Note: OpenAI import removed - this backend only handles LiveKit tokens and agent launching
+# OpenAI API calls are handled by the LiveKit agent subprocess
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import subprocess
 import sys
 import time
 import json
-from livekit.api import RoomService, RoomOptions, CreateRoomRequest
 
 # Configure logging first
 logging.basicConfig(level=logging.INFO)
@@ -61,12 +61,12 @@ load_dotenv()
 LIVEKIT_URL = os.getenv("LIVEKIT_URL")
 LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY")
 LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")  # Only used to pass to agent subprocess
 DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY", "")
 SERVICE_MODE = os.getenv("SERVICE_MODE", "web").lower()  # Default to web service mode
 
-# Configure OpenAI
-openai.api_key = OPENAI_API_KEY
+# Note: OpenAI API key is only used to pass to the agent subprocess
+# The main backend app only handles LiveKit tokens and agent launching
 
 # Create FastAPI instance
 app = FastAPI()
@@ -100,12 +100,14 @@ app.add_middleware(
         "https://lovable.dev",
         "https://sage-liquid-glow-design.lovable.app",
         "https://1e934c03-5a1a-4df1-9eed-2c278b3ec6a8.lovableproject.com",  # Previous domain
-        "https://id-preview-1e934c03-5a1a-4df1-9eed-2c278b3ec6a8.lovable.app",  # ACTUAL FRONTEND URL
+        "https://id-preview--1e934c03-5a1a-4df1-9eed-2c278b3ec6a8.lovable.app",  # CURRENT FRONTEND URL (double hyphens!)
         "https://lovableproject.com",  # Alternative Lovable domain
         "http://localhost:3000",  # Local development
         "http://localhost:5173",  # Vite dev server
+        "http://localhost:8080",  # For local development testing
         "http://127.0.0.1:3000",
         "http://127.0.0.1:5173",
+        "http://127.0.0.1:8080",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -387,59 +389,112 @@ async def launch_ai_agents(request: DebateRequest):
         
         room_name = request.room_name or f"debate-{request.topic.replace(' ', '-').lower()}"
         
-        # Instead of launching agents, just create the room
-        # Agents should already be running as persistent workers
+        # Launch BOTH AI agent processes for the two-agent debate
         try:
-            # Create the room using LiveKit API
-            # This will trigger agents to automatically join if they're running
-            room_service = RoomService()
+            # Set base environment variables for both agents
+            env = os.environ.copy()
+            env.update({
+                "ROOM_NAME": room_name,
+                "DEBATE_TOPIC": request.topic,
+                "LIVEKIT_URL": LIVEKIT_URL,
+                "LIVEKIT_API_KEY": LIVEKIT_API_KEY,
+                "LIVEKIT_API_SECRET": LIVEKIT_API_SECRET,
+                "OPENAI_API_KEY": OPENAI_API_KEY
+            })
             
-            # Set room metadata with debate topic
-            room_opts = RoomOptions(
-                name=room_name,
-                metadata=json.dumps({
-                    "topic": request.topic,
-                    "type": "debate",
-                    "created_at": time.time()
-                })
+            # Launch Aristotle (Moderator) agent
+            aristotle_process = subprocess.Popen(
+                [sys.executable, "-u", "debate_moderator_agent.py"],
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                universal_newlines=True
             )
             
-            room = await room_service.create_room(CreateRoomRequest(
-                name=room_name,
-                options=room_opts
-            ))
+            # Launch Socrates (Philosopher) agent
+            socrates_process = subprocess.Popen(
+                [sys.executable, "-u", "debate_philosopher_agent.py"],
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                universal_newlines=True
+            )
             
-            logger.info(f"✅ LiveKit room created: {room_name}")
-            
-            # Store room info
+            # Store agent info for both agents
             active_agents[room_name] = {
+                "aristotle_process": aristotle_process,
+                "socrates_process": socrates_process,
                 "topic": request.topic,
-                "created_at": time.time(),
-                "status": "waiting_for_agents",
+                "started_at": time.time(),
+                "status": "starting",
                 "room_name": room_name,
-                "room_sid": room.sid
+                "retry_count": 0,
+                "agents": {
+                    "aristotle": {
+                        "process_id": aristotle_process.pid,
+                        "role": "moderator",
+                        "status": "starting"
+                    },
+                    "socrates": {
+                        "process_id": socrates_process.pid,
+                        "role": "philosopher", 
+                        "status": "starting"
+                    }
+                }
             }
+            
+            # Start monitoring both processes in background
+            asyncio.create_task(monitor_agent_connection(room_name, aristotle_process.pid))
+            asyncio.create_task(monitor_agent_connection(room_name, socrates_process.pid))
+            
+            logger.info(f"✅ Both AI agents launched for room: {room_name}")
+            logger.info(f"   - Aristotle (Moderator): PID {aristotle_process.pid}")
+            logger.info(f"   - Socrates (Philosopher): PID {socrates_process.pid}")
             
             return {
                 "status": "success",
-                "message": f"Debate room created: {room_name}",
+                "message": f"Two AI agents launched for room: {room_name}",
                 "room_name": room_name,
                 "topic": request.topic,
-                "room_sid": room.sid,
-                "note": "Agents should join automatically if running as workers"
+                "agents": {
+                    "aristotle": {
+                        "process_id": aristotle_process.pid,
+                        "role": "logical moderator with reason + structure"
+                    },
+                    "socrates": {
+                        "process_id": socrates_process.pid,
+                        "role": "inquisitive challenger with questioning + truth-seeking"
+                    }
+                },
+                "note": "Both agents are starting up and will join the room shortly"
             }
             
         except Exception as e:
-            logger.error(f"Failed to create LiveKit room: {e}")
+            logger.error(f"Failed to launch AI agents: {e}")
             
-            # Fallback: Return success anyway, let frontend connect
-            return {
-                "status": "success", 
-                "message": f"Room prepared: {room_name}",
-                "room_name": room_name,
-                "topic": request.topic,
-                "note": "Room will be created when participants connect"
-            }
+            # Clean up any processes that did start
+            try:
+                if 'aristotle_process' in locals():
+                    aristotle_process.terminate()
+                if 'socrates_process' in locals():
+                    socrates_process.terminate()
+            except:
+                pass
+            
+            # Return error response
+            return JSONResponse(
+                content={
+                    "status": "error", 
+                    "message": f"Failed to launch agents: {str(e)}",
+                    "room_name": room_name,
+                    "topic": request.topic
+                },
+                status_code=500
+            )
     
     except Exception as e:
         logger.error(f"Error launching AI agents: {str(e)}")
@@ -467,32 +522,94 @@ async def stop_ai_agents(request: DebateRequest):
             }
         
         try:
-            # Get the process
+            # Get the agent info
             agent_info = active_agents[room_name]
-            process = agent_info["process"]
+            stopped_agents = []
+            errors = []
             
-            # Terminate the process
-            process.terminate()
+            # Stop Aristotle agent if it exists
+            if "aristotle_process" in agent_info:
+                try:
+                    aristotle_process = agent_info["aristotle_process"]
+                    aristotle_process.terminate()
+                    
+                    # Wait for it to finish (with timeout)
+                    try:
+                        aristotle_process.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        # Force kill if it doesn't terminate gracefully
+                        aristotle_process.kill()
+                        aristotle_process.wait()
+                    
+                    stopped_agents.append("aristotle")
+                    logger.info(f"Aristotle agent stopped for room {room_name}")
+                    
+                except Exception as e:
+                    errors.append(f"Failed to stop Aristotle: {str(e)}")
+                    logger.error(f"Failed to stop Aristotle agent: {e}")
             
-            # Wait for it to finish (with timeout)
-            try:
-                process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                # Force kill if it doesn't terminate gracefully
-                process.kill()
-                process.wait()
+            # Stop Socrates agent if it exists
+            if "socrates_process" in agent_info:
+                try:
+                    socrates_process = agent_info["socrates_process"]
+                    socrates_process.terminate()
+                    
+                    # Wait for it to finish (with timeout)
+                    try:
+                        socrates_process.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        # Force kill if it doesn't terminate gracefully
+                        socrates_process.kill()
+                        socrates_process.wait()
+                    
+                    stopped_agents.append("socrates")
+                    logger.info(f"Socrates agent stopped for room {room_name}")
+                    
+                except Exception as e:
+                    errors.append(f"Failed to stop Socrates: {str(e)}")
+                    logger.error(f"Failed to stop Socrates agent: {e}")
+            
+            # Stop legacy single process if it exists (for backwards compatibility)
+            if "process" in agent_info:
+                try:
+                    process = agent_info["process"]
+                    process.terminate()
+                    
+                    try:
+                        process.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        process.kill()
+                        process.wait()
+                    
+                    stopped_agents.append("legacy")
+                    logger.info(f"Legacy agent stopped for room {room_name}")
+                    
+                except Exception as e:
+                    errors.append(f"Failed to stop legacy agent: {str(e)}")
+                    logger.error(f"Failed to stop legacy agent: {e}")
             
             # Remove from active agents
             del active_agents[room_name]
             
-            logger.info(f"AI agents stopped successfully for room {room_name}")
-            
-            return {
-                "status": "success",
-                "message": f"AI agents stopped for room: {room_name}",
-                "room_name": room_name,
-                "agents_active": False
-            }
+            if errors:
+                logger.warning(f"Some agents failed to stop cleanly: {errors}")
+                return {
+                    "status": "partial_success",
+                    "message": f"Some agents stopped with errors for room: {room_name}",
+                    "room_name": room_name,
+                    "agents_active": False,
+                    "stopped_agents": stopped_agents,
+                    "errors": errors
+                }
+            else:
+                logger.info(f"All AI agents stopped successfully for room {room_name}")
+                return {
+                    "status": "success",
+                    "message": f"All AI agents stopped for room: {room_name}",
+                    "room_name": room_name,
+                    "agents_active": False,
+                    "stopped_agents": stopped_agents
+                }
             
         except Exception as e:
             logger.error(f"Failed to stop AI agents: {str(e)}")
@@ -516,57 +633,107 @@ async def get_ai_agents_status():
         # Clean up any dead processes and collect detailed status
         dead_rooms = []
         detailed_status = {}
+        current_time = time.time()
         
         for room_name, agent_info in active_agents.items():
-            process = agent_info["process"]
-            is_running = process.poll() is None
-            
-            if not is_running:
-                dead_rooms.append(room_name)
-            
-            # Collect detailed status information
-            current_time = time.time()
-            uptime = current_time - agent_info["started_at"]
-            
-            detailed_status[room_name] = {
+            # Handle both new dual-agent and legacy single-agent structures
+            room_status = {
                 "topic": agent_info["topic"],
                 "started_at": agent_info["started_at"],
-                "uptime_seconds": round(uptime, 2),
-                "uptime_minutes": round(uptime / 60, 2),
-                "process_id": process.pid,
-                "running": is_running,
+                "uptime_seconds": round(current_time - agent_info["started_at"], 2),
+                "uptime_minutes": round((current_time - agent_info["started_at"]) / 60, 2),
                 "retry_count": agent_info.get("retry_count", 0),
                 "status": agent_info.get("status", "unknown"),
                 "connection_result": agent_info.get("connection_result", {}),
                 "connection_error": agent_info.get("connection_error"),
-                "return_code": process.returncode if not is_running else None
+                "agents": {}
             }
+            
+            room_is_dead = True
+            
+            # Check Aristotle agent if it exists
+            if "aristotle_process" in agent_info:
+                aristotle_process = agent_info["aristotle_process"]
+                aristotle_running = aristotle_process.poll() is None
+                room_status["agents"]["aristotle"] = {
+                    "process_id": aristotle_process.pid,
+                    "role": "logical moderator with reason + structure",
+                    "running": aristotle_running,
+                    "return_code": aristotle_process.returncode if not aristotle_running else None
+                }
+                if aristotle_running:
+                    room_is_dead = False
+            
+            # Check Socrates agent if it exists  
+            if "socrates_process" in agent_info:
+                socrates_process = agent_info["socrates_process"]
+                socrates_running = socrates_process.poll() is None
+                room_status["agents"]["socrates"] = {
+                    "process_id": socrates_process.pid,
+                    "role": "inquisitive challenger with questioning + truth-seeking",
+                    "running": socrates_running,
+                    "return_code": socrates_process.returncode if not socrates_running else None
+                }
+                if socrates_running:
+                    room_is_dead = False
+            
+            # Check legacy single process if it exists (backwards compatibility)
+            if "process" in agent_info:
+                process = agent_info["process"]
+                legacy_running = process.poll() is None
+                room_status["agents"]["legacy"] = {
+                    "process_id": process.pid,
+                    "role": "multi-personality agent",
+                    "running": legacy_running,
+                    "return_code": process.returncode if not legacy_running else None
+                }
+                if legacy_running:
+                    room_is_dead = False
+            
+            if room_is_dead:
+                dead_rooms.append(room_name)
+            
+            detailed_status[room_name] = room_status
         
         # Clean up dead processes
         for room_name in dead_rooms:
-            logger.info(f"Cleaning up dead agent process for room {room_name}")
+            logger.info(f"Cleaning up dead agent processes for room {room_name}")
             del active_agents[room_name]
         
         # Summary statistics
-        running_count = sum(1 for info in detailed_status.values() if info["running"])
-        failed_count = sum(1 for info in detailed_status.values() if info["status"] == "failed")
-        connected_count = sum(1 for info in detailed_status.values() if info["status"] == "connected")
+        total_agents = 0
+        running_agents = 0
+        failed_agents = 0
+        connected_agents = 0
+        
+        for room_status in detailed_status.values():
+            for agent_name, agent_data in room_status["agents"].items():
+                total_agents += 1
+                if agent_data["running"]:
+                    running_agents += 1
+                else:
+                    failed_agents += 1
+            
+            if room_status["status"] == "connected":
+                connected_agents += 1
         
         return {
             "status": "success",
             "timestamp": current_time,
             "summary": {
                 "total_rooms": len(detailed_status),
-                "running_agents": running_count,
-                "connected_agents": connected_count,
-                "failed_agents": failed_count,
-                "dead_processes_cleaned": len(dead_rooms)
+                "total_agents": total_agents,
+                "running_agents": running_agents,
+                "connected_agents": connected_agents,
+                "failed_agents": failed_agents,
+                "dead_rooms_cleaned": len(dead_rooms)
             },
             "rooms": detailed_status,
             "monitoring_info": {
                 "agent_connection_timeout": 30,
                 "max_retries": 3,
-                "retry_delay": 2
+                "retry_delay": 2,
+                "agent_types": ["aristotle", "socrates"]
             }
         }
     except Exception as e:
@@ -717,7 +884,7 @@ if __name__ == "__main__":
     if SERVICE_MODE == "worker":
         logger.info("Running in background worker mode (launching LiveKit agent)")
         # Launch the real agent (multi_personality_agent.py) as a subprocess
-        subprocess.run([sys.executable, "-u", "multi_personality_agent.py", "start"])
+        subprocess.run([sys.executable, "-u", "multi_personality_agent.py"])
     else:
         logger.info("Running in web service mode")
         uvicorn.run(app, host="0.0.0.0", port=8000) 

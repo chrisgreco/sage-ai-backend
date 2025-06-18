@@ -10,6 +10,7 @@ import sys
 import asyncio
 import logging
 import time
+import random
 from typing import Dict, List, Optional
 from dataclasses import dataclass
 from dotenv import load_dotenv
@@ -262,19 +263,19 @@ async def entrypoint(ctx: JobContext):
     logger.info("🤖 Creating agent session with OpenAI Realtime API...")
     session = AgentSession(
         llm=openai.realtime.RealtimeModel(
+            model="gpt-4o-realtime-preview-2024-12-17",
             voice="shimmer",
-            temperature=0.7,
-            instructions=enhanced_instructions
+            temperature=0.7
         ),
         vad=silero.VAD.load(),  # Voice Activity Detection using Silero
         min_endpointing_delay=0.5,
         max_endpointing_delay=3.0,
     )
     
-    # Start the session
+    # Start the session with enhanced instructions
     logger.info("🚀 Starting agent session...")
     await session.start(
-        agent=moderator,
+        agent=Agent(instructions=enhanced_instructions),
         room=ctx.room
     )
     
@@ -293,7 +294,6 @@ We have five AI personalities ready to engage:
 {"Continuing our previous discussion..." if memory_context else "Let's begin our philosophical exploration!"}"""
     
     logger.info("💬 Generating initial greeting...")
-    await session.generate_reply(instructions=greeting)
     
     # Store initial greeting in memory if available
     if room_id and SUPABASE_AVAILABLE:

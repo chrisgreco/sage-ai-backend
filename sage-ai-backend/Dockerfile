@@ -4,20 +4,14 @@ FROM python:3.9-slim
 # Set working directory
 WORKDIR /app
 
-# Copy requirements file
-COPY requirements.txt .
-
-# Install dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy the rest of the application
+# Copy the sage-ai-backend directory contents to the working directory
 COPY . .
 
-# Set working directory to sage-ai-backend where the agent files are located
-WORKDIR /app/sage-ai-backend
+# Install dependencies from requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Expose port
 EXPOSE 8000
 
-# Command to run the application - for web service use app.py, for background worker use multi_personality_agent.py
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"] 
+# Default command
+CMD ["python", "app.py"] 

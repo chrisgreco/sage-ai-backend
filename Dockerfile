@@ -10,6 +10,9 @@ COPY sage-ai-backend/ .
 # Install dependencies from requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Download turn detector models during build using LiveKit CLI
+RUN python multi_personality_agent.py download-files
+
 # Expose port
 EXPOSE 8000
 

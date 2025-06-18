@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 
 # Global knowledge storage
 AGENT_KNOWLEDGE_BASE: Dict[str, List[Dict]] = {
-    "solon": [],      # Parliamentary procedure and moderation
-    "aristotle": [],  # Logic, analysis, and fact-checking  
+    "solon": [],      # Parliamentary procedure and moderation (DEPRECATED - moved to aristotle)
+    "aristotle": [],  # Logic, analysis, parliamentary procedure, conflict resolution  
     "socrates": [],   # Socratic questioning methods
     "hermes": [],     # Systems thinking and synthesis
     "buddha": []      # Conflict resolution and mindfulness
@@ -39,7 +39,7 @@ class KnowledgeBase:
                 return False
             
             success_count = 0
-            agent_dirs = ["solon", "socrates", "hermes", "buddha"]  # aristotle uses online research, not local PDFs
+            agent_dirs = ["aristotle", "socrates", "hermes", "buddha"]  # Now aristotle has local knowledge base too
             
             for agent_name in agent_dirs:
                 agent_dir = self.knowledge_dir / agent_name
