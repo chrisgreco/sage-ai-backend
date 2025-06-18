@@ -36,13 +36,12 @@ try:
         cli, 
         function_tool
     )
-    from livekit.plugins import openai
-    from livekit.plugins.turn_detector.english import EnglishModel
+    from livekit.plugins import openai, silero
     LIVEKIT_AVAILABLE = True
     logger.info("✅ LiveKit Agents successfully imported")
 except ImportError as e:
     logger.error(f"❌ LiveKit Agents import failed: {e}")
-    logger.error("Install with: pip install 'livekit-agents[openai,turn-detector]>=1.0'")
+    logger.error("Install with: pip install 'livekit-agents[openai,silero]>=1.0'")
     LIVEKIT_AVAILABLE = False
 
 # Memory system imports (optional)
@@ -267,7 +266,7 @@ async def entrypoint(ctx: JobContext):
             temperature=0.7,
             instructions=enhanced_instructions
         ),
-        turn_detection=EnglishModel(),  # Proper turn-taking management
+        vad=silero.VAD.load(),  # Voice Activity Detection using Silero
         min_endpointing_delay=0.5,
         max_endpointing_delay=3.0,
     )
@@ -318,7 +317,7 @@ def main():
     # Check if LiveKit is available
     if not LIVEKIT_AVAILABLE:
         logger.error("❌ LiveKit Agents not available")
-        logger.error("Install with: pip install 'livekit-agents[openai,turn-detector]>=1.0'")
+        logger.error("Install with: pip install 'livekit-agents[openai,silero]>=1.0'")
         sys.exit(1)
     
     # Verify environment variables
