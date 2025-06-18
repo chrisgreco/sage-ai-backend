@@ -4,14 +4,11 @@ FROM python:3.9-slim
 # Set working directory
 WORKDIR /app
 
-# Copy everything
-COPY . .
+# Copy the sage-ai-backend directory contents to the working directory
+COPY sage-ai-backend/ .
 
-# Copy the agent file to root level for easy access
-COPY sage-ai-backend/multi_personality_agent.py ./multi_personality_agent.py
-
-# Install dependencies from the correct requirements file (force rebuild)
-RUN pip install --no-cache-dir -r sage-ai-backend/requirements.txt
+# Install dependencies from requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Expose port
 EXPOSE 8000

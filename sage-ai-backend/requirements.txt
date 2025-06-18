@@ -13,7 +13,6 @@ livekit-agents[openai,turn-detector]>=1.0
 # AI and ML dependencies  
 openai>=1.14.0
 anthropic>=0.3.0
-perplexity-ai>=0.1.0
 
 # Database and storage
 supabase>=2.3.0

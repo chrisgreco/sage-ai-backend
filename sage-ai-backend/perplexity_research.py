@@ -29,7 +29,7 @@ class PerplexityResearcher:
     def __init__(self):
         self.api_key = os.getenv("PERPLEXITY_API_KEY")
         self.base_url = "https://api.perplexity.ai/chat/completions"
-        self.model = "llama-3.1-sonar-small-128k-online"  # Online model for real-time data
+        self.model = "sonar-pro"  # Current Perplexity model for real-time research
         
         if not self.api_key:
             logger.warning("PERPLEXITY_API_KEY not found. Research features will be disabled.")
