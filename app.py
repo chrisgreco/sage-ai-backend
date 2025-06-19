@@ -623,6 +623,17 @@ async def stop_ai_agents(request: DebateRequest):
                     errors.append(f"Failed to stop legacy agent: {str(e)}")
                     logger.error(f"Failed to stop legacy agent: {e}")
             
+            # For new agent dispatch method, terminate agents by deleting the room
+            if agent_info.get("method") == "explicit_agent_dispatch" and "agents_dispatched" in agent_info:
+                logger.info(f"Terminating dispatched agents by deleting room {room_name}")
+                try:
+                    # Delete the LiveKit room to force agent cleanup
+                    await livekit_api.room.delete_room(room_name)
+                    logger.info(f"✅ Room {room_name} deleted - agents should terminate")
+                except Exception as e:
+                    logger.warning(f"Could not delete room for agent cleanup: {e}")
+                    # Continue with local cleanup even if room deletion fails
+            
             # Remove from active agents
             del active_agents[room_name]
             
