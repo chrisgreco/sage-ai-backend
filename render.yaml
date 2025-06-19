@@ -79,23 +79,5 @@ services:
       - key: SUPABASE_SERVICE_ROLE_KEY
         fromGroup: sage-ai-env
 
-# Environment Variable Groups (create this in Render dashboard)
-envVarGroups:
-  - name: sage-ai-env
-    envVars:
-      - key: LIVEKIT_URL
-        value: "wss://your-livekit-url.livekit.cloud"
-      - key: LIVEKIT_API_KEY
-        value: "your-livekit-api-key"
-      - key: LIVEKIT_API_SECRET
-        value: "your-livekit-api-secret"
-      - key: OPENAI_API_KEY
-        value: "your-openai-api-key"
-      - key: DEEPGRAM_API_KEY
-        value: "your-deepgram-api-key"
-      - key: SUPABASE_URL
-        value: "your-supabase-url"
-      - key: SUPABASE_ANON_KEY
-        value: "your-supabase-anon-key"
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        value: "your-supabase-service-role-key" 
+# Environment variables must be configured in Render Dashboard
+# Create an Environment Group named "sage-ai-env" with the actual API keys and URLs 
