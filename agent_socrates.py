@@ -7,6 +7,7 @@ import os
 import sys
 import asyncio
 import logging
+import json
 from dotenv import load_dotenv
 
 # Load environment variables first
@@ -43,6 +44,64 @@ CRITICAL RULES:
 - Listen first, question second"""
 }
 
+def get_debate_topic_from_context(ctx: JobContext) -> str:
+    """Extract debate topic from job context with comprehensive fallback"""
+    
+    default_topic = "The impact of AI on society"
+    
+    logger.info("🔍 Socrates checking for debate topic...")
+    
+    # Method 1: Check job metadata (primary method for agent dispatch)
+    try:
+        if hasattr(ctx, 'job') and ctx.job and hasattr(ctx.job, 'metadata') and ctx.job.metadata:
+            logger.info(f"📋 Found job metadata: {ctx.job.metadata}")
+            job_metadata = json.loads(ctx.job.metadata)
+            topic = job_metadata.get("debate_topic")
+            if topic:
+                logger.info(f"✅ Socrates found topic from job metadata: {topic}")
+                return topic
+            else:
+                logger.warning("⚠️ No 'debate_topic' key in job metadata")
+        else:
+            logger.info("📭 No job metadata available")
+    except (json.JSONDecodeError, Exception) as e:
+        logger.error(f"❌ Failed to parse job metadata: {e}")
+    
+    # Method 2: Check room metadata (fallback)
+    try:
+        if ctx.room and ctx.room.metadata:
+            logger.info(f"🏠 Found room metadata: {ctx.room.metadata}")
+            room_metadata = json.loads(ctx.room.metadata)
+            topic = room_metadata.get("debate_topic")
+            if topic:
+                logger.info(f"✅ Socrates found topic from room metadata: {topic}")
+                return topic
+            else:
+                logger.warning("⚠️ No 'debate_topic' key in room metadata")
+        else:
+            logger.info("🏠 No room metadata available")
+    except (json.JSONDecodeError, Exception) as e:
+        logger.error(f"❌ Failed to parse room metadata: {e}")
+    
+    # Method 3: Check room name for topic hints (additional fallback)
+    try:
+        if ctx.room and ctx.room.name:
+            room_name = ctx.room.name
+            logger.info(f"🏷️ Room name: {room_name}")
+            
+            # Extract topic from room name if it follows pattern like "debate-topic-name"
+            if room_name.startswith("debate-") and len(room_name.split("-")) > 1:
+                # Convert room name back to topic
+                topic_parts = room_name.replace("debate-", "").split("-")
+                topic = " ".join(word.capitalize() for word in topic_parts)
+                logger.info(f"✅ Socrates extracted topic from room name: {topic}")
+                return topic
+    except Exception as e:
+        logger.error(f"❌ Failed to extract topic from room name: {e}")
+    
+    logger.warning(f"⚠️ Socrates falling back to default topic: {default_topic}")
+    return default_topic
+
 async def entrypoint(ctx: JobContext):
     """Socrates agent entrypoint"""
     
@@ -50,58 +109,9 @@ async def entrypoint(ctx: JobContext):
     await ctx.connect()
     logger.info(f"✅ Socrates connected to room: {ctx.room.name}")
     
-    # Get debate topic from room metadata or job metadata
-    debate_topic = "The impact of AI on society"  # Default topic
-    
-    # First check room metadata
-    if ctx.room.metadata:
-        try:
-            import json
-            room_metadata = json.loads(ctx.room.metadata)
-            debate_topic = room_metadata.get("debate_topic", debate_topic)
-            logger.info(f"🎯 Room topic from metadata: {debate_topic}")
-        except (json.JSONDecodeError, Exception) as e:
-            logger.warning(f"⚠️ Could not parse room metadata: {e}")
-    else:
-        logger.info("📝 No room metadata available")
-    
-    # Check job metadata for agent-specific information (THIS IS WHERE THE TOPIC SHOULD COME FROM)
-    if hasattr(ctx, 'job') and ctx.job and hasattr(ctx.job, 'metadata') and ctx.job.metadata:
-        try:
-            import json
-            job_metadata = json.loads(ctx.job.metadata)
-            role = job_metadata.get("role", "questioning_philosopher")
-            agent_type = job_metadata.get("agent_type", "socrates")
-            job_topic = job_metadata.get("debate_topic")
-            
-            logger.info(f"🎭 Job metadata found:")
-            logger.info(f"   Role: {role}")
-            logger.info(f"   Agent type: {agent_type}")
-            logger.info(f"   Job topic: {job_topic}")
-            
-            if job_topic:
-                debate_topic = job_topic
-                logger.info(f"✅ Using topic from job metadata: {debate_topic}")
-            else:
-                logger.warning("⚠️ No debate_topic in job metadata!")
-                
-        except (json.JSONDecodeError, Exception) as e:
-            logger.error(f"❌ Could not parse job metadata: {e}")
-    else:
-        logger.warning("⚠️ No job metadata available - this is the problem!")
-        if hasattr(ctx, 'job'):
-            if ctx.job:
-                logger.info(f"   ctx.job exists: {type(ctx.job)}")
-                if hasattr(ctx.job, 'metadata'):
-                    logger.info(f"   ctx.job.metadata: {ctx.job.metadata}")
-                else:
-                    logger.info("   ctx.job has no metadata attribute")
-            else:
-                logger.info("   ctx.job is None")
-        else:
-            logger.info("   ctx has no job attribute")
-    
-    logger.info(f"🔬 FINAL TOPIC: {debate_topic}")
+    # Get debate topic using comprehensive method
+    debate_topic = get_debate_topic_from_context(ctx)
+    logger.info(f"🎯 SOCRATES FINAL TOPIC: {debate_topic}")
     
     # Create agent session with ADVANCED turn detection
     session = AgentSession(

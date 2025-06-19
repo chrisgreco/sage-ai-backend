@@ -7,6 +7,7 @@ import os
 import sys
 import asyncio
 import logging
+import json
 from dotenv import load_dotenv
 
 # Load environment variables first
@@ -21,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 # LiveKit Agents imports
 try:
-    from livekit.agents import Agent, AgentSession, JobContext, WorkerOptions, cli, function_tool, RunContext
+    from livekit.agents import Agent, AgentSession, JobContext, WorkerOptions, cli
     from livekit.plugins import openai, silero
     from livekit.plugins.turn_detector import EnglishModel
     logger.info("✅ LiveKit Agents successfully imported")
@@ -86,20 +87,77 @@ async def verify_statistic(
         logger.error(f"Verification failed: {e}")
         return "Statistical verification temporarily unavailable."
 
-# Aristotle personality configuration - ULTRA CONCISE WITH RESEARCH
+# Aristotle personality configuration - ULTRA CONCISE
 ARISTOTLE_CONFIG = {
     "name": "Aristotle",
-    "voice": "fable",  # Warm, expressive male voice
-    "instructions": """You are Aristotle. Give 1 logical point (max 15 words) OR use research tools.
+    "voice": "fable",  # Warm, expressive voice
+    "instructions": """You are Aristotle. Make 1 logical point (max 15 words).
 
 CRITICAL RULES:
 - WAIT for complete silence before speaking
-- If someone says "Socrates" - stay silent  
+- If someone says "Socrates" - stay silent
 - 15 words maximum per response
-- Use research_fact() or verify_statistic() when claims need checking
-- Only ONE logical point per turn
-- Analyze, then respond briefly"""
+- Only make ONE logical point per turn
+- Think first, then respond with logic"""
 }
+
+def get_debate_topic_from_context(ctx: JobContext) -> str:
+    """Extract debate topic from job context with comprehensive fallback"""
+    
+    default_topic = "The impact of AI on society"
+    
+    logger.info("🔍 Aristotle checking for debate topic...")
+    
+    # Method 1: Check job metadata (primary method for agent dispatch)
+    try:
+        if hasattr(ctx, 'job') and ctx.job and hasattr(ctx.job, 'metadata') and ctx.job.metadata:
+            logger.info(f"📋 Found job metadata: {ctx.job.metadata}")
+            job_metadata = json.loads(ctx.job.metadata)
+            topic = job_metadata.get("debate_topic")
+            if topic:
+                logger.info(f"✅ Aristotle found topic from job metadata: {topic}")
+                return topic
+            else:
+                logger.warning("⚠️ No 'debate_topic' key in job metadata")
+        else:
+            logger.info("📭 No job metadata available")
+    except (json.JSONDecodeError, Exception) as e:
+        logger.error(f"❌ Failed to parse job metadata: {e}")
+    
+    # Method 2: Check room metadata (fallback)
+    try:
+        if ctx.room and ctx.room.metadata:
+            logger.info(f"🏠 Found room metadata: {ctx.room.metadata}")
+            room_metadata = json.loads(ctx.room.metadata)
+            topic = room_metadata.get("debate_topic")
+            if topic:
+                logger.info(f"✅ Aristotle found topic from room metadata: {topic}")
+                return topic
+            else:
+                logger.warning("⚠️ No 'debate_topic' key in room metadata")
+        else:
+            logger.info("🏠 No room metadata available")
+    except (json.JSONDecodeError, Exception) as e:
+        logger.error(f"❌ Failed to parse room metadata: {e}")
+    
+    # Method 3: Check room name for topic hints (additional fallback)
+    try:
+        if ctx.room and ctx.room.name:
+            room_name = ctx.room.name
+            logger.info(f"🏷️ Room name: {room_name}")
+            
+            # Extract topic from room name if it follows pattern like "debate-topic-name"
+            if room_name.startswith("debate-") and len(room_name.split("-")) > 1:
+                # Convert room name back to topic
+                topic_parts = room_name.replace("debate-", "").split("-")
+                topic = " ".join(word.capitalize() for word in topic_parts)
+                logger.info(f"✅ Aristotle extracted topic from room name: {topic}")
+                return topic
+    except Exception as e:
+        logger.error(f"❌ Failed to extract topic from room name: {e}")
+    
+    logger.warning(f"⚠️ Aristotle falling back to default topic: {default_topic}")
+    return default_topic
 
 async def entrypoint(ctx: JobContext):
     """Aristotle agent entrypoint"""
@@ -108,58 +166,9 @@ async def entrypoint(ctx: JobContext):
     await ctx.connect()
     logger.info(f"✅ Aristotle connected to room: {ctx.room.name}")
     
-    # Get debate topic from room metadata or job metadata
-    debate_topic = "The impact of AI on society"  # Default topic
-    
-    # First check room metadata
-    if ctx.room.metadata:
-        try:
-            import json
-            room_metadata = json.loads(ctx.room.metadata)
-            debate_topic = room_metadata.get("debate_topic", debate_topic)
-            logger.info(f"🎯 Room topic from metadata: {debate_topic}")
-        except (json.JSONDecodeError, Exception) as e:
-            logger.warning(f"⚠️ Could not parse room metadata: {e}")
-    else:
-        logger.info("📝 No room metadata available")
-    
-    # Check job metadata for agent-specific information (THIS IS WHERE THE TOPIC SHOULD COME FROM)
-    if hasattr(ctx, 'job') and ctx.job and hasattr(ctx.job, 'metadata') and ctx.job.metadata:
-        try:
-            import json
-            job_metadata = json.loads(ctx.job.metadata)
-            role = job_metadata.get("role", "logical_analyst")
-            agent_type = job_metadata.get("agent_type", "aristotle")
-            job_topic = job_metadata.get("debate_topic")
-            
-            logger.info(f"🎭 Job metadata found:")
-            logger.info(f"   Role: {role}")
-            logger.info(f"   Agent type: {agent_type}")
-            logger.info(f"   Job topic: {job_topic}")
-            
-            if job_topic:
-                debate_topic = job_topic
-                logger.info(f"✅ Using topic from job metadata: {debate_topic}")
-            else:
-                logger.warning("⚠️ No debate_topic in job metadata!")
-                
-        except (json.JSONDecodeError, Exception) as e:
-            logger.error(f"❌ Could not parse job metadata: {e}")
-    else:
-        logger.warning("⚠️ No job metadata available - this is the problem!")
-        if hasattr(ctx, 'job'):
-            if ctx.job:
-                logger.info(f"   ctx.job exists: {type(ctx.job)}")
-                if hasattr(ctx.job, 'metadata'):
-                    logger.info(f"   ctx.job.metadata: {ctx.job.metadata}")
-                else:
-                    logger.info("   ctx.job has no metadata attribute")
-            else:
-                logger.info("   ctx.job is None")
-        else:
-            logger.info("   ctx has no job attribute")
-    
-    logger.info(f"🔬 FINAL TOPIC: {debate_topic}")
+    # Get debate topic using comprehensive method
+    debate_topic = get_debate_topic_from_context(ctx)
+    logger.info(f"🎯 ARISTOTLE FINAL TOPIC: {debate_topic}")
     
     # Create agent session with ADVANCED turn detection
     session = AgentSession(
@@ -171,28 +180,23 @@ async def entrypoint(ctx: JobContext):
         ),
         vad=silero.VAD.load(),
         turn_detector=EnglishModel.load(),  # Semantic turn detection
-        min_endpointing_delay=1.2,  # Aristotle waits 1.2s minimum (longer than Socrates)
-        max_endpointing_delay=4.5,
+        min_endpointing_delay=1.2,  # Aristotle waits 1.2s minimum (different from Socrates)
+        max_endpointing_delay=4.0,
     )
     
-    # Start session with research tools and dynamic instructions
-    tools = [research_fact, verify_statistic] if PERPLEXITY_AVAILABLE else []
-    
+    # Start session with dynamic instructions
     # Create dynamic instructions that include the actual debate topic
     dynamic_instructions = f"""{ARISTOTLE_CONFIG["instructions"]}
 
 DEBATE TOPIC: "{debate_topic}"
-Focus your analysis and research on this specific topic."""
+Make logical points specifically about this topic."""
     
     await session.start(
-        agent=Agent(
-            instructions=dynamic_instructions,
-            tools=tools
-        ),
+        agent=Agent(instructions=dynamic_instructions),
         room=ctx.room
     )
     
-    logger.info("✅ Aristotle is ready for logical analysis with research capabilities!")
+    logger.info("✅ Aristotle is ready for logical analysis!")
 
 def main():
     """Main function"""
