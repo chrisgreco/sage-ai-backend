@@ -672,34 +672,53 @@ async def get_ai_agents_status():
         
         for room_name, agent_info in active_agents.items():
             # Handle both new dual-agent and legacy single-agent structures
+            # Use "created_at" for new agent dispatch, "started_at" for legacy
+            start_time = agent_info.get("created_at", agent_info.get("started_at", current_time))
+            
             room_status = {
                 "topic": agent_info["topic"],
-                "started_at": agent_info["started_at"],
-                "uptime_seconds": round(current_time - agent_info["started_at"], 2),
-                "uptime_minutes": round((current_time - agent_info["started_at"]) / 60, 2),
+                "started_at": start_time,
+                "uptime_seconds": round(current_time - start_time, 2),
+                "uptime_minutes": round((current_time - start_time) / 60, 2),
                 "retry_count": agent_info.get("retry_count", 0),
                 "status": agent_info.get("status", "unknown"),
                 "connection_result": agent_info.get("connection_result", {}),
                 "connection_error": agent_info.get("connection_error"),
+                "method": agent_info.get("method", "legacy"),
                 "agents": {}
             }
             
             room_is_dead = True
             
-            # Check Aristotle agent if it exists
-            if "aristotle_process" in agent_info:
+            # Handle new agent dispatch structure
+            if agent_info.get("method") == "explicit_agent_dispatch" and "agents_dispatched" in agent_info:
+                agents_dispatched = agent_info["agents_dispatched"]
+                for agent_name, agent_data in agents_dispatched.items():
+                    room_status["agents"][agent_name] = {
+                        "dispatch_id": agent_data.get("dispatch_id", "unknown"),
+                        "role": agent_data.get("role", "unknown"),
+                        "status": agent_data.get("status", "unknown"),
+                        "method": "agent_dispatch",
+                        "running": agent_data.get("status") == "dispatched"
+                    }
+                    if agent_data.get("status") == "dispatched":
+                        room_is_dead = False
+            
+            # Check Aristotle agent process if it exists (legacy subprocess method)
+            elif "aristotle_process" in agent_info:
                 aristotle_process = agent_info["aristotle_process"]
                 aristotle_running = aristotle_process.poll() is None
                 room_status["agents"]["aristotle"] = {
                     "process_id": aristotle_process.pid,
                     "role": "logical moderator with reason + structure",
                     "running": aristotle_running,
+                    "method": "subprocess",
                     "return_code": aristotle_process.returncode if not aristotle_running else None
                 }
                 if aristotle_running:
                     room_is_dead = False
             
-            # Check Socrates agent if it exists  
+            # Check Socrates agent process if it exists (legacy subprocess method)
             if "socrates_process" in agent_info:
                 socrates_process = agent_info["socrates_process"]
                 socrates_running = socrates_process.poll() is None
@@ -707,19 +726,21 @@ async def get_ai_agents_status():
                     "process_id": socrates_process.pid,
                     "role": "inquisitive challenger with questioning + truth-seeking",
                     "running": socrates_running,
+                    "method": "subprocess",
                     "return_code": socrates_process.returncode if not socrates_running else None
                 }
                 if socrates_running:
                     room_is_dead = False
             
             # Check legacy single process if it exists (backwards compatibility)
-            if "process" in agent_info:
+            elif "process" in agent_info:
                 process = agent_info["process"]
                 legacy_running = process.poll() is None
                 room_status["agents"]["legacy"] = {
                     "process_id": process.pid,
                     "role": "multi-personality agent",
                     "running": legacy_running,
+                    "method": "subprocess",
                     "return_code": process.returncode if not legacy_running else None
                 }
                 if legacy_running:
@@ -790,7 +811,8 @@ async def get_agent_health(room_name: str):
         process = agent_info["process"]
         is_running = process.poll() is None
         current_time = time.time()
-        uptime = current_time - agent_info["started_at"]
+        start_time = agent_info.get("created_at", agent_info.get("started_at", current_time))
+        uptime = current_time - start_time
         
         health_data = {
             "room_name": room_name,
@@ -800,7 +822,7 @@ async def get_agent_health(room_name: str):
             "uptime_seconds": round(uptime, 2),
             "process_id": process.pid,
             "topic": agent_info["topic"],
-            "started_at": agent_info["started_at"],
+            "started_at": start_time,
             "retry_count": agent_info.get("retry_count", 0),
             "connection_result": agent_info.get("connection_result", {}),
             "last_check": current_time
