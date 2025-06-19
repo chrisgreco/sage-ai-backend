@@ -14,8 +14,12 @@ import subprocess
 import sys
 import time
 import json
+import threading
 
-# Configure logging first
+# Load environment variables first
+load_dotenv()
+
+# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -46,7 +50,7 @@ except ImportError as e:
 # Try to import LiveKit API with proper error handling
 try:
     logger.info("Importing LiveKit API...")
-    from livekit.api import AccessToken, VideoGrants
+    from livekit.api import AccessToken, VideoGrants, RoomServiceClient, CreateRoomRequest
     logger.info("Successfully imported LiveKit API!")
     livekit_available = True
 except ImportError as e:
@@ -128,6 +132,27 @@ class FlexibleDebateRequest(BaseModel):
     # Allow any additional fields for debugging
     class Config:
         extra = "allow"
+
+# Root endpoint for health monitoring and basic info
+@app.get("/")
+async def root():
+    logger.info("Root endpoint called")
+    try:
+        return JSONResponse(content={
+            "message": "Sage AI Backend - Dual Agent Debate System",
+            "status": "healthy",
+            "livekit_available": livekit_available,
+            "voice_agents": "ready",
+            "endpoints": ["/health", "/connect", "/launch-ai-agents", "/participant-token"]
+        })
+    except Exception as e:
+        logger.error(f"Error in root endpoint: {str(e)}")
+        return JSONResponse(content={"status": "error", "message": str(e)}, status_code=500)
+
+# Also handle HEAD requests to root (common for health checks)
+@app.head("/")
+async def root_head():
+    return JSONResponse(content={})
 
 # Health check endpoint - Updated for voice agent deployment
 @app.get("/health")
@@ -375,7 +400,7 @@ async def monitor_agent_connection(room_name: str, process_id: int, max_wait_tim
         logger.warning(f"Agent connection timeout for room {room_name}")
         return {"connected": False, "error": "Connection timeout"}
 
-# Enhanced Launch AI Agents endpoint with monitoring
+# Enhanced Launch AI Agents endpoint using room metadata for background workers
 @app.post("/launch-ai-agents")
 async def launch_ai_agents(request: DebateRequest):
     try:
@@ -389,111 +414,69 @@ async def launch_ai_agents(request: DebateRequest):
         
         room_name = request.room_name or f"debate-{request.topic.replace(' ', '-').lower()}"
         
-        # Launch BOTH AI agent processes for the two-agent debate
+        # Create LiveKit room with metadata for background workers
         try:
-            # Set base environment variables for both agents
-            env = os.environ.copy()
-            env.update({
-                "ROOM_NAME": room_name,
-                "DEBATE_TOPIC": request.topic,
-                "LIVEKIT_URL": LIVEKIT_URL,
-                "LIVEKIT_API_KEY": LIVEKIT_API_KEY,
-                "LIVEKIT_API_SECRET": LIVEKIT_API_SECRET,
-                "OPENAI_API_KEY": OPENAI_API_KEY
-            })
+            from livekit import RoomServiceClient, CreateRoomRequest
             
-            # Launch Aristotle (Moderator) agent
-            aristotle_process = subprocess.Popen(
-                [sys.executable, "-u", "debate_moderator_agent.py"],
-                env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                universal_newlines=True
+            # Initialize LiveKit room service client  
+            room_service = RoomServiceClient(
+                url=LIVEKIT_URL,
+                api_key=LIVEKIT_API_KEY,
+                api_secret=LIVEKIT_API_SECRET
             )
             
-            # Launch Socrates (Philosopher) agent
-            socrates_process = subprocess.Popen(
-                [sys.executable, "-u", "debate_philosopher_agent.py"],
-                env=env,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                universal_newlines=True
+            # Create room with metadata that background workers can read
+            create_request = CreateRoomRequest(
+                name=room_name,
+                metadata=json.dumps({
+                    "debate_topic": request.topic,
+                    "room_type": "sage_debate",
+                    "agents_needed": ["aristotle", "socrates"],
+                    "created_at": time.time(),
+                    "status": "waiting_for_agents"
+                })
             )
             
-            # Store agent info for both agents
+            # Create the room
+            room = await room_service.create_room(create_request)
+            
+            logger.info(f"✅ LiveKit room created: {room_name}")
+            logger.info(f"   - Topic: {request.topic}")
+            logger.info(f"   - Metadata set for background workers to read")
+            
+            # Store room info for tracking
             active_agents[room_name] = {
-                "aristotle_process": aristotle_process,
-                "socrates_process": socrates_process,
-                "topic": request.topic,
-                "started_at": time.time(),
-                "status": "starting",
                 "room_name": room_name,
-                "retry_count": 0,
-                "agents": {
-                    "aristotle": {
-                        "process_id": aristotle_process.pid,
-                        "role": "moderator",
-                        "status": "starting"
-                    },
-                    "socrates": {
-                        "process_id": socrates_process.pid,
-                        "role": "philosopher", 
-                        "status": "starting"
-                    }
-                }
+                "topic": request.topic,
+                "created_at": time.time(),
+                "status": "waiting_for_agents",
+                "method": "background_workers",
+                "agents_expected": ["aristotle", "socrates"]
             }
-            
-            # Start monitoring both processes in background
-            asyncio.create_task(monitor_agent_connection(room_name, aristotle_process.pid))
-            asyncio.create_task(monitor_agent_connection(room_name, socrates_process.pid))
-            
-            logger.info(f"✅ Both AI agents launched for room: {room_name}")
-            logger.info(f"   - Aristotle (Moderator): PID {aristotle_process.pid}")
-            logger.info(f"   - Socrates (Philosopher): PID {socrates_process.pid}")
             
             return {
                 "status": "success",
-                "message": f"Two AI agents launched for room: {room_name}",
+                "message": f"Debate room created: {room_name}",
                 "room_name": room_name,
                 "topic": request.topic,
-                "agents": {
-                    "aristotle": {
-                        "process_id": aristotle_process.pid,
-                        "role": "logical moderator with reason + structure"
-                    },
-                    "socrates": {
-                        "process_id": socrates_process.pid,
-                        "role": "inquisitive challenger with questioning + truth-seeking"
-                    }
-                },
-                "note": "Both agents are starting up and will join the room shortly"
+                "method": "background_workers",
+                "note": "Room metadata set - background workers will join automatically when they detect the room"
             }
             
         except Exception as e:
-            logger.error(f"Failed to launch AI agents: {e}")
+            logger.error(f"Failed to create LiveKit room: {e}")
+            logger.error("Background workers only mode - no fallback spawning available")
             
-            # Clean up any processes that did start
-            try:
-                if 'aristotle_process' in locals():
-                    aristotle_process.terminate()
-                if 'socrates_process' in locals():
-                    socrates_process.terminate()
-            except:
-                pass
-            
-            # Return error response
+            # Return error instead of falling back to direct spawning
             return JSONResponse(
                 content={
                     "status": "error", 
-                    "message": f"Failed to launch agents: {str(e)}",
+                    "message": f"Failed to create LiveKit room: {str(e)}",
                     "room_name": room_name,
-                    "topic": request.topic
-                },
-                status_code=500
+                    "topic": request.topic,
+                    "note": "Background workers only mode - ensure LiveKit service is accessible and background workers are running"
+                }, 
+                status_code=503
             )
     
     except Exception as e:

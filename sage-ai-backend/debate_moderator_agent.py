@@ -8,6 +8,7 @@ import os
 import sys
 import asyncio
 import logging
+import json
 from dotenv import load_dotenv
 
 # Load environment variables first
@@ -326,14 +327,41 @@ Remember: Your PRIMARY goal is to let humans debate freely while being ready to 
         }
 
 async def entrypoint(ctx: JobContext):
-    """Debate Moderator agent entrypoint"""
+    """Debate Moderator agent entrypoint - only joins rooms marked for sage debates"""
     
-    logger.info("🏛️ Sage AI Debate Moderator joining the room...")
+    logger.info("🏛️ Sage AI Debate Moderator checking room metadata...")
     await ctx.connect()
-    logger.info(f"✅ Moderator connected to room: {ctx.room.name}")
     
-    # Get debate topic
-    topic = os.getenv("DEBATE_TOPIC", "The impact of AI on society")
+    # Check if this room is meant for sage debates
+    room_metadata = None
+    try:
+        if hasattr(ctx.room, 'metadata') and ctx.room.metadata:
+            room_metadata = json.loads(ctx.room.metadata)
+            logger.info(f"Room metadata: {room_metadata}")
+    except Exception as e:
+        logger.warning(f"Could not parse room metadata: {e}")
+    
+    # Only join rooms specifically marked for sage debates
+    if room_metadata:
+        room_type = room_metadata.get("room_type")
+        agents_needed = room_metadata.get("agents_needed", [])
+        
+        if room_type != "sage_debate":
+            logger.info(f"❌ Skipping room {ctx.room.name} - not a sage debate room (type: {room_type})")
+            return
+            
+        if "aristotle" not in agents_needed:
+            logger.info(f"❌ Skipping room {ctx.room.name} - Aristotle not needed in this debate")
+            return
+            
+        logger.info(f"✅ Joining sage debate room: {ctx.room.name}")
+        topic = room_metadata.get("debate_topic", "The impact of AI on society")
+    else:
+        # Fallback for rooms without metadata (development/testing)
+        topic = os.getenv("DEBATE_TOPIC", "The impact of AI on society")
+        logger.info(f"⚠️ No room metadata found, using environment topic: {topic}")
+    
+    logger.info(f"✅ Moderator connected to room: {ctx.room.name}")
     room_name = ctx.room.name
     logger.info(f"⚖️ Moderating discussion on: {topic}")
     
@@ -344,9 +372,9 @@ async def entrypoint(ctx: JobContext):
     if SUPABASE_AVAILABLE:
         try:
             room_id = await create_or_get_debate_room(
-                room_token=room_name,
-                topic=topic,
-                max_duration_hours=24
+                room_name=room_name,
+                debate_topic=topic,
+                livekit_token=room_name  # Using room_name as token
             )
             
             memory_data = await get_debate_memory(room_id)
@@ -366,11 +394,11 @@ async def entrypoint(ctx: JobContext):
     # Enhanced instructions with memory
     enhanced_instructions = moderator.instructions + memory_context
     
-    # Create agent session
+    # Create agent session with male voice
     session = AgentSession(
         llm=openai.realtime.RealtimeModel(
             model="gpt-4o-realtime-preview-2024-12-17",
-            voice="shimmer",
+            voice="alloy",  # Male voice for Aristotle
             temperature=0.6  # Slightly lower for more consistent moderation
         ),
         vad=silero.VAD.load(),
@@ -378,9 +406,29 @@ async def entrypoint(ctx: JobContext):
         max_endpointing_delay=3.0,
     )
     
+    # Enhanced instructions with opening announcement
+    opening_instructions = enhanced_instructions + f"""
+
+CRITICAL OPENING PROTOCOL:
+When participants first join the room, immediately provide this opening announcement:
+
+"Greetings, and welcome to this philosophical discourse. I am Aristotle, and I shall establish the framework for our debate.
+
+Today's topic for examination: '{topic}'
+
+Before we begin, let me establish two fundamental rules for our discourse:
+
+First: Each participant should present evidence-based arguments and cite sources when possible.
+
+Second: Maintain respectful discourse - challenge ideas, not individuals.
+
+You may now begin your discussion. I will observe and provide guidance only when directly requested or when logical structure requires attention."
+
+This opening should be spoken IMMEDIATELY when the first participant joins, before any human discussion begins."""
+    
     # Start session
     await session.start(
-        agent=Agent(instructions=enhanced_instructions),
+        agent=Agent(instructions=opening_instructions),
         room=ctx.room
     )
     

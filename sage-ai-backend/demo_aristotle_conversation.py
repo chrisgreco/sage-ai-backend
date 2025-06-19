@@ -48,7 +48,7 @@ The original 40% figure lacks empirical rigor. Most credible studies show modest
 - Management practices
 - Worker experience and training
 
-The evidence suggests productivity benefits exist but are more modest and context-dependent than popular claims suggest."""
+The evidence suggests productivity benefits exist but are more modest and context-dependent than popular claims suggest.""")
 
 print()
 print("📚 Sources consulted:")
@@ -114,7 +114,7 @@ print("""**Technology Sector Deep Analysis (2024-2025 Data):**
 - Cross-functional collaboration remains a challenge, requiring intentional solutions
 
 **Methodological Notes:**
-These studies use quantitative metrics (code output, task completion) rather than subjective assessments, providing more reliable data than earlier self-reported studies."""
+These studies use quantitative metrics (code output, task completion) rather than subjective assessments, providing more reliable data than earlier self-reported studies.""")
 
 print()
 print("📚 Additional sources:")

@@ -3,7 +3,7 @@ services:
   - type: web
     name: sage-ai-backend
     env: python
-    repo: https://github.com/chrisgreco/sage-ai-backend.git  # Replace with your repo URL
+    repo: https://github.com/chrisgreco/sage-ai-backend.git
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
     plan: starter
@@ -31,7 +31,7 @@ services:
   - type: background
     name: aristotle-agent
     env: python
-    repo: https://github.com/chrisgreco/sage-ai-backend.git  # Same repo
+    repo: https://github.com/chrisgreco/sage-ai-backend.git
     buildCommand: pip install -r requirements.txt
     startCommand: python debate_moderator_agent.py start
     plan: starter
@@ -57,7 +57,7 @@ services:
   - type: background
     name: socrates-agent
     env: python
-    repo: https://github.com/chrisgreco/sage-ai-backend.git  # Same repo
+    repo: https://github.com/chrisgreco/sage-ai-backend.git
     buildCommand: pip install -r requirements.txt
     startCommand: python debate_philosopher_agent.py start
     plan: starter

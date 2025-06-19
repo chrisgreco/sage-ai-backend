@@ -234,13 +234,13 @@ async def entrypoint(ctx: JobContext):
             # Create or retrieve debate room in Supabase
             room_token = room_name  # Using room name as token
             room_id = await create_or_get_debate_room(
-                room_token=room_token,
-                topic=topic,
-                max_duration_hours=24  # Allow up to 24-hour debates
+                room_name=room_name,
+                debate_topic=topic,
+                livekit_token=room_token  # Using room_name as the token
             )
             
             # Load existing conversation memory 
-            memory_data = await get_debate_memory(room_id)
+            memory_data = await get_debate_memory(room_name)
             if memory_data["recent_segments"]:
                 logger.info(f"📚 Loaded {len(memory_data['recent_segments'])} conversation segments from memory")
                 # Add memory context to instructions
@@ -253,18 +253,15 @@ async def entrypoint(ctx: JobContext):
             logger.warning(f"⚠️ Supabase memory initialization failed: {e}")
             room_id = None
     
-    # Start with Solon as moderator
-    moderator = DebateAgent(DebatePersonalities.SOLON)
+    # Start with Aristotle for the opening announcement
+    opening_agent = DebateAgent(DebatePersonalities.ARISTOTLE)
     
-    # Enhanced instructions with memory awareness
-    enhanced_instructions = moderator.personality["instructions"] + memory_context
-    
-    # Create agent session with OpenAI Realtime API
+    # Create agent session with OpenAI Realtime API - Start with Aristotle's voice
     logger.info("🤖 Creating agent session with OpenAI Realtime API...")
     session = AgentSession(
         llm=openai.realtime.RealtimeModel(
             model="gpt-4o-realtime-preview-2024-12-17",
-            voice="shimmer",
+            voice="alloy",  # Aristotle's voice for opening
             temperature=0.7
         ),
         vad=silero.VAD.load(),  # Voice Activity Detection using Silero
@@ -272,44 +269,78 @@ async def entrypoint(ctx: JobContext):
         max_endpointing_delay=3.0,
     )
     
-    # Start the session with enhanced instructions
-    logger.info("🚀 Starting agent session...")
+    # Enhanced instructions for Aristotle's opening with memory awareness
+    opening_instructions = f"""{opening_agent.personality["instructions"]}
+
+You are starting this debate session. Provide a clear, authoritative opening that includes:
+1. The debate topic: "{topic}"
+2. Two main debate rules:
+   - Rule 1: Each participant should present evidence-based arguments and cite sources when possible
+   - Rule 2: Maintain respectful discourse - challenge ideas, not individuals
+
+After your opening, you will continue as part of the five-personality debate system with:
+- Socrates: The questioner seeking truth through inquiry
+- Aristotle: The analyst providing logic and evidence (you)
+- Buddha: The peacekeeper seeking harmony and wisdom  
+- Hermes: The synthesizer connecting different viewpoints
+- Solon: The moderator ensuring fair discourse
+
+{memory_context}"""
+
+    # Generate Aristotle's opening announcement
+    opening_announcement = f"""Greetings, and welcome to this philosophical discourse. I am Aristotle, and I shall establish the framework for our debate.
+
+Today's topic for examination: "{topic}"
+
+Before we begin, let me establish two fundamental rules for our discourse:
+
+First: Each participant must present evidence-based arguments and cite credible sources when possible. As I have always emphasized, we must ground our reasoning in observable facts and logical analysis.
+
+Second: We shall maintain respectful discourse throughout. Challenge ideas vigorously, but never attack the person presenting them. Truth emerges through the clash of well-reasoned arguments, not personal animosity.
+
+We have assembled five philosophical perspectives for this debate:
+- Socrates will question assumptions and seek deeper truths
+- I, Aristotle, will provide systematic analysis and evidence
+- Buddha will guide us toward compassionate understanding
+- Hermes will synthesize our various viewpoints
+- And Solon will moderate to ensure fair discourse
+
+{"We continue our previous philosophical exploration..." if memory_context else "Let us begin this reasoned examination of ideas."}"""
+
+    # Add the opening announcement to the instructions so it's spoken first
+    enhanced_opening_instructions = f"""{opening_instructions}
+
+CRITICAL: When someone first joins this room or when you first speak, immediately provide this exact opening announcement:
+
+{opening_announcement}
+
+This must be your first response when participants join the debate room."""
+    
+    # Start the session with Aristotle's enhanced opening
+    logger.info("🚀 Starting agent session with Aristotle's opening...")
     await session.start(
-        agent=Agent(instructions=enhanced_instructions),
+        agent=Agent(instructions=enhanced_opening_instructions),
         room=ctx.room
     )
     
-    # Generate initial greeting and setup
-    greeting = f"""Welcome to the Sage AI Debate Room! I'm Solon, your moderator. 
+    logger.info("💬 Generating Aristotle's opening announcement...")
     
-Today's topic: "{topic}"
-
-We have five AI personalities ready to engage:
-- Socrates: The questioner who seeks truth through inquiry
-- Aristotle: The analyst who provides logic and evidence  
-- Buddha: The peacekeeper who seeks harmony and wisdom
-- Hermes: The synthesizer who connects different viewpoints
-- And myself, Solon: Your moderator ensuring fair discourse
-
-{"Continuing our previous discussion..." if memory_context else "Let's begin our philosophical exploration!"}"""
-    
-    logger.info("💬 Generating initial greeting...")
-    
-    # Store initial greeting in memory if available
+    # Store opening announcement in memory if available
     if room_id and SUPABASE_AVAILABLE:
         try:
             await store_debate_segment(
                 room_id=room_id,
-                speaker_name="Solon",
-                speaker_type="ai",
-                content=greeting,
-                segment_type="greeting"
+                session_number=1,  # Starting session
+                segment_number=1,  # First segment
+                speaker_role="aristotle",
+                speaker_name="Aristotle",
+                content_text=opening_announcement
             )
-            logger.info("💾 Stored greeting in memory")
+            logger.info("💾 Stored opening announcement in memory")
         except Exception as e:
-            logger.warning(f"Failed to store greeting in memory: {e}")
+            logger.warning(f"Failed to store opening announcement in memory: {e}")
     
-    logger.info("✅ Debate session started successfully! Agents are now active in the room.")
+    logger.info("✅ Debate session started successfully! Aristotle has provided the opening framework.")
 
 def main():
     """Main function to run the agent with proper error handling"""
