@@ -27,12 +27,18 @@ class PerplexityResearcher:
     """Perplexity API integration for real-time research"""
     
     def __init__(self):
+        # Force reload .env file to ensure we get the latest keys
+        from dotenv import load_dotenv
+        load_dotenv(override=True)  # Override any existing env vars
+        
         self.api_key = os.getenv("PERPLEXITY_API_KEY")
         self.base_url = "https://api.perplexity.ai/chat/completions"
-        self.model = "sonar-pro"  # Current Perplexity model for real-time research
+        self.model = "sonar"  # Current Perplexity model for real-time research
         
-        if not self.api_key:
-            logger.warning("PERPLEXITY_API_KEY not found. Research features will be disabled.")
+        if not self.api_key or self.api_key.startswith("your-"):
+            logger.warning("PERPLEXITY_API_KEY not found or using placeholder. Research features will be disabled.")
+        else:
+            logger.info(f"✅ Perplexity API key loaded: {self.api_key[:10]}...")
     
     async def research_claim(self, claim: str, context: str = "") -> Optional[ResearchResult]:
         """Research a specific claim or statement"""
@@ -146,9 +152,7 @@ class PerplexityResearcher:
                 }
             ],
             "max_tokens": 1000,
-            "temperature": 0.1,  # Low temperature for factual accuracy
-            "return_citations": True,
-            "return_images": False
+            "temperature": 0.1  # Low temperature for factual accuracy
         }
         
         try:
@@ -170,18 +174,14 @@ class PerplexityResearcher:
         try:
             content = response_data["choices"][0]["message"]["content"]
             
-            # Extract citations if available
+            # Extract citations if available - Perplexity returns direct URLs
             citations = []
             sources = []
             
             if "citations" in response_data:
-                for citation in response_data["citations"]:
-                    citations.append({
-                        "title": citation.get("title", ""),
-                        "url": citation.get("url", ""),
-                        "source": citation.get("source", "")
-                    })
-                    sources.append(citation.get("url", ""))
+                # Perplexity citations are direct URLs, not objects
+                sources = response_data["citations"]
+                citations = [{"url": url, "title": "", "source": url} for url in sources]
             
             return ResearchResult(
                 query=query,
