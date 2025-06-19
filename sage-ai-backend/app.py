@@ -866,8 +866,9 @@ async def memory_health_check():
 if __name__ == "__main__":
     if SERVICE_MODE == "worker":
         logger.info("Running in background worker mode (launching LiveKit agent)")
-        # Launch the real agent (multi_personality_agent.py) as a subprocess
-        subprocess.run([sys.executable, "-u", "multi_personality_agent.py"])
+        # Worker mode is deprecated - use render.yaml background workers instead
+        logger.error("Worker mode deprecated - use render.yaml background workers instead")
+        sys.exit(1)
     else:
         logger.info("Running in web service mode")
         uvicorn.run(app, host="0.0.0.0", port=8000) 
