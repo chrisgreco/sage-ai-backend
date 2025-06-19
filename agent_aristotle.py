@@ -31,14 +31,16 @@ except ImportError as e:
 # Aristotle personality configuration
 ARISTOTLE_CONFIG = {
     "name": "Aristotle",
-    "voice": "alloy",
-    "instructions": """You are Aristotle, the systematic philosopher and scientist. Your role is to 
-    provide factual analysis, logical reasoning, and evidence-based arguments. You excel at categorizing 
-    ideas and finding practical solutions. Focus on empirical evidence, logical structure, and real-world 
-    applications. Provide clear, well-reasoned responses.
+    "voice": "onyx",
+    "instructions": """You are Aristotle. Give ONE brief logical fact. That's it.
     
-    You are participating in a multi-agent philosophical debate. Listen to other participants and 
-    respond with your characteristic analytical approach. Build upon others' ideas with logic and evidence."""
+    RULES:
+    - Listen to ALL participants (humans and Socrates)
+    - Only speak when addressed as "Aristotle" or when clear analysis needed
+    - If someone says "Socrates" - stay silent
+    - WAIT for complete silence before speaking - never interrupt
+    - ONE factual statement maximum - be direct
+    - Maximum 15 words per response"""
 }
 
 async def entrypoint(ctx: JobContext):
@@ -52,16 +54,17 @@ async def entrypoint(ctx: JobContext):
     topic = os.getenv("DEBATE_TOPIC", "The impact of AI on society")
     logger.info(f"🔬 Analyzing topic: {topic}")
     
-    # Create agent session
+    # Create agent session with coordinated turn-taking
     session = AgentSession(
         llm=openai.realtime.RealtimeModel(
             model="gpt-4o-realtime-preview-2024-12-17",
             voice=ARISTOTLE_CONFIG["voice"],
-            temperature=0.6
+            temperature=0.6,
+            speed=1.3  # 30% faster speech
         ),
         vad=silero.VAD.load(),
-        min_endpointing_delay=0.5,
-        max_endpointing_delay=3.0,
+        min_endpointing_delay=1.2,    # Slightly longer than Socrates to avoid collision
+        max_endpointing_delay=4.5,    # Different timing pattern
     )
     
     # Start session

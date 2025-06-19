@@ -1,0 +1,101 @@
+services:
+  # Main web service - handles HTTP API, tokens, and agent spawning
+  - type: web
+    name: sage-ai-backend
+    env: python
+    repo: https://github.com/chrisgreco/sage-ai-backend.git
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
+    plan: starter
+    envVars:
+      - key: PORT
+        value: 8000
+      - key: LIVEKIT_URL
+        fromGroup: sage-ai-env
+      - key: LIVEKIT_API_KEY  
+        fromGroup: sage-ai-env
+      - key: LIVEKIT_API_SECRET
+        fromGroup: sage-ai-env
+      - key: OPENAI_API_KEY
+        fromGroup: sage-ai-env
+      - key: DEEPGRAM_API_KEY
+        fromGroup: sage-ai-env
+      - key: SUPABASE_URL
+        fromGroup: sage-ai-env
+      - key: SUPABASE_ANON_KEY
+        fromGroup: sage-ai-env
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        fromGroup: sage-ai-env
+
+  # Background Worker 1: Aristotle (Moderator) Agent
+  - type: background
+    name: aristotle-agent
+    env: python
+    repo: https://github.com/chrisgreco/sage-ai-backend.git
+    buildCommand: pip install -r requirements.txt
+    startCommand: python debate_moderator_agent.py start
+    plan: starter
+    envVars:
+      - key: LIVEKIT_URL
+        fromGroup: sage-ai-env
+      - key: LIVEKIT_API_KEY
+        fromGroup: sage-ai-env
+      - key: LIVEKIT_API_SECRET
+        fromGroup: sage-ai-env
+      - key: OPENAI_API_KEY
+        fromGroup: sage-ai-env
+      - key: DEEPGRAM_API_KEY
+        fromGroup: sage-ai-env
+      - key: SUPABASE_URL
+        fromGroup: sage-ai-env
+      - key: SUPABASE_ANON_KEY
+        fromGroup: sage-ai-env
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        fromGroup: sage-ai-env
+
+  # Background Worker 2: Socrates (Philosopher) Agent  
+  - type: background
+    name: socrates-agent
+    env: python
+    repo: https://github.com/chrisgreco/sage-ai-backend.git
+    buildCommand: pip install -r requirements.txt
+    startCommand: python debate_philosopher_agent.py start
+    plan: starter
+    envVars:
+      - key: LIVEKIT_URL
+        fromGroup: sage-ai-env
+      - key: LIVEKIT_API_KEY
+        fromGroup: sage-ai-env
+      - key: LIVEKIT_API_SECRET
+        fromGroup: sage-ai-env
+      - key: OPENAI_API_KEY
+        fromGroup: sage-ai-env
+      - key: DEEPGRAM_API_KEY
+        fromGroup: sage-ai-env
+      - key: SUPABASE_URL
+        fromGroup: sage-ai-env
+      - key: SUPABASE_ANON_KEY
+        fromGroup: sage-ai-env
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        fromGroup: sage-ai-env
+
+# Environment Variable Groups (create this in Render dashboard)
+envVarGroups:
+  - name: sage-ai-env
+    envVars:
+      - key: LIVEKIT_URL
+        value: "wss://your-livekit-url.livekit.cloud"
+      - key: LIVEKIT_API_KEY
+        value: "your-livekit-api-key"
+      - key: LIVEKIT_API_SECRET
+        value: "your-livekit-api-secret"
+      - key: OPENAI_API_KEY
+        value: "your-openai-api-key"
+      - key: DEEPGRAM_API_KEY
+        value: "your-deepgram-api-key"
+      - key: SUPABASE_URL
+        value: "your-supabase-url"
+      - key: SUPABASE_ANON_KEY
+        value: "your-supabase-anon-key"
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        value: "your-supabase-service-role-key" 

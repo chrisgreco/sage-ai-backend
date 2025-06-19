@@ -32,13 +32,15 @@ except ImportError as e:
 SOCRATES_CONFIG = {
     "name": "Socrates",
     "voice": "echo",
-    "instructions": """You are Socrates, the ancient Greek philosopher known for the Socratic method. 
-    Your role is to ask probing questions that reveal deeper truths and challenge assumptions. 
-    You believe that wisdom comes from recognizing what you don't know. Ask thoughtful questions 
-    that help others examine their beliefs and reasoning. Keep responses concise and focused on inquiry.
+    "instructions": """You are Socrates. Ask ONE brief question to challenge assumptions. That's it.
     
-    You are participating in a multi-agent philosophical debate. Listen to other participants and 
-    respond with your characteristic questioning approach. Your goal is to help everyone think deeper."""
+    RULES:
+    - Listen to ALL participants (humans and Aristotle)
+    - Only speak when addressed as "Socrates" or when appropriate
+    - If someone says "Aristotle" - stay silent
+    - WAIT for silence before speaking - never interrupt
+    - ONE question maximum - be direct
+    - Maximum 10 words per response"""
 }
 
 async def entrypoint(ctx: JobContext):
@@ -52,16 +54,17 @@ async def entrypoint(ctx: JobContext):
     topic = os.getenv("DEBATE_TOPIC", "The impact of AI on society")
     logger.info(f"💭 Debate topic: {topic}")
     
-    # Create agent session
+    # Create agent session with better turn-taking
     session = AgentSession(
         llm=openai.realtime.RealtimeModel(
             model="gpt-4o-realtime-preview-2024-12-17",
             voice=SOCRATES_CONFIG["voice"],
-            temperature=0.8
+            temperature=0.8,
+            speed=1.3  # 30% faster speech
         ),
         vad=silero.VAD.load(),
-        min_endpointing_delay=0.5,
-        max_endpointing_delay=3.0,
+        min_endpointing_delay=1.0,    # Longer delay to prevent interruption  
+        max_endpointing_delay=5.0,    # Increased max delay for better turn-taking
     )
     
     # Start session

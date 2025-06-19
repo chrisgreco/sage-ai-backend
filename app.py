@@ -627,6 +627,12 @@ async def stop_ai_agents(request: DebateRequest):
             if agent_info.get("method") == "explicit_agent_dispatch" and "agents_dispatched" in agent_info:
                 logger.info(f"Terminating dispatched agents by deleting room {room_name}")
                 try:
+                    # Initialize LiveKit API client for room deletion
+                    livekit_api = api.LiveKitAPI(
+                        url=LIVEKIT_URL,
+                        api_key=LIVEKIT_API_KEY,
+                        api_secret=LIVEKIT_API_SECRET
+                    )
                     # Delete the LiveKit room to force agent cleanup
                     await livekit_api.room.delete_room(room_name)
                     logger.info(f"✅ Room {room_name} deleted - agents should terminate")
