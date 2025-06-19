@@ -473,7 +473,7 @@ async def launch_ai_agents(request: DebateRequest):
             )
             
             aristotle_job = await livekit_api.agent_dispatch.create_dispatch(aristotle_dispatch_req)
-            logger.info(f"✅ Aristotle explicitly dispatched to room {room_name}, job ID: {aristotle_job.job.id}")
+            logger.info(f"✅ Aristotle explicitly dispatched to room {room_name}, dispatch ID: {aristotle_job.id}")
             
             # Explicitly dispatch Socrates agent using proper protocol
             socrates_dispatch_req = agent_dispatch.CreateAgentDispatchRequest(
@@ -487,7 +487,7 @@ async def launch_ai_agents(request: DebateRequest):
             )
             
             socrates_job = await livekit_api.agent_dispatch.create_dispatch(socrates_dispatch_req)
-            logger.info(f"✅ Socrates explicitly dispatched to room {room_name}, job ID: {socrates_job.job.id}")
+            logger.info(f"✅ Socrates explicitly dispatched to room {room_name}, dispatch ID: {socrates_job.id}")
             
             # Store room info for tracking
             active_agents[room_name] = {
@@ -498,12 +498,12 @@ async def launch_ai_agents(request: DebateRequest):
                 "method": "explicit_agent_dispatch",
                 "agents_dispatched": {
                     "aristotle": {
-                        "job_id": aristotle_job.job.id,
+                        "dispatch_id": aristotle_job.id,
                         "status": "dispatched",
                         "role": "logical_analyst"
                     },
                     "socrates": {
-                        "job_id": socrates_job.job.id,
+                        "dispatch_id": socrates_job.id,
                         "status": "dispatched", 
                         "role": "questioning_philosopher"
                     }
@@ -521,11 +521,11 @@ async def launch_ai_agents(request: DebateRequest):
                 "method": "explicit_agent_dispatch",
                 "agents_dispatched": {
                     "aristotle": {
-                        "job_id": aristotle_job.job.id,
+                        "dispatch_id": aristotle_job.id,
                         "status": "dispatched"
                     },
                     "socrates": {
-                        "job_id": socrates_job.job.id,
+                        "dispatch_id": socrates_job.id,
                         "status": "dispatched"
                     }
                 }
