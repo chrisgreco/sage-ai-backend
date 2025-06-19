@@ -373,22 +373,9 @@ async def entrypoint(ctx: JobContext):
     
     logger.info(f"🎯 ARISTOTLE FINAL TOPIC: {topic}")
     
-    # Only join rooms specifically marked for sage debates (if room metadata exists)
-    if room_metadata:
-        room_type = room_metadata.get("room_type")
-        agents_needed = room_metadata.get("agents_needed", [])
-        
-        if room_type and room_type != "sage_debate":
-            logger.info(f"❌ Skipping room {ctx.room.name} - not a sage debate room (type: {room_type})")
-            return
-            
-        if agents_needed and "aristotle" not in agents_needed:
-            logger.info(f"❌ Skipping room {ctx.room.name} - Aristotle not needed in this debate")
-            return
-            
-        logger.info(f"✅ Joining sage debate room: {ctx.room.name}")
-    else:
-        logger.info(f"✅ Joining room (no metadata restrictions): {ctx.room.name}")
+    # REMOVED RESTRICTIVE ROOM FILTERING - Agents should join all rooms
+    # The frontend doesn't set room_type="sage_debate" metadata, so this was blocking all rooms
+    logger.info(f"✅ Joining room: {ctx.room.name}")
     
     logger.info(f"✅ Moderator connected to room: {ctx.room.name}")
     room_name = ctx.room.name
