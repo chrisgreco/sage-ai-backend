@@ -416,7 +416,7 @@ async def launch_ai_agents(request: DebateRequest):
         
         # Create LiveKit room with metadata for background workers
         try:
-            from livekit import RoomServiceClient, CreateRoomRequest
+            # Use already imported classes from livekit.api
             
             # Initialize LiveKit room service client  
             room_service = RoomServiceClient(
