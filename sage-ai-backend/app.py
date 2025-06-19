@@ -16,6 +16,13 @@ import time
 import json
 import threading
 
+# Load environment variables
+load_dotenv()
+
+# Configure logging FIRST
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 # LiveKit imports - conditional import with error handling
 try:
     from livekit import api
@@ -48,16 +55,9 @@ except ImportError as e:
     async def get_debate_memory(*args, **kwargs):
         return {"recent_segments": [], "session_summaries": [], "personality_memories": {}}
 
-# Load environment variables
-load_dotenv()
+# Force redeploy to pick up LiveKit API fixes - 2025-01-19
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Force redeploy to pick up Supabase environment variables - 2025-01-17
-
-# Force redeploy to pick up Supabase environment variables - 2025-01-17
+# Force redeploy to pick up LiveKit API fixes - 2025-01-19
 
 # Supabase memory integration for persistent conversation storage
 try:
@@ -252,13 +252,21 @@ async def create_debate(request: DebateRequest):
         logger.info(f"Request room_name: {request.room_name}")
         logger.info(f"Request participant_name: {request.participant_name}")
         
+        # Debug logging for troubleshooting
+        logger.info(f"DEBUG - livekit_available: {livekit_available}")
+        logger.info(f"DEBUG - LIVEKIT_URL present: {bool(LIVEKIT_URL)}")
+        logger.info(f"DEBUG - LIVEKIT_API_KEY present: {bool(LIVEKIT_API_KEY)}")
+        logger.info(f"DEBUG - LIVEKIT_API_SECRET present: {bool(LIVEKIT_API_SECRET)}")
+        
         if not livekit_available:
+            logger.error("LiveKit SDK not available - check package installation")
             return JSONResponse(
                 content={"status": "error", "message": "LiveKit SDK not available"}, 
                 status_code=503
             )
             
         if not all([LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET]):
+            logger.error(f"LiveKit configuration missing - URL: {bool(LIVEKIT_URL)}, KEY: {bool(LIVEKIT_API_KEY)}, SECRET: {bool(LIVEKIT_API_SECRET)}")
             return JSONResponse(
                 content={"status": "error", "message": "LiveKit configuration missing"}, 
                 status_code=503
@@ -421,53 +429,106 @@ async def launch_ai_agents(request: DebateRequest):
         
         room_name = request.room_name or f"debate-{request.topic.replace(' ', '-').lower()}"
         
-        # Create LiveKit room with metadata for background workers
+        # Create LiveKit room and explicitly dispatch agents using AgentDispatchService
         try:
-            # Use already imported classes from livekit.api
-            
-            # Initialize LiveKit room service client  
-            room_service = api.RoomServiceClient(
+            # Initialize LiveKit services
+            # Initialize LiveKit API client (proper way)
+            livekit_api = api.LiveKitAPI(
                 url=LIVEKIT_URL,
                 api_key=LIVEKIT_API_KEY,
                 api_secret=LIVEKIT_API_SECRET
             )
             
-            # Create room with metadata that background workers can read
-            create_request = api.CreateRoomRequest(
+            # Import room service classes
+            from livekit.api import room_service
+            
+            # Create room with metadata
+            create_request = room_service.CreateRoomRequest(
                 name=room_name,
                 metadata=json.dumps({
                     "debate_topic": request.topic,
                     "room_type": "sage_debate",
-                    "agents_needed": ["aristotle", "socrates"],
+                    "agents_dispatched": ["aristotle", "socrates"],
                     "created_at": time.time(),
-                    "status": "waiting_for_agents"
+                    "status": "agents_dispatching"
                 })
             )
             
-            # Create the room
-            room = await room_service.create_room(create_request)
-            
+            # Create the room using the proper API
+            room = await livekit_api.room.create_room(create_request)
             logger.info(f"✅ LiveKit room created: {room_name}")
-            logger.info(f"   - Topic: {request.topic}")
-            logger.info(f"   - Metadata set for background workers to read")
+            
+            # Import the agent dispatch protocol classes
+            from livekit.protocol import agent_dispatch
+            
+            # Explicitly dispatch Aristotle agent using proper protocol
+            aristotle_dispatch_req = agent_dispatch.CreateAgentDispatchRequest(
+                room=room_name,
+                agent_name="aristotle",
+                metadata=json.dumps({
+                    "role": "logical_analyst", 
+                    "debate_topic": request.topic,
+                    "agent_type": "aristotle"
+                })
+            )
+            
+            aristotle_job = await livekit_api.agent_dispatch.create_dispatch(aristotle_dispatch_req)
+            logger.info(f"✅ Aristotle explicitly dispatched to room {room_name}, job ID: {aristotle_job.job.id}")
+            
+            # Explicitly dispatch Socrates agent using proper protocol
+            socrates_dispatch_req = agent_dispatch.CreateAgentDispatchRequest(
+                room=room_name,
+                agent_name="socrates",
+                metadata=json.dumps({
+                    "role": "questioning_philosopher",
+                    "debate_topic": request.topic,
+                    "agent_type": "socrates"
+                })
+            )
+            
+            socrates_job = await livekit_api.agent_dispatch.create_dispatch(socrates_dispatch_req)
+            logger.info(f"✅ Socrates explicitly dispatched to room {room_name}, job ID: {socrates_job.job.id}")
             
             # Store room info for tracking
             active_agents[room_name] = {
                 "room_name": room_name,
                 "topic": request.topic,
                 "created_at": time.time(),
-                "status": "waiting_for_agents",
-                "method": "background_workers",
-                "agents_expected": ["aristotle", "socrates"]
+                "status": "agents_dispatched",
+                "method": "explicit_agent_dispatch",
+                "agents_dispatched": {
+                    "aristotle": {
+                        "job_id": aristotle_job.job.id,
+                        "status": "dispatched",
+                        "role": "logical_analyst"
+                    },
+                    "socrates": {
+                        "job_id": socrates_job.job.id,
+                        "status": "dispatched", 
+                        "role": "questioning_philosopher"
+                    }
+                }
             }
+            
+            logger.info(f"🎉 Debate room ready: {room_name}")
+            logger.info(f"📢 Both agents explicitly dispatched to room")
             
             return {
                 "status": "success",
-                "message": f"Debate room created: {room_name}",
+                "message": f"Debate room created and agents dispatched: {room_name}",
                 "room_name": room_name,
                 "topic": request.topic,
-                "method": "background_workers",
-                "note": "Room metadata set - background workers will join automatically when they detect the room"
+                "method": "explicit_agent_dispatch",
+                "agents_dispatched": {
+                    "aristotle": {
+                        "job_id": aristotle_job.job.id,
+                        "status": "dispatched"
+                    },
+                    "socrates": {
+                        "job_id": socrates_job.job.id,
+                        "status": "dispatched"
+                    }
+                }
             }
             
         except Exception as e:

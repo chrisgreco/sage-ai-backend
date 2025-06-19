@@ -48,9 +48,33 @@ async def entrypoint(ctx: JobContext):
     await ctx.connect()
     logger.info(f"✅ Aristotle connected to room: {ctx.room.name}")
     
-    # Get debate topic
-    topic = os.getenv("DEBATE_TOPIC", "The impact of AI on society")
-    logger.info(f"🔬 Analyzing topic: {topic}")
+    # Get debate topic from room metadata or job metadata
+    debate_topic = "The impact of AI on society"  # Default topic
+    
+    if ctx.room.metadata:
+        try:
+            import json
+            room_metadata = json.loads(ctx.room.metadata)
+            debate_topic = room_metadata.get("debate_topic", debate_topic)
+            logger.info(f"🎯 Room topic: {debate_topic}")
+        except (json.JSONDecodeError, Exception) as e:
+            logger.warning(f"⚠️ Could not parse room metadata: {e}")
+    
+    # Check job metadata for agent-specific information
+    if hasattr(ctx, 'job') and ctx.job.metadata:
+        try:
+            import json
+            job_metadata = json.loads(ctx.job.metadata)
+            role = job_metadata.get("role", "logical_analyst")
+            agent_type = job_metadata.get("agent_type", "aristotle")
+            job_topic = job_metadata.get("debate_topic")
+            if job_topic:
+                debate_topic = job_topic
+            logger.info(f"🎭 Job role: {role}, Agent type: {agent_type}")
+        except (json.JSONDecodeError, Exception) as e:
+            logger.warning(f"⚠️ Could not parse job metadata: {e}")
+    
+    logger.info(f"🔬 Analyzing topic: {debate_topic}")
     
     # Create agent session
     session = AgentSession(
