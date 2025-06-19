@@ -23,24 +23,24 @@ logger = logging.getLogger(__name__)
 try:
     from livekit.agents import Agent, AgentSession, JobContext, WorkerOptions, cli
     from livekit.plugins import openai, silero
+    from livekit.plugins.turn_detector import EnglishModel
     logger.info("✅ LiveKit Agents successfully imported")
 except ImportError as e:
     logger.error(f"❌ LiveKit Agents import failed: {e}")
     sys.exit(1)
 
-# Socrates personality configuration
+# Socrates personality configuration - ULTRA CONCISE
 SOCRATES_CONFIG = {
     "name": "Socrates",
     "voice": "echo",
-    "instructions": """You are Socrates. Ask ONE brief question to challenge assumptions. That's it.
-    
-    RULES:
-    - Listen to ALL participants (humans and Aristotle)
-    - Only speak when addressed as "Socrates" or when appropriate
-    - If someone says "Aristotle" - stay silent
-    - WAIT for silence before speaking - never interrupt
-    - ONE question maximum - be direct
-    - Maximum 10 words per response"""
+    "instructions": """You are Socrates. Ask 1 question (max 10 words).
+
+CRITICAL RULES:
+- WAIT for complete silence before speaking
+- If someone says "Aristotle" - stay silent
+- 10 words maximum per response
+- Only ask ONE question per turn
+- Listen first, question second"""
 }
 
 async def entrypoint(ctx: JobContext):
@@ -50,21 +50,46 @@ async def entrypoint(ctx: JobContext):
     await ctx.connect()
     logger.info(f"✅ Socrates connected to room: {ctx.room.name}")
     
-    # Get debate topic
-    topic = os.getenv("DEBATE_TOPIC", "The impact of AI on society")
-    logger.info(f"💭 Debate topic: {topic}")
+    # Get debate topic from room metadata or job metadata
+    debate_topic = "The impact of AI on society"  # Default topic
     
-    # Create agent session with better turn-taking
+    if ctx.room.metadata:
+        try:
+            import json
+            room_metadata = json.loads(ctx.room.metadata)
+            debate_topic = room_metadata.get("debate_topic", debate_topic)
+            logger.info(f"🎯 Room topic: {debate_topic}")
+        except (json.JSONDecodeError, Exception) as e:
+            logger.warning(f"⚠️ Could not parse room metadata: {e}")
+    
+    # Check job metadata for agent-specific information
+    if hasattr(ctx, 'job') and ctx.job.metadata:
+        try:
+            import json
+            job_metadata = json.loads(ctx.job.metadata)
+            role = job_metadata.get("role", "questioning_philosopher")
+            agent_type = job_metadata.get("agent_type", "socrates")
+            job_topic = job_metadata.get("debate_topic")
+            if job_topic:
+                debate_topic = job_topic
+            logger.info(f"🎭 Job role: {role}, Agent type: {agent_type}")
+        except (json.JSONDecodeError, Exception) as e:
+            logger.warning(f"⚠️ Could not parse job metadata: {e}")
+    
+    logger.info(f"💭 Debate topic: {debate_topic}")
+    
+    # Create agent session with ADVANCED turn detection
     session = AgentSession(
         llm=openai.realtime.RealtimeModel(
             model="gpt-4o-realtime-preview-2024-12-17",
             voice=SOCRATES_CONFIG["voice"],
-            temperature=0.8,
+            temperature=0.7,
             speed=1.3  # 30% faster speech
         ),
         vad=silero.VAD.load(),
-        min_endpointing_delay=1.0,    # Longer delay to prevent interruption  
-        max_endpointing_delay=5.0,    # Increased max delay for better turn-taking
+        turn_detector=EnglishModel.load(),  # Semantic turn detection
+        min_endpointing_delay=1.0,  # Socrates waits 1.0s minimum
+        max_endpointing_delay=4.0,
     )
     
     # Start session
