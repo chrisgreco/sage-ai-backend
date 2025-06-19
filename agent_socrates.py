@@ -53,30 +53,55 @@ async def entrypoint(ctx: JobContext):
     # Get debate topic from room metadata or job metadata
     debate_topic = "The impact of AI on society"  # Default topic
     
+    # First check room metadata
     if ctx.room.metadata:
         try:
             import json
             room_metadata = json.loads(ctx.room.metadata)
             debate_topic = room_metadata.get("debate_topic", debate_topic)
-            logger.info(f"🎯 Room topic: {debate_topic}")
+            logger.info(f"🎯 Room topic from metadata: {debate_topic}")
         except (json.JSONDecodeError, Exception) as e:
             logger.warning(f"⚠️ Could not parse room metadata: {e}")
+    else:
+        logger.info("📝 No room metadata available")
     
-    # Check job metadata for agent-specific information
-    if hasattr(ctx, 'job') and ctx.job.metadata:
+    # Check job metadata for agent-specific information (THIS IS WHERE THE TOPIC SHOULD COME FROM)
+    if hasattr(ctx, 'job') and ctx.job and hasattr(ctx.job, 'metadata') and ctx.job.metadata:
         try:
             import json
             job_metadata = json.loads(ctx.job.metadata)
             role = job_metadata.get("role", "questioning_philosopher")
             agent_type = job_metadata.get("agent_type", "socrates")
             job_topic = job_metadata.get("debate_topic")
+            
+            logger.info(f"🎭 Job metadata found:")
+            logger.info(f"   Role: {role}")
+            logger.info(f"   Agent type: {agent_type}")
+            logger.info(f"   Job topic: {job_topic}")
+            
             if job_topic:
                 debate_topic = job_topic
-            logger.info(f"🎭 Job role: {role}, Agent type: {agent_type}")
+                logger.info(f"✅ Using topic from job metadata: {debate_topic}")
+            else:
+                logger.warning("⚠️ No debate_topic in job metadata!")
+                
         except (json.JSONDecodeError, Exception) as e:
-            logger.warning(f"⚠️ Could not parse job metadata: {e}")
+            logger.error(f"❌ Could not parse job metadata: {e}")
+    else:
+        logger.warning("⚠️ No job metadata available - this is the problem!")
+        if hasattr(ctx, 'job'):
+            if ctx.job:
+                logger.info(f"   ctx.job exists: {type(ctx.job)}")
+                if hasattr(ctx.job, 'metadata'):
+                    logger.info(f"   ctx.job.metadata: {ctx.job.metadata}")
+                else:
+                    logger.info("   ctx.job has no metadata attribute")
+            else:
+                logger.info("   ctx.job is None")
+        else:
+            logger.info("   ctx has no job attribute")
     
-    logger.info(f"💭 Debate topic: {debate_topic}")
+    logger.info(f"🔬 FINAL TOPIC: {debate_topic}")
     
     # Create agent session with ADVANCED turn detection
     session = AgentSession(
@@ -92,9 +117,15 @@ async def entrypoint(ctx: JobContext):
         max_endpointing_delay=4.0,
     )
     
-    # Start session
+    # Start session with dynamic instructions
+    # Create dynamic instructions that include the actual debate topic
+    dynamic_instructions = f"""{SOCRATES_CONFIG["instructions"]}
+
+DEBATE TOPIC: "{debate_topic}"
+Ask questions specifically about this topic."""
+    
     await session.start(
-        agent=Agent(instructions=SOCRATES_CONFIG["instructions"]),
+        agent=Agent(instructions=dynamic_instructions),
         room=ctx.room
     )
     
