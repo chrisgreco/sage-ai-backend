@@ -16,7 +16,39 @@ import time
 import json
 import threading
 
-# Load environment variables first
+# LiveKit imports - conditional import with error handling
+try:
+    from livekit import api
+    livekit_available = True
+    logger.info("✅ LiveKit API imported successfully")
+except ImportError as e:
+    logger.error(f"Error importing LiveKit API: {str(e)}")
+    logger.warning("LiveKit functionality will be limited. Please install with: pip install livekit-api")
+    livekit_available = False
+
+# Supabase memory manager imports - conditional import
+try:
+    from supabase_memory_manager import (
+        create_or_get_debate_room, 
+        store_debate_segment, 
+        get_debate_memory,
+        SUPABASE_AVAILABLE
+    )
+    logger.info("✅ Supabase memory manager imported successfully")
+except ImportError as e:
+    logger.error(f"Error importing Supabase memory manager: {str(e)}")
+    logger.warning("Memory functionality will be limited.")
+    SUPABASE_AVAILABLE = False
+    
+    # Create dummy functions to prevent runtime errors
+    async def create_or_get_debate_room(*args, **kwargs):
+        return None
+    async def store_debate_segment(*args, **kwargs):
+        return False
+    async def get_debate_memory(*args, **kwargs):
+        return {"recent_segments": [], "session_summaries": [], "personality_memories": {}}
+
+# Load environment variables
 load_dotenv()
 
 # Configure logging
@@ -35,20 +67,6 @@ try:
 except ImportError:
     SUPABASE_AVAILABLE = False
     logger.warning("⚠️ Supabase client library not available")
-
-# Try to import LiveKit API with proper error handling
-try:
-    logger.info("Importing LiveKit API...")
-    from livekit import api
-    logger.info("Successfully imported LiveKit API!")
-    livekit_available = True
-except ImportError as e:
-    logger.error(f"Error importing LiveKit API: {str(e)}")
-    logger.warning("LiveKit functionality will be limited. Please install with: pip install livekit-api")
-    livekit_available = False
-
-# Load environment variables
-load_dotenv()
 
 # Get environment variables
 LIVEKIT_URL = os.getenv("LIVEKIT_URL")
@@ -775,9 +793,10 @@ async def create_memory_room(request: MemoryRequest):
     
     try:
         room_id = await create_or_get_debate_room(
-            room_token=request.room_token,
-            topic="AI Debate",
-            max_duration_hours=24
+            room_name=request.room_token,
+            debate_topic="AI Debate",
+            livekit_token=request.room_token,  # Using token as a placeholder
+            participants=[]
         )
         return {"status": "success", "room_id": room_id}
     except Exception as e:
@@ -796,18 +815,22 @@ async def store_memory_segment(request: MemoryRequest):
     try:
         # First ensure room exists
         room_id = await create_or_get_debate_room(
-            room_token=request.room_token,
-            topic="AI Debate",
-            max_duration_hours=24
+            room_name=request.room_token,
+            debate_topic="AI Debate",
+            livekit_token=request.room_token,
+            participants=[]
         )
         
-        # Store the segment
+        # Store the segment - note: this function needs more parameters
+        # For now, using defaults since the API doesn't provide all required fields
         success = await store_debate_segment(
             room_id=room_id,
+            session_number=1,  # Default session
+            segment_number=1,  # Would need to track this
+            speaker_role=request.speaker_type,
             speaker_name=request.speaker_name or "Anonymous",
-            speaker_type=request.speaker_type,
-            content=request.content or "",
-            segment_type=request.segment_type
+            content_text=request.content or "",
+            key_points=[]
         )
         
         return {"status": "success" if success else "failed", "stored": success}
@@ -825,15 +848,12 @@ async def get_memory_data(room_token: str):
         )
     
     try:
-        # Get room ID from token
-        room_id = await create_or_get_debate_room(
-            room_token=room_token,
-            topic="AI Debate",
-            max_duration_hours=24
+        # Retrieve memory data using room name (token as room identifier)
+        memory_data = await get_debate_memory(
+            room_name=room_token,
+            session_number=None,  # Get all sessions
+            max_segments=10
         )
-        
-        # Retrieve memory data
-        memory_data = await get_debate_memory(room_id)
         return {
             "status": "success", 
             "memory": memory_data,
