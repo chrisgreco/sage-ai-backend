@@ -7,6 +7,7 @@ Provides analytical thinking, logical structure, and process facilitation
 import os
 import sys
 import asyncio
+import signal
 import logging
 import json
 from dotenv import load_dotenv
@@ -20,6 +21,8 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Signal handling is managed by LiveKit framework - no manual handling needed
 
 # LiveKit Agents imports
 try:
@@ -453,10 +456,15 @@ You may now begin your discussion. I will observe and provide guidance only when
 
 This opening should be spoken IMMEDIATELY when the first participant joins, before any human discussion begins."""
     
-    # Start session
+    # Start session - LiveKit framework handles lifecycle automatically
     await session.start(
         agent=Agent(instructions=opening_instructions),
         room=ctx.room
+    )
+    
+    # Generate opening announcement immediately when first participant joins
+    await session.generate_reply(
+        instructions="Provide the opening announcement as specified in your instructions."
     )
     
     logger.info("✅ Debate Moderator is ready to facilitate productive discourse!")

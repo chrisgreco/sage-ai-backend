@@ -127,7 +127,7 @@ class PerplexityResearcher:
         return await self._make_research_request(research_prompt, f"logical analysis: {argument[:50]}...")
     
     async def _make_research_request(self, prompt: str, query: str) -> Optional[ResearchResult]:
-        """Make a request to Perplexity API"""
+        """Make a request to Perplexity API with proper session cleanup"""
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json"
@@ -149,19 +149,35 @@ class PerplexityResearcher:
             "temperature": 0.1  # Low temperature for factual accuracy
         }
         
+        session = None
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(self.base_url, headers=headers, json=payload) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        return self._parse_research_response(data, query)
-                    else:
-                        logger.error(f"Perplexity API error: {response.status}")
-                        return None
+            # Create session with explicit timeout to prevent hanging connections
+            timeout = aiohttp.ClientTimeout(total=30, connect=10)
+            session = aiohttp.ClientSession(timeout=timeout)
+            
+            async with session.post(self.base_url, headers=headers, json=payload) as response:
+                if response.status == 200:
+                    data = await response.json()
+                    return self._parse_research_response(data, query)
+                else:
+                    logger.error(f"Perplexity API error: {response.status}")
+                    return None
                         
+        except asyncio.TimeoutError:
+            logger.error(f"Research request timed out for query: {query}")
+            return None
         except Exception as e:
             logger.error(f"Research request failed: {e}")
             return None
+        finally:
+            # Ensure session is always closed, even if an exception occurs
+            if session and not session.closed:
+                try:
+                    await session.close()
+                    # Give the underlying connections time to close
+                    await asyncio.sleep(0.1)
+                except Exception as e:
+                    logger.warning(f"Error closing HTTP session: {e}")
     
     def _parse_research_response(self, response_data: Dict, query: str) -> ResearchResult:
         """Parse Perplexity API response into ResearchResult"""

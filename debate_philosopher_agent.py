@@ -7,6 +7,7 @@ Provides Socratic questioning method combined with compassionate wisdom
 import os
 import sys
 import asyncio
+import signal
 import logging
 import random
 import json
@@ -21,6 +22,8 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Signal handling is managed by LiveKit framework - no manual handling needed
 
 # LiveKit Agents imports
 try:
@@ -326,7 +329,7 @@ async def entrypoint(ctx: JobContext):
         max_endpointing_delay=3.5,
     )
     
-    # Start session
+    # Start session - LiveKit framework handles lifecycle automatically  
     await session.start(
         agent=Agent(instructions=enhanced_instructions),
         room=ctx.room
