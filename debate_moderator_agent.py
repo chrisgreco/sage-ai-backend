@@ -332,34 +332,63 @@ async def entrypoint(ctx: JobContext):
     logger.info("🏛️ Sage AI Debate Moderator checking room metadata...")
     await ctx.connect()
     
-    # Check if this room is meant for sage debates
+    # ENHANCED TOPIC DETECTION - Check job metadata first (from agent dispatch)
+    topic = "The impact of AI on society"  # Default fallback
+    
+    # Method 1: Check job metadata (primary method for agent dispatch)
+    try:
+        if hasattr(ctx, 'job') and ctx.job and hasattr(ctx.job, 'metadata') and ctx.job.metadata:
+            logger.info(f"📋 Found job metadata: {ctx.job.metadata}")
+            job_metadata = json.loads(ctx.job.metadata)
+            job_topic = job_metadata.get("debate_topic")
+            if job_topic:
+                topic = job_topic
+                logger.info(f"✅ Aristotle found topic from job metadata: {topic}")
+            else:
+                logger.warning("⚠️ No 'debate_topic' key in job metadata")
+        else:
+            logger.info("📭 No job metadata available")
+    except (json.JSONDecodeError, Exception) as e:
+        logger.error(f"❌ Failed to parse job metadata: {e}")
+    
+    # Method 2: Check room metadata (fallback)
     room_metadata = None
     try:
         if hasattr(ctx.room, 'metadata') and ctx.room.metadata:
             room_metadata = json.loads(ctx.room.metadata)
-            logger.info(f"Room metadata: {room_metadata}")
+            logger.info(f"🏠 Found room metadata: {room_metadata}")
+            room_topic = room_metadata.get("debate_topic")
+            if room_topic and topic == "The impact of AI on society":  # Only use if we didn't get from job
+                topic = room_topic
+                logger.info(f"✅ Aristotle found topic from room metadata: {topic}")
     except Exception as e:
         logger.warning(f"Could not parse room metadata: {e}")
     
-    # Only join rooms specifically marked for sage debates
+    # Method 3: Environment variable (final fallback)
+    if topic == "The impact of AI on society":
+        env_topic = os.getenv("DEBATE_TOPIC")
+        if env_topic:
+            topic = env_topic
+            logger.info(f"✅ Using environment topic: {topic}")
+    
+    logger.info(f"🎯 ARISTOTLE FINAL TOPIC: {topic}")
+    
+    # Only join rooms specifically marked for sage debates (if room metadata exists)
     if room_metadata:
         room_type = room_metadata.get("room_type")
         agents_needed = room_metadata.get("agents_needed", [])
         
-        if room_type != "sage_debate":
+        if room_type and room_type != "sage_debate":
             logger.info(f"❌ Skipping room {ctx.room.name} - not a sage debate room (type: {room_type})")
             return
             
-        if "aristotle" not in agents_needed:
+        if agents_needed and "aristotle" not in agents_needed:
             logger.info(f"❌ Skipping room {ctx.room.name} - Aristotle not needed in this debate")
             return
             
         logger.info(f"✅ Joining sage debate room: {ctx.room.name}")
-        topic = room_metadata.get("debate_topic", "The impact of AI on society")
     else:
-        # Fallback for rooms without metadata (development/testing)
-        topic = os.getenv("DEBATE_TOPIC", "The impact of AI on society")
-        logger.info(f"⚠️ No room metadata found, using environment topic: {topic}")
+        logger.info(f"✅ Joining room (no metadata restrictions): {ctx.room.name}")
     
     logger.info(f"✅ Moderator connected to room: {ctx.room.name}")
     room_name = ctx.room.name
@@ -391,19 +420,30 @@ async def entrypoint(ctx: JobContext):
     # Create moderator agent
     moderator = DebateModeratorAgent()
     
-    # Enhanced instructions with memory
-    enhanced_instructions = moderator.instructions + memory_context
+    # Enhanced instructions with memory and dynamic topic
+    enhanced_instructions = moderator.instructions + memory_context + f"\n\nDEBATE TOPIC: \"{topic}\"\nFocus your moderation on this specific topic."
     
-    # Create agent session with male voice
+    # Import turn detector
+    try:
+        from livekit.plugins.turn_detector import EnglishModel
+        turn_detector = EnglishModel.load()
+        logger.info("✅ Using semantic turn detection")
+    except ImportError:
+        turn_detector = None
+        logger.warning("⚠️ Semantic turn detection not available")
+    
+    # Create agent session with MALE voice and enhanced turn detection
     session = AgentSession(
         llm=openai.realtime.RealtimeModel(
             model="gpt-4o-realtime-preview-2024-12-17",
-            voice="alloy",  # Male voice for Aristotle
-            temperature=0.6  # Slightly lower for more consistent moderation
+            voice="fable",  # FIXED: Male voice for Aristotle (warm, expressive)
+            temperature=0.6,  # Slightly lower for more consistent moderation
+            speed=1.3  # 30% faster speech
         ),
         vad=silero.VAD.load(),
-        min_endpointing_delay=0.5,
-        max_endpointing_delay=3.0,
+        turn_detector=turn_detector,  # Semantic turn detection
+        min_endpointing_delay=1.2,  # Aristotle waits 1.2s minimum (different from Socrates)
+        max_endpointing_delay=4.0,
     )
     
     # Enhanced instructions with opening announcement
