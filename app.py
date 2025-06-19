@@ -439,24 +439,8 @@ async def launch_ai_agents(request: DebateRequest):
                 api_secret=LIVEKIT_API_SECRET
             )
             
-            # Import room service classes
-            from livekit.api import room_service
-            
-            # Create room with metadata
-            create_request = room_service.CreateRoomRequest(
-                name=room_name,
-                metadata=json.dumps({
-                    "debate_topic": request.topic,
-                    "room_type": "sage_debate",
-                    "agents_dispatched": ["aristotle", "socrates"],
-                    "created_at": time.time(),
-                    "status": "agents_dispatching"
-                })
-            )
-            
-            # Create the room using the proper API
-            room = await livekit_api.room.create_room(create_request)
-            logger.info(f"✅ LiveKit room created: {room_name}")
+            # Room should already exist from /debate endpoint, just dispatch agents
+            logger.info(f"🔍 Dispatching agents to existing room: {room_name}")
             
             # Import the agent dispatch protocol classes
             from livekit.protocol import agent_dispatch
@@ -515,7 +499,7 @@ async def launch_ai_agents(request: DebateRequest):
             
             return {
                 "status": "success",
-                "message": f"Debate room created and agents dispatched: {room_name}",
+                "message": f"Agents dispatched to existing room: {room_name}",
                 "room_name": room_name,
                 "topic": request.topic,
                 "method": "explicit_agent_dispatch",
@@ -532,14 +516,14 @@ async def launch_ai_agents(request: DebateRequest):
             }
             
         except Exception as e:
-            logger.error(f"Failed to create LiveKit room: {e}")
+            logger.error(f"Failed to dispatch agents: {e}")
             logger.error("Background workers only mode - no fallback spawning available")
             
             # Return error instead of falling back to direct spawning
             return JSONResponse(
                 content={
                     "status": "error", 
-                    "message": f"Failed to create LiveKit room: {str(e)}",
+                    "message": f"Failed to dispatch agents: {str(e)}",
                     "room_name": room_name,
                     "topic": request.topic,
                     "note": "Background workers only mode - ensure LiveKit service is accessible and background workers are running"
