@@ -29,28 +29,17 @@ logger = logging.getLogger(__name__)
 
 # Supabase memory integration for persistent conversation storage
 try:
-    from supabase_memory_manager import (
-        create_or_get_debate_room,
-        store_debate_segment,
-        get_debate_memory,
-        store_ai_memory,
-        memory_manager
-    )
+    from supabase import create_client, Client
     SUPABASE_AVAILABLE = True
-    logger.info("✅ Supabase memory manager available for API endpoints")
-except ImportError as e:
+    logger.info("✅ Supabase client library available")
+except ImportError:
     SUPABASE_AVAILABLE = False
-    logger.warning(f"⚠️ Supabase memory manager not available: {e}")
-    # Create dummy functions to prevent errors
-    async def create_or_get_debate_room(*args, **kwargs): return None
-    async def store_debate_segment(*args, **kwargs): return False
-    async def get_debate_memory(*args, **kwargs): return {"recent_segments": [], "session_summaries": [], "personality_memories": {}}
-    async def store_ai_memory(*args, **kwargs): return False
+    logger.warning("⚠️ Supabase client library not available")
 
 # Try to import LiveKit API with proper error handling
 try:
     logger.info("Importing LiveKit API...")
-    from livekit.api import AccessToken, VideoGrants, RoomServiceClient, CreateRoomRequest
+    from livekit import api
     logger.info("Successfully imported LiveKit API!")
     livekit_available = True
 except ImportError as e:
@@ -188,7 +177,7 @@ async def connect_to_livekit():
             )
             
         # Initialize LiveKit API client
-        token = AccessToken(
+        token = api.AccessToken(
             api_key=LIVEKIT_API_KEY,
             api_secret=LIVEKIT_API_SECRET
         ).with_identity("sage-ai-backend").to_jwt()
@@ -221,7 +210,7 @@ async def connect_to_livekit_post(request: FlexibleDebateRequest = None):
             )
             
         # Initialize LiveKit API client
-        token = AccessToken(
+        token = api.AccessToken(
             api_key=LIVEKIT_API_KEY,
             api_secret=LIVEKIT_API_SECRET
         ).with_identity("sage-ai-backend").to_jwt()
@@ -265,11 +254,11 @@ async def create_debate(request: DebateRequest):
         participant_display_name = request.participant_name or "Participant"
         
         # Create a token for the participant with room join permissions
-        token = AccessToken(
+        token = api.AccessToken(
             api_key=LIVEKIT_API_KEY,
             api_secret=LIVEKIT_API_SECRET
         ).with_identity(participant_identity).with_name(participant_display_name).with_grants(
-            VideoGrants(
+            api.VideoGrants(
                 room_join=True,
                 room_create=True,
                 room=room_name,
@@ -317,11 +306,11 @@ async def get_participant_token(request: DebateRequest):
             )
         
         # Create a token for the specific participant
-        token = AccessToken(
+        token = api.AccessToken(
             api_key=LIVEKIT_API_KEY,
             api_secret=LIVEKIT_API_SECRET
         ).with_identity(request.participant_name).with_name(request.participant_name).with_grants(
-            VideoGrants(
+            api.VideoGrants(
                 room_join=True,
                 room=request.room_name,
                 can_publish=True,
@@ -419,14 +408,14 @@ async def launch_ai_agents(request: DebateRequest):
             # Use already imported classes from livekit.api
             
             # Initialize LiveKit room service client  
-            room_service = RoomServiceClient(
+            room_service = api.RoomServiceClient(
                 url=LIVEKIT_URL,
                 api_key=LIVEKIT_API_KEY,
                 api_secret=LIVEKIT_API_SECRET
             )
             
             # Create room with metadata that background workers can read
-            create_request = CreateRoomRequest(
+            create_request = api.CreateRoomRequest(
                 name=room_name,
                 metadata=json.dumps({
                     "debate_topic": request.topic,
