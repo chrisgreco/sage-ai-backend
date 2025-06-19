@@ -7,7 +7,6 @@ Provides Socratic questioning method combined with compassionate wisdom
 import os
 import sys
 import asyncio
-import signal
 import logging
 import random
 import json

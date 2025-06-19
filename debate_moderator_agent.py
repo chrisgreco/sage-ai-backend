@@ -7,7 +7,6 @@ Provides analytical thinking, logical structure, and process facilitation
 import os
 import sys
 import asyncio
-import signal
 import logging
 import json
 from dotenv import load_dotenv
