@@ -89,7 +89,7 @@ async def verify_statistic(
 # Aristotle personality configuration - ULTRA CONCISE WITH RESEARCH
 ARISTOTLE_CONFIG = {
     "name": "Aristotle",
-    "voice": "onyx",  # Changed to male voice
+    "voice": "fable",  # Warm, expressive male voice
     "instructions": """You are Aristotle. Give 1 logical point (max 15 words) OR use research tools.
 
 CRITICAL RULES:
