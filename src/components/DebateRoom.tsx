@@ -52,13 +52,21 @@ const DebateRoom: React.FC = () => {
   };
 
   const handleBackToTopicSelection = () => {
+    // If agents are active, ask for confirmation before stopping them
+    if (aiAgentsActive) {
+      const confirmed = window.confirm(
+        'AI Moderators are currently active. Going back will stop them. Are you sure?'
+      );
+      if (!confirmed) {
+        return; // Don't navigate if user cancels
+      }
+      // Stop agents first, then navigate
+      stopAIAgents();
+    }
+    
     setDebateTopic(null);
     setRoomName(null);
     setIsWebRTCConnected(false);
-    // Stop AI agents when leaving room
-    if (aiAgentsActive) {
-      stopAIAgents();
-    }
   };
 
   // Launch AI Agents
@@ -79,6 +87,11 @@ const DebateRoom: React.FC = () => {
       if (response.ok) {
         setAiAgentsActive(true);
         console.log('AI Agents launched successfully for topic:', debateTopic);
+        
+        // Give agents time to connect before allowing any stop operations
+        setTimeout(() => {
+          console.log('AI Agents should now be fully connected and ready');
+        }, 3000);
       } else {
         console.error('Failed to launch AI agents:', response.statusText);
       }

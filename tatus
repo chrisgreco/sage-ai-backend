@@ -1,0 +1,3 @@
+[33m87f9c2c[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m CLEANUP: Remove unused signal imports from agents
+[33mf639b4d[m CRITICAL FIX: Follow proper LiveKit entrypoint pattern
+[33m3d4082d[m CRITICAL FIX: Remove placeholder env vars from render.yaml - Background workers were getting placeholder strings instead of real API keys - This caused agents to fail env validation and exit immediately
