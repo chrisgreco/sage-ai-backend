@@ -274,4 +274,33 @@ aristotle_researcher = AristotleResearchAgent()
 
 async def get_aristotle_research(statement: str, context: str = "") -> Dict[str, Any]:
     """Main function to get research-enhanced analysis from Aristotle"""
-    return await aristotle_researcher.analyze_with_research(statement, context) 
+    return await aristotle_researcher.analyze_with_research(statement, context)
+
+async def research_with_perplexity(query: str, research_type: str = "general") -> Optional[Dict[str, Any]]:
+    """Research a query using Perplexity API - direct interface function"""
+    if not aristotle_researcher.researcher.api_key:
+        return {"error": "Perplexity API key not available", "answer": "Research unavailable"}
+    
+    try:
+        if research_type == "fact-check":
+            result = await aristotle_researcher.researcher.research_claim(query)
+        elif research_type == "statistics":
+            result = await aristotle_researcher.researcher.verify_statistics(query)
+        elif research_type == "logic":
+            result = await aristotle_researcher.researcher.logical_analysis(query)
+        else:
+            result = await aristotle_researcher.researcher.research_topic(query)
+        
+        if result:
+            return {
+                "answer": result.answer,
+                "sources": result.sources,
+                "citations": result.citations,
+                "confidence": result.confidence,
+                "timestamp": result.timestamp.isoformat()
+            }
+        else:
+            return {"error": "Research failed", "answer": "No results available"}
+            
+    except Exception as e:
+        return {"error": f"Research error: {str(e)}", "answer": "Research unavailable"} 

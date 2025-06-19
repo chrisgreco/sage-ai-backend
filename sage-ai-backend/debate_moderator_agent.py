@@ -54,6 +54,18 @@ except ImportError as e:
     logger.warning(f"⚠️ Supabase memory system not available: {e}")
     SUPABASE_AVAILABLE = False
 
+# Perplexity research imports (optional)
+try:
+    from perplexity_research import research_with_perplexity
+    PERPLEXITY_AVAILABLE = True
+    logger.info("✅ Perplexity research system available")
+except ImportError as e:
+    logger.warning(f"⚠️ Perplexity research not available: {e}")
+    PERPLEXITY_AVAILABLE = False
+    
+    async def research_with_perplexity(query, research_type="general"):
+        return {"error": "Perplexity not available", "answer": "Research unavailable"}
+
 class DebateModeratorAgent(Agent):
     """Aristotle - The logical moderator with reason + structure"""
     
@@ -67,7 +79,23 @@ YOUR CORE IDENTITY - ARISTOTLE (Reason + Structure):
 - Tone: Analytical, measured, teacher-like
 - Strengths: Clarifies definitions, enforces logical structure, extracts premises from arguments
 
-MODERATION RESPONSIBILITIES (Based on Aristotelian Logic + Deliberative Democracy Research):
+🔑 MINIMAL INTERVENTION PRINCIPLE:
+- DEFAULT MODE: **LISTEN SILENTLY** - Let human debaters lead the conversation
+- PRIMARY ROLE: **OBSERVE AND UNDERSTAND** the flow of human debate
+- ONLY SPEAK WHEN:
+  1. **EXPLICITLY CALLED UPON** by name ("Aristotle, what do you think?")
+  2. **DIRECTLY REQUESTED** for fact-checking or analysis
+  3. **SERIOUS PROCESS BREAKDOWN** (personal attacks, complete derailment)
+  4. **DANGEROUS MISINFORMATION** that could cause harm
+
+🚫 DO NOT INTERRUPT FOR:
+- Normal disagreements or heated debates
+- Minor logical inconsistencies  
+- Common rhetorical devices
+- Regular statistical claims without verification requests
+- General discussion flow
+
+MODERATION RESPONSIBILITIES (When intervention IS warranted):
 
 1. LOGICAL STRUCTURE:
    - Ensure arguments follow logical progression
@@ -87,29 +115,30 @@ MODERATION RESPONSIBILITIES (Based on Aristotelian Logic + Deliberative Democrac
    - Consider the practical implications of different positions
    - Seek solutions that work in practice, not just theory
 
-4. PROCESS MANAGEMENT:
+4. PROCESS MANAGEMENT (Only when necessary):
    - Keep discussions focused and productive using logical frameworks
    - Manage speaking time with structured approaches
    - Guide conversations using analytical methods
    - Balance structure with productive flexibility
 
-5. SYNTHESIS & REASONING:
+5. SYNTHESIS & REASONING (When requested):
    - Identify logical connections between different viewpoints
    - Help participants see the rational structure of debates
    - Find common logical ground and shared premises
    - Summarize using analytical frameworks
 
-COMMUNICATION STYLE:
+COMMUNICATION STYLE (When you do speak):
 - Ask clarifying questions about definitions and logic
 - Use phrases like: "Let's examine the premises...", "What evidence supports this?", "How do these ideas connect logically?"
 - Apply systematic analysis to complex topics
 - Speak with measured authority and analytical precision
 - Keep responses structured and well-reasoned
+- **Always explain why you chose to intervene**
 
 KNOWLEDGE ACCESS:
 You have access to Aristotelian logic, practical ethics, and systematic analysis methods, plus parliamentary procedure and facilitation techniques.
 
-Remember: Your goal is to facilitate productive dialogue through logical structure, clear reasoning, and analytical thinking while maintaining fairness and process integrity."""
+Remember: Your PRIMARY goal is to let humans debate freely while being ready to provide logical structure and analysis ONLY when explicitly needed or requested. Quality over quantity - one thoughtful intervention is worth more than constant commentary."""
 
         super().__init__(instructions=instructions)
         logger.info("🧠 Aristotle (Logical Moderator) Agent initialized")
@@ -245,30 +274,54 @@ Remember: Your goal is to facilitate productive dialogue through logical structu
         triggers_detected = []
         snippet_lower = conversation_snippet.lower()
         
-        # Statistical claim triggers
-        stat_indicators = ["percent", "%", "statistics", "data shows", "studies show", "research indicates", "according to"]
-        if any(indicator in snippet_lower for indicator in stat_indicators):
-            triggers_detected.append({"type": "statistical_claim", "action": "offer_fact_check"})
-        
-        # Direct request triggers  
-        direct_requests = ["aristotle please", "aristotle can you", "fact check", "verify this", "is this true"]
+        # DIRECT EXPLICIT REQUESTS (Always respond)
+        direct_requests = [
+            "aristotle please", "aristotle can you", "aristotle what", "aristotle help",
+            "fact check this", "verify this claim", "is this accurate", "aristotle thoughts"
+        ]
         if any(request in snippet_lower for request in direct_requests):
-            triggers_detected.append({"type": "direct_request", "action": "immediate_response"})
+            triggers_detected.append({"type": "direct_request", "action": "immediate_response", "priority": "urgent"})
         
-        # Logical fallacy triggers
-        fallacy_indicators = ["always", "never", "everyone", "all", "obviously", "clearly false"]
-        if any(indicator in snippet_lower for indicator in fallacy_indicators):
-            triggers_detected.append({"type": "potential_fallacy", "action": "logical_analysis"})
+        # STATISTICAL CLAIMS - Only very specific, controversial patterns
+        questionable_stats = [
+            "90% of people", "95% of experts", "all scientists agree", 
+            "studies prove", "research confirms that all", "100% certain"
+        ]
+        if any(indicator in snippet_lower for indicator in questionable_stats):
+            triggers_detected.append({"type": "statistical_claim", "action": "offer_fact_check", "priority": "medium"})
         
-        # Process breakdown triggers
-        process_issues = ["off topic", "personal attack", "interrupt", "shouting", "unfair"]
-        if any(issue in snippet_lower for issue in process_issues):
-            triggers_detected.append({"type": "process_issue", "action": "moderate"})
+        # SEVERE LOGICAL FALLACIES - Only extreme cases
+        extreme_fallacies = [
+            "everyone knows that", "it's obvious that", "clearly all", "anyone with a brain",
+            "only an idiot would", "every reasonable person"
+        ]
+        if any(indicator in snippet_lower for indicator in extreme_fallacies):
+            triggers_detected.append({"type": "potential_fallacy", "action": "gentle_logical_note", "priority": "low"})
+        
+        # PROCESS BREAKDOWN - Only serious disruptions
+        serious_process_issues = [
+            "that's a personal attack", "you're attacking me", "this is unfair moderation",
+            "completely off topic", "derailing the discussion", "not letting me speak"
+        ]
+        if any(issue in snippet_lower for issue in serious_process_issues):
+            triggers_detected.append({"type": "process_issue", "action": "moderate", "priority": "high"})
+        
+        # MINIMAL INTERVENTION PRINCIPLE
+        # Only intervene if:
+        # 1. Directly asked, OR
+        # 2. Serious process breakdown, OR  
+        # 3. Questionable claims that could mislead
+        should_intervene = (
+            any(t["type"] == "direct_request" for t in triggers_detected) or
+            any(t["type"] == "process_issue" for t in triggers_detected) or
+            (any(t["type"] == "statistical_claim" for t in triggers_detected) and len(snippet_lower) > 100)
+        )
         
         return {
             "triggers": triggers_detected,
-            "should_intervene": len(triggers_detected) > 0,
-            "priority": "high" if any(t["type"] == "direct_request" for t in triggers_detected) else "medium"
+            "should_intervene": should_intervene,
+            "priority": "urgent" if any(t.get("priority") == "urgent" for t in triggers_detected) else "low",
+            "intervention_note": "Minimal intervention - let humans lead the conversation"
         }
 
 async def entrypoint(ctx: JobContext):
