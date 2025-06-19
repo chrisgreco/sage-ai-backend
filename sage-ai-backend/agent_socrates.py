@@ -31,7 +31,7 @@ except ImportError as e:
 # Socrates personality configuration
 SOCRATES_CONFIG = {
     "name": "Socrates",
-    "voice": "echo",
+    "voice": "onyx",  # Deep, serious voice
     "instructions": """You are Socrates. Ask ONE brief question to challenge assumptions. That's it.
     
     RULES:

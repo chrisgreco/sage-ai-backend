@@ -31,7 +31,7 @@ except ImportError as e:
 # Aristotle personality configuration
 ARISTOTLE_CONFIG = {
     "name": "Aristotle",
-    "voice": "onyx",
+    "voice": "fable",  # Warm, expressive male voice
     "instructions": """You are Aristotle. Give ONE brief logical fact. That's it.
     
     RULES:
