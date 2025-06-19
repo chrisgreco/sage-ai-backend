@@ -27,9 +27,10 @@ class PerplexityResearcher:
     """Perplexity API integration for real-time research"""
     
     def __init__(self):
-        # Force reload .env file to ensure we get the latest keys
-        from dotenv import load_dotenv
-        load_dotenv(override=True)  # Override any existing env vars
+        # Force reload .env file only in development (not needed in production like Render)
+        if not os.getenv("RENDER"):  # Render sets this environment variable automatically
+            from dotenv import load_dotenv
+            load_dotenv(override=True)  # Override any existing env vars in development only
         
         self.api_key = os.getenv("PERPLEXITY_API_KEY")
         self.base_url = "https://api.perplexity.ai/chat/completions"
@@ -47,19 +48,18 @@ class PerplexityResearcher:
             return None
             
         research_prompt = f"""
-        As Aristotle, the philosopher of logic and empirical observation, research this claim:
+        As Aristotle, fact-check this claim with maximum brevity:
         
         CLAIM: {claim}
         CONTEXT: {context}
         
-        Please:
-        1. Verify the factual accuracy of this claim
-        2. Provide current evidence and data
-        3. Identify any logical fallacies or weak reasoning
-        4. Cite specific, credible sources
-        5. Give a clear assessment of the claim's validity
+        Provide ONLY:
+        1. A direct correction in 1-2 sentences maximum
+        2. The accurate fact/statistic with authoritative source
         
-        Be systematic and evidence-based in your analysis.
+        Format: "Actually, it's [correct fact] according to [source]."
+        
+        BE EXTREMELY CONCISE - no explanations, analysis, or elaboration.
         """
         
         return await self._make_research_request(research_prompt, f"fact-check: {claim}")
@@ -70,18 +70,15 @@ class PerplexityResearcher:
             return None
             
         research_prompt = f"""
-        As Aristotle, research this topic with focus on {focus}:
+        As Aristotle, provide brief factual information about: {topic}
         
-        TOPIC: {topic}
+        Give ONLY:
+        1. One key fact in 1-2 sentences maximum
+        2. Include authoritative source
         
-        Please provide:
-        1. Current scientific consensus or expert opinion
-        2. Recent studies or authoritative sources
-        3. Key facts and statistics
-        4. Different perspectives if they exist
-        5. Methodologically sound evidence
+        Format: "[Key fact] according to [source]."
         
-        Focus on empirical evidence and logical analysis.
+        BE EXTREMELY BRIEF - no analysis or elaboration.
         """
         
         return await self._make_research_request(research_prompt, f"topic research: {topic}")
@@ -92,19 +89,18 @@ class PerplexityResearcher:
             return None
             
         research_prompt = f"""
-        As Aristotle, verify this statistic or data point:
+        As Aristotle, verify this statistic with maximum brevity:
         
         STATISTIC: {statistic}
         CONTEXT: {context}
         
-        Please:
-        1. Find the original source of this statistic
-        2. Verify its accuracy and recency
-        3. Check the methodology used to derive it
-        4. Identify any limitations or caveats
-        5. Provide more recent data if available
+        Provide ONLY:
+        1. Correct statistic in 1-2 sentences maximum
+        2. Authoritative source
         
-        Be rigorous in evaluating the quality of data sources.
+        Format: "Actually, it's [correct statistic] according to [source]."
+        
+        BE EXTREMELY CONCISE - just the correction and source.
         """
         
         return await self._make_research_request(research_prompt, f"stat verification: {statistic}")
@@ -115,19 +111,17 @@ class PerplexityResearcher:
             return None
             
         research_prompt = f"""
-        As Aristotle, analyze the logical structure of this argument:
+        As Aristotle, analyze this argument with maximum brevity:
         
         ARGUMENT: {argument}
         
-        Please:
-        1. Identify the premises and conclusion
-        2. Check for logical validity
-        3. Identify any logical fallacies
-        4. Assess the strength of evidence
-        5. Find counter-evidence if it exists
-        6. Provide a systematic logical evaluation
+        Provide ONLY:
+        1. One key logical issue in 1-2 sentences maximum
+        2. Brief evidence if available
         
-        Use formal logic principles and empirical verification.
+        Format: "[Logical issue]. [Brief evidence if needed]."
+        
+        BE EXTREMELY CONCISE - no detailed analysis.
         """
         
         return await self._make_research_request(research_prompt, f"logical analysis: {argument[:50]}...")
@@ -144,7 +138,7 @@ class PerplexityResearcher:
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are Aristotle, the ancient Greek philosopher known for systematic thinking, empirical observation, and logical analysis. Provide thorough, evidence-based research with proper citations."
+                    "content": "You are Aristotle. BE EXTREMELY CONCISE. Provide 1-2 sentences maximum with authoritative sources. Format: 'Actually, [correct fact] according to [source].' No elaboration."
                 },
                 {
                     "role": "user", 
