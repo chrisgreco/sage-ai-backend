@@ -5,13 +5,10 @@ FROM python:3.9-slim
 WORKDIR /app
 
 # Copy the sage-ai-backend directory contents to the working directory
-COPY sage-ai-backend/ .
+COPY . .
 
 # Install dependencies from requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Download turn detector models during build using LiveKit CLI
-RUN python multi_personality_agent.py download-files
 
 # Expose port
 EXPOSE 8000

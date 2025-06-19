@@ -1,73 +1,119 @@
-# Welcome to your Lovable project
+# Sage AI Backend
 
-## Project info
+This repository contains the backend services for the Sage AI debate moderator application.
 
-**URL**: https://lovable.dev/projects/1e934c03-5a1a-4df1-9eed-2c278b3ec6a8
+## Architecture
 
-## How can I edit this code?
+The backend is built with a dual-service architecture on Render:
 
-There are several ways of editing your application.
+1. **Web Service**: A FastAPI application that provides API endpoints for token generation and room creation.
+2. **Background Worker**: A service that will eventually connect to LiveKit rooms and provide real-time AI moderation.
 
-**Use Lovable**
+## Dependencies
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/1e934c03-5a1a-4df1-9eed-2c278b3ec6a8) and start prompting.
+- Python 3.10+
+- FastAPI
+- LiveKit Python SDK (`livekit-api`)
+- OpenAI
+- Deepgram (for future speech-to-text capabilities)
 
-Changes made via Lovable will be committed automatically to this repo.
+## Environment Variables
 
-**Use your preferred IDE**
+The following environment variables are required:
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+```
+LIVEKIT_URL=https://your-livekit-server.livekit.cloud
+LIVEKIT_API_KEY=your-livekit-api-key
+LIVEKIT_API_SECRET=your-livekit-api-secret
+OPENAI_API_KEY=your-openai-api-key
+DEEPGRAM_API_KEY=your-deepgram-api-key (optional for now)
+SERVICE_MODE=web or worker
 ```
 
-**Edit a file directly in GitHub**
+## API Endpoints
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### Health Check
 
-**Use GitHub Codespaces**
+```
+GET /health
+```
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+Returns a simple health status to verify the service is running.
 
-## What technologies are used for this project?
+### LiveKit Connection
 
-This project is built with:
+```
+GET /connect
+```
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+Returns a LiveKit token for the backend service, along with connection details.
 
-## How can I deploy this project?
+### Create Debate Room
 
-Simply open [Lovable](https://lovable.dev/projects/1e934c03-5a1a-4df1-9eed-2c278b3ec6a8) and click on Share -> Publish.
+```
+POST /debate
+{
+  "topic": "Should AI be regulated?",
+  "room_name": "ai-debate-123" (optional)
+}
+```
 
-## Can I connect a custom domain to my Lovable project?
+Creates a new debate room in LiveKit and returns a token with room creation permissions.
 
-Yes, you can!
+## Deployment
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+This project is set up for deployment on Render with the included `render.yaml` blueprint file. 
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+The deployment creates:
+
+1. A Web Service for API endpoints (on the free plan)
+2. A Background Worker for AI moderation (on the starter plan - $7/month)
+
+## Local Development
+
+1. Clone the repository
+2. Create a `.env` file with the required environment variables
+3. Install dependencies: `pip install -r requirements.txt`
+4. Run the service: `python app.py`
+
+The service will start on port 8000 by default.
+
+## Current Status
+
+The API endpoints for token generation and room creation are working. The background worker service is currently a placeholder that will be expanded in future versions to provide real-time AI moderation capabilities.
+
+## Critical Deployment Fix Needed
+
+Based on analysis of the LiveKit voice assistant example, our current architecture is incorrect:
+
+### Current (Wrong) Pattern:
+- Frontend calls `/launch-ai-agents` endpoint
+- Backend spawns agent subprocess per request
+- Agents try to join specific rooms
+
+### Correct Pattern (From LiveKit Example):
+- Agents run as **persistent workers** using `python multi_personality_agent.py start`
+- Agents **automatically join ALL new rooms**
+- Frontend connects directly to LiveKit rooms using tokens
+- No "launch agents" - they're always running
+
+### Required Changes:
+
+1. **Deploy Persistent Agent Worker:**
+   ```bash
+   # Run this on Render as a separate service
+   python multi_personality_agent.py start
+   ```
+
+2. **Remove Agent Launching:**
+   - Remove `/launch-ai-agents` endpoint
+   - Frontend should only get room tokens
+   - Agents join automatically when rooms are created
+
+3. **Frontend Pattern:**
+   - Use @livekit/components-react
+   - Connect directly to LiveKit rooms
+   - Monitor participants (agents will appear automatically)
+
+### Immediate Fix:
+Run agents as persistent workers on Render, not subprocess per request. 
