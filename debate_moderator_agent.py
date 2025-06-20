@@ -447,8 +447,8 @@ COMMUNICATION STYLE (When you do speak):
 
 Remember: Your PRIMARY goal is to let humans debate freely while being ready to provide logical structure and analysis ONLY when explicitly needed or requested. Quality over quantity - one thoughtful intervention is worth more than constant commentary."""
 
-    moderator = DebateModeratorAgent()
-    moderator.instructions = enhanced_instructions
+    # Create agent with enhanced instructions directly
+    moderator = Agent(instructions=enhanced_instructions)
     
     # Create agent session with MALE voice and proper configuration
     session = AgentSession(
@@ -463,7 +463,7 @@ Remember: Your PRIMARY goal is to let humans debate freely while being ready to 
         max_endpointing_delay=4.0,
     )
     
-    # Start session with the actual moderator agent instance
+    # Start session with the agent instance
     await session.start(
         agent=moderator,
         room=ctx.room

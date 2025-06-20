@@ -340,8 +340,8 @@ COMMUNICATION STYLE (When you do speak):
 
 Remember: Your PRIMARY goal is to deepen understanding through thoughtful questions ONLY when the conversation would benefit from philosophical reflection or when explicitly invited to participate."""
 
-    philosopher = DebatePhilosopherAgent()
-    philosopher.instructions = enhanced_instructions
+    # Create agent with enhanced instructions directly
+    philosopher = Agent(instructions=enhanced_instructions)
     
     # Create agent session with MALE voice and proper configuration
     session = AgentSession(
@@ -356,7 +356,7 @@ Remember: Your PRIMARY goal is to deepen understanding through thoughtful questi
         max_endpointing_delay=3.5,
     )
     
-    # Start session with the actual philosopher agent instance
+    # Start session with the agent instance
     await session.start(
         agent=philosopher,
         room=ctx.room
