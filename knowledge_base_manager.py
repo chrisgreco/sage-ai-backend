@@ -1,6 +1,7 @@
 """
 Knowledge Base Manager for AI Debate Agents
 Manages loading and retrieval of specialized knowledge for each philosophical agent
+Enhanced with Supabase integration for persistent storage and better search
 """
 
 import os
@@ -13,7 +14,7 @@ from io import BytesIO
 
 logger = logging.getLogger(__name__)
 
-# Global knowledge storage
+# Global knowledge storage (local fallback)
 AGENT_KNOWLEDGE_BASE: Dict[str, List[Dict]] = {
     "solon": [],      # Parliamentary procedure and moderation (DEPRECATED - moved to aristotle)
     "aristotle": [],  # Logic, analysis, parliamentary procedure, conflict resolution  
@@ -23,14 +24,33 @@ AGENT_KNOWLEDGE_BASE: Dict[str, List[Dict]] = {
 }
 
 class KnowledgeBase:
-    """Manages knowledge base operations for AI agents"""
+    """Manages knowledge base operations for AI agents with Supabase integration"""
     
     def __init__(self, knowledge_dir: str = "./knowledge_documents"):
         self.knowledge_dir = Path(knowledge_dir)
         self.loaded = False
+        self.supabase_available = False
+        
+        # Try to import and initialize Supabase knowledge manager
+        try:
+            from supabase_knowledge_manager import (
+                SupabaseKnowledgeManager, 
+                initialize_supabase_knowledge_base,
+                get_agent_knowledge_supabase,
+                get_supabase_knowledge_status
+            )
+            self.supabase_manager = SupabaseKnowledgeManager(knowledge_dir)
+            self.supabase_available = True
+            logger.info("🔗 Supabase knowledge integration available")
+        except ImportError as e:
+            logger.warning(f"Supabase knowledge manager not available: {e}")
+            self.supabase_manager = None
+        except Exception as e:
+            logger.error(f"Failed to initialize Supabase knowledge manager: {e}")
+            self.supabase_manager = None
         
     async def initialize_all_knowledge_bases(self) -> bool:
-        """Initialize knowledge bases for all agents"""
+        """Initialize knowledge bases for all agents (both local and Supabase)"""
         try:
             logger.info("🧠 Initializing AI agent knowledge bases...")
             
@@ -38,6 +58,40 @@ class KnowledgeBase:
                 logger.warning(f"Knowledge directory not found: {self.knowledge_dir}")
                 return False
             
+            # Try Supabase first for persistent storage
+            supabase_success = False
+            if self.supabase_available and self.supabase_manager:
+                try:
+                    supabase_success = await self.supabase_manager.initialize_knowledge_base()
+                    if supabase_success:
+                        logger.info("✅ Supabase knowledge base initialized successfully")
+                    else:
+                        logger.warning("⚠️ Supabase knowledge base initialization failed")
+                except Exception as e:
+                    logger.error(f"Supabase knowledge base initialization error: {e}")
+            
+            # Initialize local knowledge base as backup/fallback
+            local_success = await self._initialize_local_knowledge_base()
+            
+            # Consider success if either works
+            self.loaded = supabase_success or local_success
+            
+            if self.loaded:
+                primary_source = "Supabase" if supabase_success else "Local"
+                backup_source = "Local" if supabase_success else "None"
+                logger.info(f"🎉 Knowledge base ready - Primary: {primary_source}, Backup: {backup_source}")
+            else:
+                logger.error("❌ Failed to initialize any knowledge base")
+            
+            return self.loaded
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize knowledge bases: {e}")
+            return False
+    
+    async def _initialize_local_knowledge_base(self) -> bool:
+        """Initialize local in-memory knowledge base"""
+        try:
             success_count = 0
             agent_dirs = ["aristotle", "socrates", "hermes", "buddha"]  # Now aristotle has local knowledge base too
             
@@ -47,23 +101,23 @@ class KnowledgeBase:
                     count = await self._load_agent_knowledge(agent_name, agent_dir)
                     if count > 0:
                         success_count += 1
-                        logger.info(f"✅ {agent_name.title()}: {count} documents loaded")
+                        logger.info(f"✅ Local {agent_name.title()}: {count} documents loaded")
                     else:
-                        logger.warning(f"⚠️ {agent_name.title()}: No documents found")
+                        logger.warning(f"⚠️ Local {agent_name.title()}: No documents found")
                 else:
-                    logger.warning(f"⚠️ {agent_name.title()}: Directory not found")
+                    logger.warning(f"⚠️ Local {agent_name.title()}: Directory not found")
             
-            self.loaded = success_count > 0
-            logger.info(f"🎉 Knowledge base initialization complete: {success_count}/{len(agent_dirs)} agents ready")
+            local_success = success_count > 0
+            logger.info(f"📁 Local knowledge base: {success_count}/{len(agent_dirs)} agents ready")
             
-            return self.loaded
+            return local_success
             
         except Exception as e:
-            logger.error(f"❌ Failed to initialize knowledge bases: {e}")
+            logger.error(f"Failed to initialize local knowledge base: {e}")
             return False
     
     async def _load_agent_knowledge(self, agent_name: str, agent_dir: Path) -> int:
-        """Load all PDF documents for a specific agent"""
+        """Load all PDF documents for a specific agent (local storage)"""
         try:
             pdf_files = list(agent_dir.glob("*.pdf"))
             loaded_count = 0
@@ -173,6 +227,90 @@ class KnowledgeBase:
         
         return f"Knowledge document: {filename}"
 
+    async def get_agent_knowledge_enhanced(
+        self, 
+        agent_name: str, 
+        query_context: str, 
+        max_items: int = 3
+    ) -> List[Dict]:
+        """
+        Enhanced knowledge retrieval with Supabase integration
+        
+        Args:
+            agent_name: Name of the agent (solon, aristotle, socrates, hermes, buddha)
+            query_context: Context or topic to search for relevant knowledge
+            max_items: Maximum number of knowledge items to return
+        
+        Returns:
+            List of relevant knowledge items with content and sources
+        """
+        try:
+            # Try Supabase first for better search capabilities
+            if self.supabase_available and self.supabase_manager:
+                try:
+                    supabase_results = await self.supabase_manager.get_agent_knowledge(
+                        agent_name, query_context, max_items
+                    )
+                    if supabase_results:
+                        logger.debug(f"Retrieved {len(supabase_results)} items from Supabase for {agent_name}")
+                        return supabase_results
+                except Exception as e:
+                    logger.warning(f"Supabase knowledge retrieval failed for {agent_name}: {e}")
+            
+            # Fallback to local knowledge base
+            return await self._get_local_agent_knowledge(agent_name, query_context, max_items)
+            
+        except Exception as e:
+            logger.error(f"Error retrieving knowledge for {agent_name}: {e}")
+            return []
+
+    async def _get_local_agent_knowledge(
+        self, 
+        agent_name: str, 
+        query_context: str, 
+        max_items: int = 3
+    ) -> List[Dict]:
+        """Get agent knowledge from local storage (fallback method)"""
+        try:
+            if agent_name not in AGENT_KNOWLEDGE_BASE:
+                logger.warning(f"Unknown agent: {agent_name}")
+                return []
+            
+            knowledge_items = AGENT_KNOWLEDGE_BASE[agent_name]
+            
+            if not knowledge_items:
+                logger.debug(f"No local knowledge available for {agent_name}")
+                return []
+            
+            # Simple keyword matching for local search
+            query_keywords = query_context.lower().split()
+            scored_items = []
+            
+            for item in knowledge_items:
+                score = 0
+                content_lower = item.get('content', '').lower()
+                summary_lower = item.get('summary', '').lower()
+                
+                # Calculate relevance score based on keyword matches
+                for keyword in query_keywords:
+                    if len(keyword) > 2:  # Skip very short words
+                        score += content_lower.count(keyword) * 2
+                        score += summary_lower.count(keyword) * 3
+                
+                if score > 0:
+                    scored_items.append((score, item))
+            
+            # Sort by score and return top items
+            scored_items.sort(key=lambda x: x[0], reverse=True)
+            result = [item for score, item in scored_items[:max_items]]
+            
+            logger.debug(f"Retrieved {len(result)} local items for {agent_name} (query: {query_context[:50]}...)")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error in local knowledge retrieval for {agent_name}: {e}")
+            return []
+
 # Global knowledge base instance
 _knowledge_base = KnowledgeBase()
 
@@ -184,6 +322,7 @@ async def initialize_knowledge_bases() -> bool:
 async def get_agent_knowledge(agent_name: str, query_context: str, max_items: int = 3) -> List[Dict]:
     """
     Retrieve relevant knowledge for an agent based on query context
+    Uses enhanced retrieval with Supabase integration and local fallback
     
     Args:
         agent_name: Name of the agent (solon, aristotle, socrates, hermes, buddha)
@@ -193,66 +332,56 @@ async def get_agent_knowledge(agent_name: str, query_context: str, max_items: in
     Returns:
         List of relevant knowledge items with content and sources
     """
-    try:
-        if agent_name not in AGENT_KNOWLEDGE_BASE:
-            logger.warning(f"Unknown agent: {agent_name}")
-            return []
-        
-        agent_knowledge = AGENT_KNOWLEDGE_BASE[agent_name]
-        
-        if not agent_knowledge:
-            logger.warning(f"No knowledge loaded for agent: {agent_name}")
-            return []
-        
-        # Simple relevance scoring based on keyword matching
-        query_keywords = query_context.lower().split()
-        scored_items = []
-        
-        for item in agent_knowledge:
-            content_lower = item['content'].lower()
-            summary_lower = item['summary'].lower()
-            
-            # Calculate relevance score
-            score = 0
-            for keyword in query_keywords:
-                if len(keyword) > 2:  # Skip very short words
-                    # Weight summary matches higher
-                    score += summary_lower.count(keyword) * 3
-                    score += content_lower.count(keyword)
-            
-            if score > 0:
-                scored_items.append((score, item))
-        
-        # Sort by relevance and return top items
-        scored_items.sort(reverse=True, key=lambda x: x[0])
-        
-        relevant_items = []
-        for score, item in scored_items[:max_items]:
-            relevant_items.append({
-                "source": item["source"],
-                "summary": item["summary"],
-                "content": item["content"][:1000] + "..." if len(item["content"]) > 1000 else item["content"],
-                "relevance_score": score
-            })
-        
-        logger.info(f"📚 Retrieved {len(relevant_items)} knowledge items for {agent_name}")
-        return relevant_items
-        
-    except Exception as e:
-        logger.error(f"Failed to retrieve knowledge for {agent_name}: {e}")
-        return []
+    global _knowledge_base
+    
+    # Ensure knowledge base is initialized
+    if not _knowledge_base.loaded:
+        logger.warning("Knowledge base not initialized, attempting initialization...")
+        await initialize_knowledge_bases()
+    
+    return await _knowledge_base.get_agent_knowledge_enhanced(agent_name, query_context, max_items)
 
 def get_knowledge_status() -> Dict:
-    """Get status of loaded knowledge bases"""
-    status = {
-        "loaded": _knowledge_base.loaded,
-        "agents": {}
-    }
+    """
+    Get the current status of the knowledge base system
     
-    for agent_name, knowledge_list in AGENT_KNOWLEDGE_BASE.items():
-        status["agents"][agent_name] = {
-            "document_count": len(knowledge_list),
-            "sources": [item["source"] for item in knowledge_list] if knowledge_list else []
+    Returns:
+        Dictionary with status information for debugging and monitoring
+    """
+    global _knowledge_base
+    
+    try:
+        # Count local knowledge items
+        local_counts = {}
+        total_local = 0
+        for agent, items in AGENT_KNOWLEDGE_BASE.items():
+            count = len(items)
+            local_counts[agent] = count
+            total_local += count
+        
+        status = {
+            "loaded": _knowledge_base.loaded,
+            "supabase_available": _knowledge_base.supabase_available,
+            "local_knowledge": {
+                "total_documents": total_local,
+                "agents": local_counts
+            },
+            "knowledge_directory": str(_knowledge_base.knowledge_dir),
+            "directory_exists": _knowledge_base.knowledge_dir.exists()
         }
-    
-    return status 
+        
+        # Add Supabase status if available
+        if _knowledge_base.supabase_available and _knowledge_base.supabase_manager:
+            try:
+                # Note: This would need to be async in a real scenario
+                status["supabase_status"] = "available"
+            except Exception as e:
+                status["supabase_status"] = f"error: {e}"
+        else:
+            status["supabase_status"] = "unavailable"
+        
+        return status
+        
+    except Exception as e:
+        logger.error(f"Error getting knowledge status: {e}")
+        return {"status": "error", "error": str(e)} 

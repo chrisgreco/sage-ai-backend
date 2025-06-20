@@ -42,7 +42,44 @@ except ImportError as e:
     logger.warning(f"⚠️ Knowledge system not available: {e}")
     KNOWLEDGE_AVAILABLE = False
     
-    async def get_agent_knowledge(agent_name, query, max_items=3):
+# Define global variables for agent state
+agent_context = {
+    "room_name": None,
+    "session_number": 1,
+    "debate_topic": None,
+    "room_id": None,
+    "knowledge_initialized": False
+}
+
+async def get_agent_knowledge(agent_name, query, max_items=3):
+    """Enhanced wrapper for knowledge retrieval with initialization check"""
+    try:
+        # Import the enhanced knowledge manager
+        from knowledge_base_manager import get_agent_knowledge as get_knowledge, initialize_knowledge_bases
+        
+        # Initialize knowledge base if not already done
+        if not agent_context["knowledge_initialized"]:
+            logger.info("🧠 Initializing knowledge base for Socrates...")
+            try:
+                await initialize_knowledge_bases()
+                agent_context["knowledge_initialized"] = True
+                logger.info("✅ Knowledge base initialized for Socrates")
+            except Exception as e:
+                logger.error(f"❌ Failed to initialize knowledge base: {e}")
+                agent_context["knowledge_initialized"] = False
+        
+        # Get knowledge using enhanced retrieval
+        knowledge_items = await get_knowledge(agent_name, query, max_items)
+        
+        if knowledge_items:
+            logger.debug(f"📚 Retrieved {len(knowledge_items)} knowledge items for {agent_name}")
+        else:
+            logger.debug(f"🔍 No relevant knowledge found for query: {query[:50]}...")
+        
+        return knowledge_items
+        
+    except Exception as e:
+        logger.error(f"Error in knowledge retrieval for {agent_name}: {e}")
         return []
 
 # Supabase memory imports (optional)
