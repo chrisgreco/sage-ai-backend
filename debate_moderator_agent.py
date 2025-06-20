@@ -335,10 +335,8 @@ BE EXTREMELY CONCISE - no explanations or elaboration."""
             # Collect the response from the stream
             response_chunks = []
             async for chunk in stream:
-                if chunk.choices:
-                    for choice in chunk.choices:
-                        if choice.delta.content:
-                            response_chunks.append(choice.delta.content)
+                if hasattr(chunk, 'delta') and chunk.delta and chunk.delta.content:
+                    response_chunks.append(chunk.delta.content)
             
             fact_check_result = ''.join(response_chunks) if response_chunks else "Unable to verify claim"
             
@@ -420,10 +418,8 @@ BE FACTUAL and well-sourced."""
             
             response_chunks = []
             async for chunk in stream:
-                if chunk.choices:
-                    for choice in chunk.choices:
-                        if choice.delta and choice.delta.content:
-                            response_chunks.append(choice.delta.content)
+                if hasattr(chunk, 'delta') and chunk.delta and chunk.delta.content:
+                    response_chunks.append(chunk.delta.content)
             
             research_result = ''.join(response_chunks) if response_chunks else "Unable to complete research"
             
