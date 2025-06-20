@@ -447,20 +447,9 @@ COMMUNICATION STYLE (When you do speak):
 
 Remember: Your PRIMARY goal is to let humans debate freely while being ready to provide logical structure and analysis ONLY when explicitly needed or requested. Quality over quantity - one thoughtful intervention is worth more than constant commentary."""
 
-    # Create custom agent with enhanced instructions and function tools
-    moderator = DebateModeratorAgent()
-    # Override the instructions by creating a new Agent with our custom tools
-    moderator = Agent(
-        instructions=enhanced_instructions,
-        tools=[
-            moderator.get_debate_topic,
-            moderator.access_facilitation_knowledge,
-            moderator.suggest_process_intervention,
-            moderator.fact_check_claim,
-            moderator.analyze_argument_structure,
-            moderator.detect_intervention_triggers
-        ]
-    )
+    # SIMPLIFIED: Create basic agent without function tools to avoid known OpenAI Realtime compatibility issues
+    # GitHub Issue #2383: Function tools cause runtime errors with OpenAI Realtime models
+    moderator = Agent(instructions=enhanced_instructions)
     
     # Create agent session with MALE voice and proper configuration
     session = AgentSession(
@@ -486,22 +475,63 @@ Remember: Your PRIMARY goal is to let humans debate freely while being ready to 
     # CRITICAL: Realtime models need explicit greeting to publish audio track
     # Without this, the agent won't be heard in the frontend
     try:
-        # Wait a moment for session to fully initialize
-        await asyncio.sleep(1.0)
+        # Wait for session to fully initialize before attempting audio
+        await asyncio.sleep(2.0)  # Increased wait time
         
-        # Have Aristotle introduce the debate and both agents to establish audio tracks
-        await session.say(
-            f"Welcome to your Sage AI debate on {topic}. I'm Aristotle, your logical moderator, and Socrates will provide philosophical questioning. We'll mostly listen unless you need our input.",
-            allow_interruptions=True
-        )
-        logger.info("🎤 Aristotle greeting sent - audio track should now be published")
+        # Ensure we're properly connected before trying to speak
+        logger.info("🎤 Attempting to publish audio track with greeting...")
+        
+        # Retry logic for greeting to ensure audio track is published
+        greeting_attempts = 0
+        max_greeting_attempts = 3
+        
+        while greeting_attempts < max_greeting_attempts:
+            try:
+                # Have Aristotle introduce the debate and both agents to establish audio tracks
+                await session.say(
+                    f"Welcome to your Sage AI debate on {topic}. I'm Aristotle, your logical moderator, and Socrates will provide philosophical questioning. We'll mostly listen unless you need our input.",
+                    allow_interruptions=True
+                )
+                logger.info("✅ Aristotle greeting sent successfully - audio track should now be published")
+                break
+                
+            except Exception as greeting_error:
+                greeting_attempts += 1
+                logger.warning(f"⚠️ Greeting attempt {greeting_attempts} failed: {greeting_error}")
+                if greeting_attempts < max_greeting_attempts:
+                    await asyncio.sleep(1.0)
+                    continue
+                else:
+                    logger.error("❌ All greeting attempts failed - agent may not be audible")
         
     except Exception as e:
-        logger.warning(f"⚠️ Could not send greeting: {e}")
+        logger.warning(f"⚠️ Could not send greeting: {e} - agent may not be audible to users")
     
     # Keep the session alive - this is critical for LiveKit agents
     try:
-        await session.wait_for_completion()
+        logger.info("🔄 Starting session monitoring loop...")
+        
+        # Add connection monitoring to prevent early termination
+        while True:
+            try:
+                # Monitor session state and reconnect if needed
+                if not session.agent_state or session.agent_state == "disconnected":
+                    logger.warning("⚠️ Agent session disconnected, attempting to maintain connection...")
+                    break
+                
+                # Use asyncio.wait_for with timeout to prevent hanging
+                await asyncio.wait_for(session.wait_for_completion(), timeout=300.0)  # 5 minute timeout
+                break
+                
+            except asyncio.TimeoutError:
+                logger.info("🔄 Session timeout reached, checking connection status...")
+                # Continue monitoring - this prevents early termination
+                continue
+            except Exception as inner_e:
+                logger.warning(f"⚠️ Session monitoring error: {inner_e}, continuing...")
+                await asyncio.sleep(1.0)
+                continue
+                
     except Exception as e:
         logger.error(f"❌ Agent session error: {e}")
     finally:

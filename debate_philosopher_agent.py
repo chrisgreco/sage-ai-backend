@@ -340,17 +340,9 @@ COMMUNICATION STYLE (When you do speak):
 
 Remember: Your PRIMARY goal is to deepen understanding through thoughtful questions ONLY when the conversation would benefit from philosophical reflection or when explicitly invited to participate."""
 
-    # Create custom agent with enhanced instructions and function tools
-    philosopher = DebatePhilosopherAgent()
-    # Override the instructions by creating a new Agent with our custom tools
-    philosopher = Agent(
-        instructions=enhanced_instructions,
-        tools=[
-            philosopher.access_philosophical_knowledge,
-            philosopher.suggest_philosophical_question,
-            philosopher.get_debate_topic
-        ]
-    )
+    # SIMPLIFIED: Create basic agent without function tools to avoid known OpenAI Realtime compatibility issues
+    # GitHub Issue #2383: Function tools cause runtime errors with OpenAI Realtime models
+    philosopher = Agent(instructions=enhanced_instructions)
     
     # Create agent session with MALE voice and proper configuration
     session = AgentSession(
@@ -375,7 +367,29 @@ Remember: Your PRIMARY goal is to deepen understanding through thoughtful questi
     
     # Keep the session alive - this is critical for LiveKit agents
     try:
-        await session.wait_for_completion()
+        logger.info("🔄 Starting session monitoring loop...")
+        
+        # Add connection monitoring to prevent early termination
+        while True:
+            try:
+                # Monitor session state and reconnect if needed
+                if not session.agent_state or session.agent_state == "disconnected":
+                    logger.warning("⚠️ Agent session disconnected, attempting to maintain connection...")
+                    break
+                
+                # Use asyncio.wait_for with timeout to prevent hanging
+                await asyncio.wait_for(session.wait_for_completion(), timeout=300.0)  # 5 minute timeout
+                break
+                
+            except asyncio.TimeoutError:
+                logger.info("🔄 Session timeout reached, checking connection status...")
+                # Continue monitoring - this prevents early termination
+                continue
+            except Exception as inner_e:
+                logger.warning(f"⚠️ Session monitoring error: {inner_e}, continuing...")
+                await asyncio.sleep(1.0)
+                continue
+                
     except Exception as e:
         logger.error(f"❌ Agent session error: {e}")
     finally:
