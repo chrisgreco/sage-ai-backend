@@ -470,6 +470,14 @@ Remember: Your PRIMARY goal is to let humans debate freely while being ready to 
     )
     
     logger.info("✅ Debate Moderator is ready to facilitate productive discourse!")
+    
+    # Keep the session alive - this is critical for LiveKit agents
+    try:
+        await session.wait_for_completion()
+    except Exception as e:
+        logger.error(f"❌ Agent session error: {e}")
+    finally:
+        logger.info("🔚 Aristotle session ended")
 
 def main():
     """Main function"""

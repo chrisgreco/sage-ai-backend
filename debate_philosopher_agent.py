@@ -363,6 +363,14 @@ Remember: Your PRIMARY goal is to deepen understanding through thoughtful questi
     )
     
     logger.info("✅ Debate Philosopher is ready to explore truth through inquiry!")
+    
+    # Keep the session alive - this is critical for LiveKit agents
+    try:
+        await session.wait_for_completion()
+    except Exception as e:
+        logger.error(f"❌ Agent session error: {e}")
+    finally:
+        logger.info("🔚 Socrates session ended")
 
 def main():
     """Main function"""
