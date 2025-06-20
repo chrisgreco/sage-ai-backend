@@ -466,7 +466,7 @@ Remember: Your PRIMARY goal is to let humans debate freely while being ready to 
     session = AgentSession(
         llm=openai.realtime.RealtimeModel(
             model="gpt-4o-realtime-preview-2024-12-17",
-            voice="fable",  # FIXED: Male voice for Aristotle (warm, expressive)
+            voice="alloy",  # FIXED: Male voice for Aristotle (warm, expressive) - using supported voice
             temperature=0.6,  # Slightly lower for more consistent moderation
             speed=1.3  # 30% faster speech
         ),

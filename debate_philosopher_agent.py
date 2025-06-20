@@ -356,7 +356,7 @@ Remember: Your PRIMARY goal is to deepen understanding through thoughtful questi
     session = AgentSession(
         llm=openai.realtime.RealtimeModel(
             model="gpt-4o-realtime-preview-2024-12-17",
-            voice="onyx",  # FIXED: Deep, serious male voice for Socrates
+            voice="echo",  # FIXED: Deep, serious male voice for Socrates - using supported voice
             temperature=0.8,  # Higher temperature for more creative questioning
             speed=1.3  # 30% faster speech
         ),
