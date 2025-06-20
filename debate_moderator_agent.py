@@ -293,11 +293,18 @@ Remember: Your PRIMARY goal is to let humans debate freely while being ready to 
         try:
             # Use LiveKit's Perplexity integration for research
             from livekit.plugins import openai
+            import os
+            
+            # Get API key from environment
+            api_key = os.environ.get("PERPLEXITY_API_KEY")
+            if not api_key:
+                raise ValueError("PERPLEXITY_API_KEY environment variable is required")
             
             # Create Perplexity LLM instance using LiveKit's proper integration
             perplexity_llm = openai.LLM.with_perplexity(
-                model="llama-3.1-sonar-small-128k-chat",
-                temperature=0.2  # Low temperature for factual accuracy
+                model="sonar",
+                temperature=0.2,  # Low temperature for factual accuracy
+                api_key=api_key  # Explicitly pass the API key
             )
             
             # Format research prompt for fact-checking
@@ -390,10 +397,17 @@ BE FACTUAL and well-sourced."""
             # Create a standalone Perplexity LLM instance for research
             from livekit.plugins import openai
             from livekit.agents.llm import ChatContext
+            import os
+            
+            # Get API key from environment
+            api_key = os.environ.get("PERPLEXITY_API_KEY")
+            if not api_key:
+                raise ValueError("PERPLEXITY_API_KEY environment variable is required")
             
             perplexity_llm = openai.LLM.with_perplexity(
-                model="llama-3.1-sonar-small-128k-chat",
-                temperature=0.3
+                model="sonar",
+                temperature=0.3,
+                api_key=api_key  # Explicitly pass the API key
             )
             
             chat_ctx = ChatContext()
@@ -709,7 +723,7 @@ Remember: Your PRIMARY goal is to let humans debate freely while being ready to 
             from livekit.plugins import openai
             # Use Perplexity LLM for research capabilities per LiveKit documentation
             research_llm = openai.LLM.with_perplexity(
-                model="llama-3.1-sonar-small-128k-chat",
+                model="sonar",
                 temperature=0.7  # Balanced for both conversation and research
             )
             logger.info("✅ Using Perplexity LLM for live research capabilities")
