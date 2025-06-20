@@ -483,6 +483,22 @@ Remember: Your PRIMARY goal is to let humans debate freely while being ready to 
     
     logger.info("✅ Debate Moderator is ready to facilitate productive discourse!")
     
+    # CRITICAL: Realtime models need explicit greeting to publish audio track
+    # Without this, the agent won't be heard in the frontend
+    try:
+        # Wait a moment for session to fully initialize
+        await asyncio.sleep(1.0)
+        
+        # Have Aristotle introduce himself to publish audio track and be heard
+        await session.say(
+            f"Aristotle here, ready to moderate your debate on {topic}. I'll mostly listen unless you need logical structure or fact-checking.",
+            allow_interruptions=True
+        )
+        logger.info("🎤 Aristotle greeting sent - audio track should now be published")
+        
+    except Exception as e:
+        logger.warning(f"⚠️ Could not send greeting: {e}")
+    
     # Keep the session alive - this is critical for LiveKit agents
     try:
         await session.wait_for_completion()

@@ -373,6 +373,22 @@ Remember: Your PRIMARY goal is to deepen understanding through thoughtful questi
     
     logger.info("✅ Debate Philosopher is ready to explore truth through inquiry!")
     
+    # CRITICAL: Realtime models need explicit greeting to publish audio track
+    # Without this, the agent won't be heard in the frontend
+    try:
+        # Wait a moment for session to fully initialize
+        await asyncio.sleep(1.0)
+        
+        # Have Socrates introduce himself to publish audio track and be heard
+        await session.say(
+            f"Socrates here. I'm listening to your debate on {topic}. I may ask questions to help us examine our assumptions.",
+            allow_interruptions=True
+        )
+        logger.info("🎤 Socrates greeting sent - audio track should now be published")
+        
+    except Exception as e:
+        logger.warning(f"⚠️ Could not send greeting: {e}")
+    
     # Keep the session alive - this is critical for LiveKit agents
     try:
         await session.wait_for_completion()
