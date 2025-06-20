@@ -101,7 +101,7 @@ services:
 
 ### **Voice Integration**
 - OpenAI Realtime API handles all voice processing automatically
-- Each personality has a distinct voice (echo, alloy, nova, onyx, shimmer)
+- Each personality has a distinct voice (echo, ash, nova, onyx, shimmer)
 - Turn detection manages conversation flow
 - No manual audio bridges needed!
 
