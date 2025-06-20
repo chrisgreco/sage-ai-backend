@@ -333,9 +333,23 @@ async def store_debate_segment(room_id: str, session_number: int, segment_number
     """Convenience function to store a conversation segment"""
     return await memory_manager.store_conversation_segment(room_id, session_number, segment_number, speaker_role, speaker_name, content_text, key_points)
 
-async def get_debate_memory(room_name: str, session_number: int = None, max_segments: int = 10) -> Dict:
-    """Convenience function to get room memory context"""
-    return await memory_manager.get_room_memory_context(room_name, session_number, max_segments)
+async def get_debate_memory(room_id: str, session_number: int = None, max_segments: int = 10) -> Dict:
+    """Convenience function to get room memory context by room_id"""
+    if not memory_manager.client:
+        return {"recent_segments": [], "session_summaries": [], "personality_memories": {}}
+        
+    try:
+        # Get room name from room_id first
+        room_result = memory_manager.client.table("debate_rooms").select("room_name").eq("id", room_id).execute()
+        if not room_result.data:
+            logger.warning(f"Room not found for ID: {room_id}")
+            return {"recent_segments": [], "session_summaries": [], "personality_memories": {}}
+        
+        room_name = room_result.data[0]["room_name"]
+        return await memory_manager.get_room_memory_context(room_name, session_number, max_segments)
+    except Exception as e:
+        logger.error(f"Error in get_debate_memory: {e}")
+        return {"recent_segments": [], "session_summaries": [], "personality_memories": {}}
 
 async def store_ai_memory(room_id: str, personality: str, memory_type: str, content: str, session_number: int, relevance_score: int = 5) -> bool:
     """Convenience function to store AI personality memory"""
