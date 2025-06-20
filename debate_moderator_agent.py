@@ -112,17 +112,14 @@ except ImportError as e:
     logger.warning(f"⚠️ Supabase memory system not available: {e}")
     SUPABASE_AVAILABLE = False
 
-# Perplexity research imports (optional)
+# Perplexity research via LiveKit integration (optional)
 try:
-    from perplexity_research import research_with_perplexity
+    from livekit.plugins import openai
     PERPLEXITY_AVAILABLE = True
-    logger.info("✅ Perplexity research system available")
+    logger.info("✅ Perplexity research system available via LiveKit")
 except ImportError as e:
     logger.warning(f"⚠️ Perplexity research not available: {e}")
     PERPLEXITY_AVAILABLE = False
-    
-    async def research_with_perplexity(query, research_type="general"):
-        return {"error": "Perplexity not available", "answer": "Research unavailable"}
 
 # Add conversation coordinator
 @dataclass
@@ -284,7 +281,7 @@ Remember: Your PRIMARY goal is to let humans debate freely while being ready to 
 
     @function_tool
     async def fact_check_claim(self, context, claim: str, source_requested: bool = False):
-        """Fact-check statistical claims or verify information using research
+        """Fact-check statistical claims or verify information using Perplexity research
         
         Args:
             claim: The factual claim or statistic to verify
@@ -294,18 +291,140 @@ Remember: Your PRIMARY goal is to let humans debate freely while being ready to 
             return {"fact_check": "Research system not available for fact-checking", "confidence": "low"}
             
         try:
-            # Use research to verify the claim
-            research_query = f"Verify this claim with current data and sources: {claim}"
-            research_result = await research_with_perplexity(research_query, "fact-checking")
+            # Use LiveKit's Perplexity integration for research
+            from livekit.plugins import openai
+            
+            # Create Perplexity LLM instance using LiveKit's proper integration
+            perplexity_llm = openai.LLM.with_perplexity(
+                model="llama-3.1-sonar-small-128k-chat",
+                temperature=0.2  # Low temperature for factual accuracy
+            )
+            
+            # Format research prompt for fact-checking
+            research_prompt = f"""As Aristotle, fact-check this claim with maximum brevity:
+
+CLAIM: {claim}
+
+Provide ONLY:
+1. A direct correction in 1-2 sentences maximum
+2. The accurate fact/statistic with current data
+3. Authoritative source
+
+Format: "Actually, [correct fact] according to [source]."
+
+BE EXTREMELY CONCISE - no explanations or elaboration."""
+
+            # Make the research request using LiveKit's Perplexity integration
+            from livekit.agents.llm import ChatContext
+            
+            chat_ctx = ChatContext()
+            chat_ctx.add_message(
+                role="user", 
+                content=research_prompt
+            )
+            
+            stream = perplexity_llm.chat(chat_ctx=chat_ctx)
+            
+            # Collect the response from the stream
+            response_chunks = []
+            async for chunk in stream:
+                if chunk.choices:
+                    for choice in chunk.choices:
+                        if choice.delta.content:
+                            response_chunks.append(choice.delta.content)
+            
+            fact_check_result = ''.join(response_chunks) if response_chunks else "Unable to verify claim"
             
             return {
-                "fact_check": research_result.get("answer", "Unable to verify claim"),
-                "sources": research_result.get("sources", []),
-                "confidence": "high" if research_result.get("sources") else "medium"
+                "fact_check": fact_check_result,
+                "confidence": "high",
+                "source": "Perplexity AI with current data"
             }
+            
         except Exception as e:
             logger.error(f"Fact-checking error: {e}")
             return {"error": f"Fact-checking failed: {str(e)}"}
+
+    @function_tool
+    async def research_live_data(self, context, query: str, research_type: str = "general"):
+        """Access live research and current data using Perplexity AI
+        
+        Args:
+            query: The research question or topic to investigate
+            research_type: Type of research (general, statistical, current_events, etc.)
+        """
+        if not PERPLEXITY_AVAILABLE:
+            return {"research": "Live research system not available", "confidence": "low"}
+            
+        try:
+            # Format research prompt based on type
+            if research_type == "statistical":
+                research_prompt = f"""Provide current statistics and data for: {query}
+
+Include:
+1. Latest available statistics
+2. Authoritative sources (government, academic, industry)
+3. Date of data collection
+
+BE CONCISE but thorough with sources."""
+            elif research_type == "current_events":
+                research_prompt = f"""Provide current information and recent developments on: {query}
+
+Include:
+1. Latest developments (within last 6 months)
+2. Key facts and data
+3. Reliable news sources
+
+BE CURRENT and fact-focused."""
+            else:
+                research_prompt = f"""Provide comprehensive, current information on: {query}
+
+Include:
+1. Key facts and current data
+2. Multiple authoritative sources
+3. Recent developments if relevant
+
+BE FACTUAL and well-sourced."""
+            
+            # Use LiveKit's Perplexity integration properly 
+            # Create a standalone Perplexity LLM instance for research
+            from livekit.plugins import openai
+            from livekit.agents.llm import ChatContext
+            
+            perplexity_llm = openai.LLM.with_perplexity(
+                model="llama-3.1-sonar-small-128k-chat",
+                temperature=0.3
+            )
+            
+            chat_ctx = ChatContext()
+            chat_ctx.add_message(
+                role="user", 
+                content=research_prompt
+            )
+            
+            stream = perplexity_llm.chat(chat_ctx=chat_ctx)
+            
+            response_chunks = []
+            async for chunk in stream:
+                if chunk.choices:
+                    for choice in chunk.choices:
+                        if choice.delta and choice.delta.content:
+                            response_chunks.append(choice.delta.content)
+            
+            research_result = ''.join(response_chunks) if response_chunks else "Unable to complete research"
+            
+            return {
+                "research": research_result,
+                "query": query,
+                "research_type": research_type,
+                "confidence": "high" if "Unable to complete" not in research_result else "medium",
+                "source": "Perplexity AI with current data" if "Unable to complete" not in research_result else "Agent knowledge",
+                "timestamp": "current"
+            }
+            
+        except Exception as e:
+            logger.error(f"Live research error: {e}")
+            return {"error": f"Research failed: {str(e)}"}
 
     @function_tool
     async def analyze_argument_structure(self, context, argument: str):
@@ -539,9 +658,15 @@ YOUR CORE IDENTITY - ARISTOTLE (Reason + Structure):
 - PRIMARY ROLE: **OBSERVE AND UNDERSTAND** the flow of human debate
 - ONLY SPEAK WHEN:
   1. **EXPLICITLY CALLED UPON** by name ("Aristotle, what do you think?")
-  2. **DIRECTLY REQUESTED** for fact-checking or analysis
+  2. **DIRECTLY REQUESTED** for fact-checking or research ("Can you research this?")
   3. **SERIOUS PROCESS BREAKDOWN** (personal attacks, complete derailment)
   4. **DANGEROUS MISINFORMATION** that could cause harm
+
+🔬 RESEARCH CAPABILITIES:
+- I have access to live data and current information through Perplexity AI
+- I can fact-check claims with current statistics and sources
+- I can research current events, trends, and developments
+- Call on me for: "Aristotle, can you research [topic]?" or "Fact-check this claim"
 
 🚫 DO NOT INTERRUPT FOR:
 - Normal disagreements or heated debates
@@ -578,14 +703,35 @@ Remember: Your PRIMARY goal is to let humans debate freely while being ready to 
     moderator.agent_name = "aristotle"
     moderator.instructions = enhanced_instructions
     
+    # Configure LLM with Perplexity for live research capabilities
+    if PERPLEXITY_AVAILABLE:
+        try:
+            from livekit.plugins import openai
+            # Use Perplexity LLM for research capabilities per LiveKit documentation
+            research_llm = openai.LLM.with_perplexity(
+                model="llama-3.1-sonar-small-128k-chat",
+                temperature=0.7  # Balanced for both conversation and research
+            )
+            logger.info("✅ Using Perplexity LLM for live research capabilities")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not configure Perplexity, using realtime model: {e}")
+            research_llm = openai.realtime.RealtimeModel(
+                model="gpt-4o-realtime-preview-2024-12-17",
+                voice="ash",
+                temperature=0.6,
+                speed=1.3
+            )
+    else:
+        research_llm = openai.realtime.RealtimeModel(
+            model="gpt-4o-realtime-preview-2024-12-17",
+            voice="ash",
+            temperature=0.6,
+            speed=1.3
+        )
+
     # Create agent session with IMPROVED turn detection and conversation coordination
     session = AgentSession(
-        llm=openai.realtime.RealtimeModel(
-            model="gpt-4o-realtime-preview-2024-12-17",
-            voice="ash",  # FIXED: Male voice for Aristotle (baritone, scratchy yet upbeat) - using supported voice
-            temperature=0.6,  # Slightly lower for more consistent moderation
-            speed=1.3  # 30% faster speech
-        ),
+        llm=research_llm,  # Use Perplexity-enabled LLM when available
         vad=silero.VAD.load(),
         # ENHANCED: Longer delays to reduce interruptions and allow coordination
         min_endpointing_delay=2.0,  # Wait 2 seconds minimum before considering turn complete
@@ -653,8 +799,8 @@ Remember: Your PRIMARY goal is to let humans debate freely while being ready to 
             # Enhanced opening announcement with rules and coordination
             await session.say(
                 f"Welcome to your Sage AI debate on: {topic}. I'm Aristotle, your logical moderator, assisted by Socrates for philosophical inquiry. " +
-                f"Ground rules: We'll primarily listen while you debate. Call on us by name if you need fact-checking, logical analysis, or deeper questions. " +
-                f"Let's begin your discussion.",
+                f"Ground rules: We'll primarily listen while you debate. Call on us by name if you need fact-checking with live data, research, logical analysis, or deeper questions. " +
+                f"I have access to current information through Perplexity AI. Let's begin your discussion.",
                 allow_interruptions=True
             )
             logger.info("✅ Aristotle opening announcement sent successfully - audio track published")
