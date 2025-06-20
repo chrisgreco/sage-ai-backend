@@ -34,9 +34,9 @@ except ImportError as e:
 
 # Knowledge system imports (optional)
 try:
-    from knowledge_base_manager import get_agent_knowledge
+    from simple_knowledge_manager import SimpleKnowledgeManager
     KNOWLEDGE_AVAILABLE = True
-    logger.info("✅ Knowledge system available")
+    logger.info("✅ Simple knowledge system available")
 except ImportError as e:
     logger.warning(f"⚠️ Knowledge system not available: {e}")
     KNOWLEDGE_AVAILABLE = False
@@ -50,32 +50,46 @@ agent_context = {
     "knowledge_initialized": False
 }
 
+# Initialize Aristotle's knowledge manager
+_aristotle_knowledge = None
+
+def get_aristotle_knowledge_manager():
+    """Get or create the knowledge manager for Aristotle"""
+    global _aristotle_knowledge
+    if _aristotle_knowledge is None:
+        _aristotle_knowledge = SimpleKnowledgeManager('aristotle')
+        _aristotle_knowledge.load_documents()
+    return _aristotle_knowledge
+
 async def get_agent_knowledge(agent_name, query, max_items=3):
-    """Enhanced wrapper for knowledge retrieval with initialization check"""
+    """Simple knowledge retrieval using file-based storage"""
     try:
-        # Import the enhanced knowledge manager
-        from knowledge_base_manager import get_agent_knowledge as get_knowledge, initialize_knowledge_bases
+        if not KNOWLEDGE_AVAILABLE:
+            return []
+            
+        # Get the knowledge manager
+        knowledge_manager = get_aristotle_knowledge_manager()
         
-        # Initialize knowledge base if not already done
-        if not agent_context["knowledge_initialized"]:
-            logger.info("🧠 Initializing knowledge base for Aristotle...")
-            try:
-                await initialize_knowledge_bases()
-                agent_context["knowledge_initialized"] = True
-                logger.info("✅ Knowledge base initialized for Aristotle")
-            except Exception as e:
-                logger.error(f"❌ Failed to initialize knowledge base: {e}")
-                agent_context["knowledge_initialized"] = False
+        if not knowledge_manager.is_ready():
+            logger.warning(f"📚 Knowledge manager not ready for {agent_name}")
+            return []
         
-        # Get knowledge using enhanced retrieval
-        knowledge_items = await get_knowledge(agent_name, query, max_items)
+        # Search for relevant knowledge
+        results = knowledge_manager.search_knowledge(query, max_results=max_items)
         
-        if knowledge_items:
-            logger.debug(f"📚 Retrieved {len(knowledge_items)} knowledge items for {agent_name}")
+        if results:
+            logger.debug(f"📚 Retrieved {len(results)} knowledge items for {agent_name}")
+            return [
+                {
+                    'content': result['content'],
+                    'source': result['title'],
+                    'relevance': result['relevance_score']
+                }
+                for result in results
+            ]
         else:
             logger.debug(f"🔍 No relevant knowledge found for query: {query[:50]}...")
-        
-        return knowledge_items
+            return []
         
     except Exception as e:
         logger.error(f"Error in knowledge retrieval for {agent_name}: {e}")
