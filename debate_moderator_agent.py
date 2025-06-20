@@ -10,6 +10,9 @@ import asyncio
 import logging
 import json
 from dotenv import load_dotenv
+import threading
+from dataclasses import dataclass
+from typing import Optional
 
 # Load environment variables first
 load_dotenv()
@@ -27,6 +30,7 @@ logger = logging.getLogger(__name__)
 try:
     from livekit.agents import Agent, AgentSession, JobContext, WorkerOptions, cli, function_tool
     from livekit.plugins import openai, silero
+    from livekit.agents import UserStateChangedEvent, AgentStateChangedEvent
     logger.info("✅ LiveKit Agents successfully imported")
 except ImportError as e:
     logger.error(f"❌ LiveKit Agents import failed: {e}")
@@ -120,6 +124,19 @@ except ImportError as e:
     async def research_with_perplexity(query, research_type="general"):
         return {"error": "Perplexity not available", "answer": "Research unavailable"}
 
+# Add conversation coordinator
+@dataclass
+class ConversationState:
+    """Shared state for coordinating between agents"""
+    active_speaker: Optional[str] = None  # "aristotle", "socrates", or None
+    user_speaking: bool = False
+    last_intervention_time: float = 0
+    intervention_count: int = 0
+    conversation_lock: threading.Lock = threading.Lock()
+
+# Global conversation coordinator
+conversation_state = ConversationState()
+
 class DebateModeratorAgent(Agent):
     """Aristotle - The logical moderator with reason + structure"""
     
@@ -148,6 +165,13 @@ YOUR CORE IDENTITY - ARISTOTLE (Reason + Structure):
 - Common rhetorical devices
 - Regular statistical claims without verification requests
 - General discussion flow
+
+⚖️ COORDINATION RULES:
+- NEVER speak while Socrates is speaking
+- Wait for clear pauses in the conversation
+- Keep interventions brief (1-2 sentences maximum)
+- Defer to Socrates on philosophical questions
+- Focus on logical structure and process
 
 MODERATION RESPONSIBILITIES (When intervention IS warranted):
 
@@ -196,6 +220,7 @@ You have access to Aristotelian logic, practical ethics, and systematic analysis
 Remember: Your PRIMARY goal is to let humans debate freely while being ready to provide logical structure and analysis ONLY when explicitly needed or requested. Quality over quantity - one thoughtful intervention is worth more than constant commentary."""
 
         super().__init__(instructions=instructions)
+        self.agent_name = "aristotle"
         logger.info("🧠 Aristotle (Logical Moderator) Agent initialized")
 
     @function_tool
@@ -379,6 +404,49 @@ Remember: Your PRIMARY goal is to let humans debate freely while being ready to 
             "intervention_note": "Minimal intervention - let humans lead the conversation"
         }
 
+    async def check_speaking_permission(self, session) -> bool:
+        """Check if it's appropriate for this agent to speak"""
+        import time
+        
+        with conversation_state.conversation_lock:
+            current_time = time.time()
+            
+            # Don't speak if user is currently speaking
+            if conversation_state.user_speaking:
+                return False
+            
+            # Don't speak if other agent is active
+            if conversation_state.active_speaker and conversation_state.active_speaker != self.agent_name:
+                return False
+            
+            # Rate limiting: don't intervene too frequently
+            if current_time - conversation_state.last_intervention_time < 8.0:  # 8 second minimum between interventions
+                return False
+            
+            # Escalating delay: wait longer after each intervention
+            min_delay = 8.0 + (conversation_state.intervention_count * 3.0)  # 8s, 11s, 14s, etc.
+            if current_time - conversation_state.last_intervention_time < min_delay:
+                return False
+            
+            return True
+
+    async def claim_speaking_turn(self):
+        """Claim the speaking turn for this agent"""
+        import time
+        
+        with conversation_state.conversation_lock:
+            conversation_state.active_speaker = self.agent_name
+            conversation_state.last_intervention_time = time.time()
+            conversation_state.intervention_count += 1
+            logger.info(f"🎤 {self.agent_name.capitalize()} claimed speaking turn")
+
+    async def release_speaking_turn(self):
+        """Release the speaking turn"""
+        with conversation_state.conversation_lock:
+            if conversation_state.active_speaker == self.agent_name:
+                conversation_state.active_speaker = None
+                logger.info(f"🔇 {self.agent_name.capitalize()} released speaking turn")
+
 async def entrypoint(ctx: JobContext):
     """Debate Moderator agent entrypoint - only joins rooms marked for sage debates"""
     
@@ -482,6 +550,13 @@ YOUR CORE IDENTITY - ARISTOTLE (Reason + Structure):
 - Regular statistical claims without verification requests
 - General discussion flow
 
+⚖️ COORDINATION RULES:
+- NEVER speak while Socrates is speaking
+- Wait for clear pauses in the conversation
+- Keep interventions brief (1-2 sentences maximum)
+- Defer to Socrates on philosophical questions
+- Focus on logical structure and process
+
 DEBATE TOPIC: "{topic}"
 Focus your moderation on this specific topic.
 
@@ -498,11 +573,12 @@ COMMUNICATION STYLE (When you do speak):
 
 Remember: Your PRIMARY goal is to let humans debate freely while being ready to provide logical structure and analysis ONLY when explicitly needed or requested. Quality over quantity - one thoughtful intervention is worth more than constant commentary."""
 
-    # SIMPLIFIED: Create basic agent without function tools to avoid known OpenAI Realtime compatibility issues
-    # GitHub Issue #2383: Function tools cause runtime errors with OpenAI Realtime models
-    moderator = Agent(instructions=enhanced_instructions)
+    # Create moderator agent with coordination capabilities
+    moderator = DebateModeratorAgent()
+    moderator.agent_name = "aristotle"
+    moderator.instructions = enhanced_instructions
     
-    # Create agent session with MALE voice and proper configuration
+    # Create agent session with IMPROVED turn detection and conversation coordination
     session = AgentSession(
         llm=openai.realtime.RealtimeModel(
             model="gpt-4o-realtime-preview-2024-12-17",
@@ -511,9 +587,48 @@ Remember: Your PRIMARY goal is to let humans debate freely while being ready to 
             speed=1.3  # 30% faster speech
         ),
         vad=silero.VAD.load(),
-        min_endpointing_delay=1.2,  # Aristotle waits 1.2s minimum (different from Socrates)
-        max_endpointing_delay=4.0,
+        # ENHANCED: Longer delays to reduce interruptions and allow coordination
+        min_endpointing_delay=2.0,  # Wait 2 seconds minimum before considering turn complete
+        max_endpointing_delay=6.0,  # Extended max delay to prevent hasty interventions
+        # ENHANCED: More restrictive interruption settings
+        allow_interruptions=True,
+        min_interruption_duration=1.0,  # Require longer speech before allowing interruption
     )
+    
+    # Set up conversation state monitoring
+    def on_user_state_changed(ev: UserStateChangedEvent):
+        """Monitor user speaking state for coordination"""
+        with conversation_state.conversation_lock:
+            if ev.new_state == "speaking":
+                conversation_state.user_speaking = True
+                # If user starts speaking, both agents should stop
+                if conversation_state.active_speaker:
+                    logger.info("👤 User started speaking - agents should yield")
+                    conversation_state.active_speaker = None
+            elif ev.new_state == "listening":
+                conversation_state.user_speaking = False
+                logger.info("👂 User stopped speaking - agents may respond if appropriate")
+            elif ev.new_state == "away":
+                conversation_state.user_speaking = False
+                logger.info("👋 User disconnected")
+
+    def on_agent_state_changed(ev: AgentStateChangedEvent):
+        """Monitor agent speaking state for coordination"""
+        agent_name = "aristotle"
+        
+        if ev.new_state == "speaking":
+            with conversation_state.conversation_lock:
+                conversation_state.active_speaker = agent_name
+                logger.info(f"🎤 {agent_name.capitalize()} started speaking")
+        elif ev.new_state in ["idle", "listening", "thinking"]:
+            with conversation_state.conversation_lock:
+                if conversation_state.active_speaker == agent_name:
+                    conversation_state.active_speaker = None
+                    logger.info(f"🔇 {agent_name.capitalize()} finished speaking")
+
+    # Register event handlers for conversation coordination
+    session.on("user_state_changed", on_user_state_changed)
+    session.on("agent_state_changed", on_agent_state_changed)
     
     # Start session with the agent instance
     await session.start(
@@ -532,28 +647,19 @@ Remember: Your PRIMARY goal is to let humans debate freely while being ready to 
         # Ensure we're properly connected before trying to speak
         logger.info("🎤 Attempting to publish audio track with greeting...")
         
-        # Retry logic for greeting to ensure audio track is published
-        greeting_attempts = 0
-        max_greeting_attempts = 3
-        
-        while greeting_attempts < max_greeting_attempts:
-            try:
-                # Have Aristotle introduce the debate and both agents to establish audio tracks
-                await session.say(
-                    f"Welcome to your Sage AI debate on {topic}. I'm Aristotle, your logical moderator, and Socrates will provide philosophical questioning. We'll mostly listen unless you need our input.",
-                    allow_interruptions=True
-                )
-                logger.info("✅ Aristotle greeting sent successfully - audio track should now be published")
-                break
-                
-            except Exception as greeting_error:
-                greeting_attempts += 1
-                logger.warning(f"⚠️ Greeting attempt {greeting_attempts} failed: {greeting_error}")
-                if greeting_attempts < max_greeting_attempts:
-                    await asyncio.sleep(1.0)
-                    continue
-                else:
-                    logger.error("❌ All greeting attempts failed - agent may not be audible")
+        # Aristotle always gives the opening announcement (he's the primary moderator)
+        await moderator.claim_speaking_turn()
+        try:
+            # Enhanced opening announcement with rules and coordination
+            await session.say(
+                f"Welcome to your Sage AI debate on: {topic}. I'm Aristotle, your logical moderator, assisted by Socrates for philosophical inquiry. " +
+                f"Ground rules: We'll primarily listen while you debate. Call on us by name if you need fact-checking, logical analysis, or deeper questions. " +
+                f"Let's begin your discussion.",
+                allow_interruptions=True
+            )
+            logger.info("✅ Aristotle opening announcement sent successfully - audio track published")
+        finally:
+            await moderator.release_speaking_turn()
         
     except Exception as e:
         logger.warning(f"⚠️ Could not send greeting: {e} - agent may not be audible to users")
@@ -586,6 +692,10 @@ Remember: Your PRIMARY goal is to let humans debate freely while being ready to 
     except Exception as e:
         logger.error(f"❌ Agent session error: {e}")
     finally:
+        # Clean up conversation state
+        with conversation_state.conversation_lock:
+            if conversation_state.active_speaker == "aristotle":
+                conversation_state.active_speaker = None
         logger.info("🔚 Aristotle session ended")
 
 def main():

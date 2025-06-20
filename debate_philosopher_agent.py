@@ -11,6 +11,9 @@ import logging
 import random
 import json
 from dotenv import load_dotenv
+import threading
+from dataclasses import dataclass
+from typing import Optional
 
 # Load environment variables first
 load_dotenv()
@@ -28,6 +31,7 @@ logger = logging.getLogger(__name__)
 try:
     from livekit.agents import Agent, AgentSession, JobContext, WorkerOptions, cli, function_tool
     from livekit.plugins import openai, silero
+    from livekit.agents import UserStateChangedEvent, AgentStateChangedEvent
     logger.info("✅ LiveKit Agents successfully imported")
 except ImportError as e:
     logger.error(f"❌ LiveKit Agents import failed: {e}")
@@ -109,83 +113,143 @@ except ImportError as e:
     logger.warning(f"⚠️ Supabase memory system not available: {e}")
     SUPABASE_AVAILABLE = False
 
+# Add conversation coordinator (shared with moderator)
+@dataclass
+class ConversationState:
+    """Shared state for coordinating between agents"""
+    active_speaker: Optional[str] = None  # "aristotle", "socrates", or None
+    user_speaking: bool = False
+    last_intervention_time: float = 0
+    intervention_count: int = 0
+    conversation_lock: threading.Lock = threading.Lock()
+
+# Global conversation coordinator
+conversation_state = ConversationState()
+
 class DebatePhilosopherAgent(Agent):
-    """Socrates - The inquisitive challenger with questioning + truth-seeking"""
+    """Socrates + Buddha - The inquisitive challenger with wisdom + compassion"""
     
     def __init__(self):
         # Socrates + Buddha philosophical instructions
-        instructions = """You are Socrates, the Sage AI Debate Philosopher. You embody the inquisitive challenger with questioning and truth-seeking, combining Socratic method with Buddhist wisdom.
+        instructions = """You are Socrates, the Sage AI Debate Philosopher. You embody the inquisitive challenger who seeks truth through questioning, combining Socratic inquiry with Buddhist wisdom and compassionate understanding.
 
-YOUR CORE IDENTITY - SOCRATES (Questioning + Truth-Seeking):
+YOUR CORE IDENTITY - SOCRATES (Inquiry + Wisdom):
 - Role: The inquisitive challenger
-- Traits: Socratic method, constant questioning, humble but piercing
-- Tone: Calm and probing
-- Strengths: Dissects assumptions, reveals contradictions, challenges overconfidence in claims
+- Traits: Socratic questioning, Buddhist wisdom, compassionate understanding
+- Tone: Curious, humble, seeking truth
+- Strengths: Asks probing questions, challenges assumptions, explores deeper meanings
 
 🔑 MINIMAL INTERVENTION PRINCIPLE:
-- DEFAULT MODE: **MINDFUL LISTENING** - Observe the human debate with wisdom
-- PRIMARY ROLE: **UNDERSTAND BEFORE QUESTIONING** - Let conversations develop naturally
+- DEFAULT MODE: **LISTEN THOUGHTFULLY** - Let human debaters explore their ideas
+- PRIMARY ROLE: **OBSERVE AND REFLECT** on the philosophical dimensions
 - ONLY SPEAK WHEN:
-  1. **EXPLICITLY CALLED UPON** by name ("Socrates, what's your view?")
-  2. **PHILOSOPHICAL CLARITY URGENTLY NEEDED** (major contradictions, confused definitions)
-  3. **ASSUMPTIONS CAUSING HARM** or preventing understanding
-  4. **WISDOM SPECIFICALLY REQUESTED** for guidance or insight
+  1. **EXPLICITLY CALLED UPON** by name ("Socrates, what would you ask?")
+  2. **DIRECTLY REQUESTED** for philosophical perspective or questioning
+  3. **DEEPER INQUIRY NEEDED** (assumptions unexamined, meanings unclear)
+  4. **WISDOM TRADITION RELEVANT** (philosophical precedent applies)
 
 🚫 DO NOT INTERRUPT FOR:
-- Normal debate flow or passionate discussion
-- Minor logical inconsistencies that humans can work through
-- Everyday assumptions that don't block understanding
-- General statements or opinions
-- Heated but productive exchanges
+- Normal debate flow or disagreements
+- Surface-level discussions that are progressing
+- Technical details or statistics
+- Regular back-and-forth exchanges
+- Procedural matters
 
-PHILOSOPHICAL APPROACH (When intervention IS warranted):
+🤔 COORDINATION RULES:
+- ARISTOTLE IS THE PRIMARY MODERATOR - he handles announcements and leads
+- NEVER speak while Aristotle is speaking
+- Wait for clear pauses in the conversation
+- Keep interventions brief (1-2 questions maximum)
+- Defer to Aristotle on logical structure and process
+- Focus on philosophical inquiry and deeper meaning
+- You are Aristotle's philosophical assistant, not a co-moderator
 
-🧠 SOCRATIC QUESTIONING:
-- Ask probing questions that reveal deeper truths
-- Challenge assumptions with "How do you know that?"
-- Seek definitions: "What do we mean by [concept]?"
-- Use the Socratic method to guide discovery
-- Admit when you don't know something ("I know that I know nothing")
-- Help others examine their beliefs and reasoning
+PHILOSOPHICAL RESPONSIBILITIES (When intervention IS warranted):
 
-🕯️ BUDDHIST WISDOM:
-- Promote compassionate understanding of all perspectives
-- Encourage mindful consideration before responding
-- Seek harmony and reduce suffering in discourse
-- Find middle paths through conflicts
-- Listen deeply to underlying values and emotions
-- Speak with gentle wisdom and patience
+1. SOCRATIC QUESTIONING:
+   - Ask questions that reveal hidden assumptions
+   - Help participants examine their own beliefs
+   - Guide discovery through targeted inquiry
+   - Challenge participants to think deeper
 
-INTEGRATED APPROACH:
-You fluidly combine Socratic questioning with Buddhist compassion:
-- When confusion arises → Use Socratic questioning
-- When conflict emerges → Offer Buddhist compassion and middle paths
-- When assumptions need challenging → Apply gentle but persistent inquiry
-- When wisdom is sought → Draw from both traditions
+2. BUDDHIST WISDOM:
+   - Bring compassionate understanding to conflicts
+   - Help participants see interconnectedness
+   - Apply mindfulness principles to heated discussions
+   - Find balance between opposing positions
+
+3. DEEPER INQUIRY (When requested):
+   - Explore the underlying meaning of concepts
+   - Ask about the nature of truth, justice, beauty, etc.
+   - Help participants understand their own reasoning
+   - Connect current discussion to timeless philosophical questions
+
+4. WISDOM SYNTHESIS (When appropriate):
+   - Draw on philosophical traditions for perspective
+   - Help participants see patterns in their thinking
+   - Apply ancient wisdom to modern problems
+   - Bridge different worldviews with understanding
 
 KNOWLEDGE ACCESS:
-You have access to specialized knowledge from:
-- Socratic questioning techniques and philosophical inquiry
-- Buddhist meditation, mindfulness, and conflict resolution wisdom
+You have access to Socratic methods, Buddhist wisdom, and ancient philosophical traditions for inquiry and understanding.
 
 COMMUNICATION STYLE (When you do speak):
-- **BE CONCISE AND PROFOUND** - Short questions that cut to the heart of the matter
-- For challenging assumptions: One simple, penetrating question
-- For offering wisdom: Brief, memorable insights (like ancient proverbs)
-- For finding middle ground: "What if both views have merit here?"
-- **Maximum 1-2 sentences** - let the question or insight resonate
-- Speak like the historical Socrates: brief, memorable, thought-provoking
-- **NO lengthy philosophical lectures** - save time for human discovery
+- **ASK PROFOUND QUESTIONS** - Help participants examine their assumptions
+- Lead with curiosity: "I wonder..." or "What if we considered..."
+- For assumptions: "What leads us to believe that...?"
+- For deeper meaning: "When we say [term], what do we really mean?"
+- **Maximum 1-2 questions per intervention** unless specifically asked for more
+- Speak with humble wisdom - model intellectual humility
+- **NO lecturing** - let questions do the teaching
 
-Remember: Your PRIMARY role is to practice mindful listening and let humans discover their own wisdom through natural debate. Your interventions should be rare but deeply meaningful - quality over quantity. The greatest wisdom often comes from patient observation."""
+Remember: Your PRIMARY goal is to deepen understanding through thoughtful questions ONLY when the conversation would benefit from philosophical reflection or when explicitly invited to participate."""
 
         super().__init__(instructions=instructions)
+        self.agent_name = "socrates"
+        logger.info("🤔 Socrates (Inquisitive Challenger) Agent initialized")
+
+    async def check_speaking_permission(self, session) -> bool:
+        """Check if it's appropriate for this agent to speak"""
+        import time
         
-        # Socrates with compassionate wisdom
-        self.philosophical_voices = ["socrates"]
-        self.last_voice = None
+        with conversation_state.conversation_lock:
+            current_time = time.time()
+            
+            # Don't speak if user is currently speaking
+            if conversation_state.user_speaking:
+                return False
+            
+            # Don't speak if other agent is active
+            if conversation_state.active_speaker and conversation_state.active_speaker != self.agent_name:
+                return False
+            
+            # Rate limiting: don't intervene too frequently  
+            if current_time - conversation_state.last_intervention_time < 8.0:  # 8 second minimum between interventions
+                return False
+            
+            # Escalating delay: wait longer after each intervention
+            min_delay = 8.0 + (conversation_state.intervention_count * 3.0)  # 8s, 11s, 14s, etc.
+            if current_time - conversation_state.last_intervention_time < min_delay:
+                return False
+            
+            return True
+
+    async def claim_speaking_turn(self):
+        """Claim the speaking turn for this agent"""
+        import time
         
-        logger.info("🧠🕯️ Socrates (Inquisitive Challenger) Agent initialized")
+        with conversation_state.conversation_lock:
+            conversation_state.active_speaker = self.agent_name
+            conversation_state.last_intervention_time = time.time()
+            conversation_state.intervention_count += 1
+            logger.info(f"🎤 {self.agent_name.capitalize()} claimed speaking turn")
+
+    async def release_speaking_turn(self):
+        """Release the speaking turn"""
+        with conversation_state.conversation_lock:
+            if conversation_state.active_speaker == self.agent_name:
+                conversation_state.active_speaker = None
+                logger.info(f"🔇 {self.agent_name.capitalize()} released speaking turn")
 
     @function_tool
     async def access_philosophical_knowledge(self, context, query: str, approach: str = "socratic"):
@@ -375,6 +439,15 @@ YOUR CORE IDENTITY - SOCRATES (Inquiry + Wisdom):
 - Regular back-and-forth exchanges
 - Procedural matters
 
+🤔 COORDINATION RULES:
+- ARISTOTLE IS THE PRIMARY MODERATOR - he handles announcements and leads
+- NEVER speak while Aristotle is speaking
+- Wait for clear pauses in the conversation
+- Keep interventions brief (1-2 questions maximum)
+- Defer to Aristotle on logical structure and process
+- Focus on philosophical inquiry and deeper meaning
+- You are Aristotle's philosophical assistant, not a co-moderator
+
 DEBATE TOPIC: "{topic}"
 Focus your philosophical inquiry on this specific topic.
 
@@ -391,11 +464,12 @@ COMMUNICATION STYLE (When you do speak):
 
 Remember: Your PRIMARY goal is to deepen understanding through thoughtful questions ONLY when the conversation would benefit from philosophical reflection or when explicitly invited to participate."""
 
-    # SIMPLIFIED: Create basic agent without function tools to avoid known OpenAI Realtime compatibility issues
-    # GitHub Issue #2383: Function tools cause runtime errors with OpenAI Realtime models
-    philosopher = Agent(instructions=enhanced_instructions)
+    # Create philosopher agent with coordination capabilities
+    philosopher = DebatePhilosopherAgent()
+    philosopher.agent_name = "socrates"
+    philosopher.instructions = enhanced_instructions
     
-    # Create agent session with MALE voice and proper configuration
+    # Create agent session with IMPROVED turn detection and conversation coordination
     session = AgentSession(
         llm=openai.realtime.RealtimeModel(
             model="gpt-4o-realtime-preview-2024-12-17",
@@ -404,9 +478,48 @@ Remember: Your PRIMARY goal is to deepen understanding through thoughtful questi
             speed=1.3  # 30% faster speech
         ),
         vad=silero.VAD.load(),
-        min_endpointing_delay=1.0,  # Socrates waits 1.0s minimum (different from Aristotle)
-        max_endpointing_delay=3.5,
+        # ENHANCED: Different timing from Aristotle to reduce conflicts
+        min_endpointing_delay=2.5,  # Wait slightly longer than Aristotle (2.5s vs 2.0s)
+        max_endpointing_delay=6.5,  # Extended max delay to prevent hasty interventions
+        # ENHANCED: More restrictive interruption settings
+        allow_interruptions=True,
+        min_interruption_duration=1.2,  # Require longer speech before allowing interruption
     )
+    
+    # Set up conversation state monitoring
+    def on_user_state_changed(ev: UserStateChangedEvent):
+        """Monitor user speaking state for coordination"""
+        with conversation_state.conversation_lock:
+            if ev.new_state == "speaking":
+                conversation_state.user_speaking = True
+                # If user starts speaking, both agents should stop
+                if conversation_state.active_speaker:
+                    logger.info("👤 User started speaking - agents should yield")
+                    conversation_state.active_speaker = None
+            elif ev.new_state == "listening":
+                conversation_state.user_speaking = False
+                logger.info("👂 User stopped speaking - agents may respond if appropriate")
+            elif ev.new_state == "away":
+                conversation_state.user_speaking = False
+                logger.info("👋 User disconnected")
+
+    def on_agent_state_changed(ev: AgentStateChangedEvent):
+        """Monitor agent speaking state for coordination"""
+        agent_name = "socrates"
+        
+        if ev.new_state == "speaking":
+            with conversation_state.conversation_lock:
+                conversation_state.active_speaker = agent_name
+                logger.info(f"🎤 {agent_name.capitalize()} started speaking")
+        elif ev.new_state in ["idle", "listening", "thinking"]:
+            with conversation_state.conversation_lock:
+                if conversation_state.active_speaker == agent_name:
+                    conversation_state.active_speaker = None
+                    logger.info(f"🔇 {agent_name.capitalize()} finished speaking")
+
+    # Register event handlers for conversation coordination
+    session.on("user_state_changed", on_user_state_changed)
+    session.on("agent_state_changed", on_agent_state_changed)
     
     # Start session with the agent instance
     await session.start(
@@ -415,6 +528,10 @@ Remember: Your PRIMARY goal is to deepen understanding through thoughtful questi
     )
     
     logger.info("✅ Debate Philosopher is ready to explore truth through inquiry!")
+    
+    # ENHANCED: No greeting from Socrates - let Aristotle handle initial greeting
+    # This prevents both agents from trying to speak simultaneously at startup
+    logger.info("🤐 Socrates will wait for appropriate moment to participate - letting Aristotle handle greeting")
     
     # Keep the session alive - this is critical for LiveKit agents
     try:
@@ -444,6 +561,10 @@ Remember: Your PRIMARY goal is to deepen understanding through thoughtful questi
     except Exception as e:
         logger.error(f"❌ Agent session error: {e}")
     finally:
+        # Clean up conversation state
+        with conversation_state.conversation_lock:
+            if conversation_state.active_speaker == "socrates":
+                conversation_state.active_speaker = None
         logger.info("🔚 Socrates session ended")
 
 def main():
