@@ -447,8 +447,20 @@ COMMUNICATION STYLE (When you do speak):
 
 Remember: Your PRIMARY goal is to let humans debate freely while being ready to provide logical structure and analysis ONLY when explicitly needed or requested. Quality over quantity - one thoughtful intervention is worth more than constant commentary."""
 
-    # Create agent with enhanced instructions directly
-    moderator = Agent(instructions=enhanced_instructions)
+    # Create custom agent with enhanced instructions and function tools
+    moderator = DebateModeratorAgent()
+    # Override the instructions by creating a new Agent with our custom tools
+    moderator = Agent(
+        instructions=enhanced_instructions,
+        tools=[
+            moderator.get_debate_topic,
+            moderator.access_facilitation_knowledge,
+            moderator.suggest_process_intervention,
+            moderator.fact_check_claim,
+            moderator.analyze_argument_structure,
+            moderator.detect_intervention_triggers
+        ]
+    )
     
     # Create agent session with MALE voice and proper configuration
     session = AgentSession(
