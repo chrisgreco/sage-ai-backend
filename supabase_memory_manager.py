@@ -22,7 +22,8 @@ class SupabaseMemoryManager:
     
     def __init__(self):
         self.supabase_url = os.getenv("SUPABASE_URL", "https://zpfouxphwgtqhgalzyqk.supabase.co")
-        self.supabase_key = os.getenv("SUPABASE_ANON_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpwZm91eHBod2d0cWhnYWx6eXFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk1OTc5MTYsImV4cCI6MjA2NTE3MzkxNn0.uzlPeumvFwJKdGR5rHyclBkc5ZMFH5NhJ41iROfRZmU")
+        # Use service role key for backend operations to bypass RLS
+        self.supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpwZm91eHBod2d0cWhnYWx6eXFrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDk1OTc5MTYsImV4cCI6MjA2NTE3MzkxNn0.uzlPeumvFwJKdGR5rHyclBkc5ZMFH5NhJ41iROfRZmU")
         
         if not self.supabase_url or not self.supabase_key:
             logger.error("Supabase credentials not found in environment")
@@ -30,7 +31,9 @@ class SupabaseMemoryManager:
         else:
             try:
                 self.client: Client = create_client(self.supabase_url, self.supabase_key)
-                logger.info("✅ Supabase client initialized successfully")
+                # Test connection with a simple query
+                test_result = self.client.table("debate_rooms").select("count", count="exact").execute()
+                logger.info(f"✅ Supabase client initialized successfully (using {'service_role' if 'SUPABASE_SERVICE_ROLE_KEY' in os.environ else 'anon'} key)")
             except Exception as e:
                 logger.error(f"Failed to initialize Supabase client: {e}")
                 self.client = None
@@ -76,6 +79,7 @@ class SupabaseMemoryManager:
                 return room_id
             else:
                 # Create new room
+                logger.info(f"🏗️ Creating new room: {room_name} with topic: {debate_topic}")
                 new_room = self.client.table("debate_rooms").insert({
                     "room_name": room_name,
                     "debate_topic": debate_topic,
@@ -86,10 +90,11 @@ class SupabaseMemoryManager:
                 
                 if new_room.data:
                     room_id = new_room.data[0]["id"]
-                    logger.info(f"🏗️ Created new room: {room_name} ({room_id})")
+                    logger.info(f"✅ Created new room: {room_name} ({room_id})")
                     return room_id
                 else:
-                    logger.error(f"Failed to create room: {room_name}")
+                    logger.error(f"❌ Failed to create room: {room_name} - No data returned")
+                    logger.error(f"Response: {new_room}")
                     return None
                     
         except Exception as e:

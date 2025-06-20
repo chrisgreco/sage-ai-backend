@@ -468,7 +468,10 @@ Remember: Your PRIMARY goal is to let humans debate freely while being ready to 
             model="gpt-4o-realtime-preview-2024-12-17",
             voice="ash",  # FIXED: Male voice for Aristotle (baritone, scratchy yet upbeat) - using supported voice
             temperature=0.6,  # Slightly lower for more consistent moderation
-            speed=1.3  # 30% faster speech
+            speed=1.3,  # 30% faster speech
+            # Add connection stability settings
+            max_retries=3,
+            retry_delay=2.0
         ),
         vad=silero.VAD.load(),
         min_endpointing_delay=1.2,  # Aristotle waits 1.2s minimum (different from Socrates)

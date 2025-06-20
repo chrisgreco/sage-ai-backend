@@ -358,7 +358,10 @@ Remember: Your PRIMARY goal is to deepen understanding through thoughtful questi
             model="gpt-4o-realtime-preview-2024-12-17",
             voice="echo",  # FIXED: Deep, serious male voice for Socrates - using supported voice
             temperature=0.8,  # Higher temperature for more creative questioning
-            speed=1.3  # 30% faster speech
+            speed=1.3,  # 30% faster speech
+            # Add connection stability settings
+            max_retries=3,
+            retry_delay=2.0
         ),
         vad=silero.VAD.load(),
         min_endpointing_delay=1.0,  # Socrates waits 1.0s minimum (different from Aristotle)
