@@ -305,16 +305,7 @@ async def entrypoint(ctx: JobContext):
     # Enhanced instructions with memory and dynamic topic
     enhanced_instructions = philosopher.instructions + memory_context + f"\n\nDEBATE TOPIC: \"{topic}\"\nFocus your philosophical inquiry on this specific topic."
     
-    # Import turn detector
-    try:
-        from livekit.plugins.turn_detector import EnglishModel
-        turn_detector = EnglishModel.load()
-        logger.info("✅ Using semantic turn detection")
-    except ImportError:
-        turn_detector = None
-        logger.warning("⚠️ Semantic turn detection not available")
-    
-    # Create agent session with MALE voice and enhanced turn detection
+    # Create agent session with MALE voice and proper turn detection
     session = AgentSession(
         llm=openai.realtime.RealtimeModel(
             model="gpt-4o-realtime-preview-2024-12-17",
@@ -323,7 +314,6 @@ async def entrypoint(ctx: JobContext):
             speed=1.3  # 30% faster speech
         ),
         vad=silero.VAD.load(),
-        turn_detector=turn_detector,  # Semantic turn detection
         min_endpointing_delay=1.0,  # Socrates waits 1.0s minimum (different from Aristotle)
         max_endpointing_delay=3.5,
     )
