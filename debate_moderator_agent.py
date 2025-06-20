@@ -489,9 +489,9 @@ Remember: Your PRIMARY goal is to let humans debate freely while being ready to 
         # Wait a moment for session to fully initialize
         await asyncio.sleep(1.0)
         
-        # Have Aristotle introduce himself to publish audio track and be heard
+        # Have Aristotle introduce the debate and both agents to establish audio tracks
         await session.say(
-            f"Aristotle here, ready to moderate your debate on {topic}. I'll mostly listen unless you need logical structure or fact-checking.",
+            f"Welcome to your Sage AI debate on {topic}. I'm Aristotle, your logical moderator, and Socrates will provide philosophical questioning. We'll mostly listen unless you need our input.",
             allow_interruptions=True
         )
         logger.info("🎤 Aristotle greeting sent - audio track should now be published")
