@@ -445,20 +445,33 @@ async def launch_ai_agents(request: DebateRequest):
             # Import the agent dispatch protocol classes
             from livekit.protocol import agent_dispatch
             
-            # Explicitly dispatch unified Sage agent using proper protocol
-            unified_dispatch_req = agent_dispatch.CreateAgentDispatchRequest(
+            # Explicitly dispatch Aristotle agent using proper protocol
+            aristotle_dispatch_req = agent_dispatch.CreateAgentDispatchRequest(
                 room=room_name,
-                agent_name="sage-unified",
+                agent_name="aristotle",
                 metadata=json.dumps({
-                    "role": "dual_persona_moderator", 
+                    "role": "logical_analyst", 
                     "debate_topic": request.topic,
-                    "agent_type": "unified",
-                    "personas": ["aristotle", "socrates"]
+                    "agent_type": "aristotle"
                 })
             )
             
-            unified_job = await livekit_api.agent_dispatch.create_dispatch(unified_dispatch_req)
-            logger.info(f"✅ Unified Sage agent explicitly dispatched to room {room_name}, dispatch ID: {unified_job.id}")
+            aristotle_job = await livekit_api.agent_dispatch.create_dispatch(aristotle_dispatch_req)
+            logger.info(f"✅ Aristotle explicitly dispatched to room {room_name}, dispatch ID: {aristotle_job.id}")
+            
+            # Explicitly dispatch Socrates agent using proper protocol
+            socrates_dispatch_req = agent_dispatch.CreateAgentDispatchRequest(
+                room=room_name,
+                agent_name="socrates",
+                metadata=json.dumps({
+                    "role": "philosophical_inquirer", 
+                    "debate_topic": request.topic,
+                    "agent_type": "socrates"
+                })
+            )
+            
+            socrates_job = await livekit_api.agent_dispatch.create_dispatch(socrates_dispatch_req)
+            logger.info(f"✅ Socrates explicitly dispatched to room {room_name}, dispatch ID: {socrates_job.id}")
             
             # Store room info for tracking
             active_agents[room_name] = {
@@ -468,29 +481,36 @@ async def launch_ai_agents(request: DebateRequest):
                 "status": "agents_dispatched",
                 "method": "explicit_agent_dispatch",
                 "agents_dispatched": {
-                    "unified": {
-                        "dispatch_id": unified_job.id,
+                    "aristotle": {
+                        "dispatch_id": aristotle_job.id,
                         "status": "dispatched",
-                        "role": "dual_persona_moderator",
-                        "personas": ["aristotle", "socrates"]
+                        "role": "logical_analyst"
+                    },
+                    "socrates": {
+                        "dispatch_id": socrates_job.id,
+                        "status": "dispatched",
+                        "role": "philosophical_inquirer"
                     }
                 }
             }
             
             logger.info(f"🎉 Debate room ready: {room_name}")
-            logger.info(f"📢 Unified agent with dual personas explicitly dispatched to room")
+            logger.info(f"📢 Both agents explicitly dispatched to room")
             
             return {
                 "status": "success",
-                "message": f"Unified agent dispatched to existing room: {room_name}",
+                "message": f"Agents dispatched to existing room: {room_name}",
                 "room_name": room_name,
                 "topic": request.topic,
                 "method": "explicit_agent_dispatch",
                 "agents_dispatched": {
-                    "unified": {
-                        "dispatch_id": unified_job.id,
-                        "status": "dispatched",
-                        "personas": ["aristotle", "socrates"]
+                    "aristotle": {
+                        "dispatch_id": aristotle_job.id,
+                        "status": "dispatched"
+                    },
+                    "socrates": {
+                        "dispatch_id": socrates_job.id,
+                        "status": "dispatched"
                     }
                 }
             }

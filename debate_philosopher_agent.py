@@ -31,6 +31,7 @@ try:
     from livekit.agents import Agent, AgentSession, JobContext, WorkerOptions, cli, function_tool
     from livekit.plugins import openai, silero
     from livekit.agents import UserStateChangedEvent, AgentStateChangedEvent
+    from livekit import rtc  # For audio track handling
     logger.info("✅ LiveKit Agents successfully imported")
 except ImportError as e:
     logger.error(f"❌ LiveKit Agents import failed: {e}")
@@ -268,7 +269,53 @@ async def entrypoint(ctx: JobContext):
     """Debate Philosopher agent entrypoint - joins rooms to provide philosophical inquiry"""
     
     logger.info("🤔 Sage AI Debate Philosopher checking room metadata...")
-    await ctx.connect()
+    # ENHANCED: Connect with auto_subscribe=True to hear all participants including other agents
+    await ctx.connect(auto_subscribe=True)
+    
+    # ENHANCED: Set up audio track monitoring for inter-agent coordination
+    audio_tracks = {}  # Track audio sources from other participants
+    other_agents = set()  # Track other agent identities
+    
+    def on_track_subscribed(track, publication, participant):
+        """Handle when we subscribe to an audio track from another participant"""
+        if track.kind == rtc.TrackKind.KIND_AUDIO:
+            logger.info(f"🎧 Socrates subscribed to audio track from: {participant.identity}")
+            
+            # Store the audio track for potential processing
+            audio_tracks[participant.identity] = track
+            
+            # Check if this is another agent (Aristotle)
+            if "aristotle" in participant.identity.lower():
+                other_agents.add(participant.identity)
+                logger.info(f"🤝 Socrates detected Aristotle agent: {participant.identity}")
+    
+    def on_track_unsubscribed(track, publication, participant):
+        """Handle when we unsubscribe from an audio track"""
+        if track.kind == rtc.TrackKind.KIND_AUDIO:
+            logger.info(f"🔇 Socrates unsubscribed from audio track: {participant.identity}")
+            audio_tracks.pop(participant.identity, None)
+            other_agents.discard(participant.identity)
+    
+    def on_participant_connected(participant):
+        """Handle when a new participant joins"""
+        logger.info(f"👋 Socrates detected new participant: {participant.identity}")
+        
+        # If it's Aristotle, add to our tracking
+        if "aristotle" in participant.identity.lower():
+            other_agents.add(participant.identity)
+            logger.info(f"🤝 Socrates added Aristotle to coordination list: {participant.identity}")
+    
+    def on_participant_disconnected(participant):
+        """Handle when a participant leaves"""
+        logger.info(f"👋 Socrates detected participant left: {participant.identity}")
+        audio_tracks.pop(participant.identity, None)
+        other_agents.discard(participant.identity)
+    
+    # Register audio track event handlers
+    ctx.room.on("track_subscribed", on_track_subscribed)
+    ctx.room.on("track_unsubscribed", on_track_unsubscribed)
+    ctx.room.on("participant_connected", on_participant_connected)
+    ctx.room.on("participant_disconnected", on_participant_disconnected)
     
     # ENHANCED TOPIC DETECTION - Check job metadata first (from agent dispatch)
     topic = "The impact of AI on society"  # Default fallback

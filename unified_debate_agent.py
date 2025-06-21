@@ -500,7 +500,17 @@ COMMUNICATION STYLE:
 - **STAY IN CHARACTER**: Maintain distinct persona traits
 - **COORDINATE INTERNALLY**: Don't switch personas mid-response
 
-Remember: You are ONE agent with TWO personas. Switch smoothly between them based on what the conversation needs, but always identify which persona is speaking."""
+🎭 VOICE & SPEAKING PATTERNS:
+- **ARISTOTLE**: Speak with measured authority, clear diction, structured delivery
+  - Use declarative statements: "The data shows..." "According to research..."
+  - Pause for emphasis before key facts
+  - Speak at moderate pace with logical flow
+- **SOCRATES**: Speak with gentle curiosity, rising intonation for questions
+  - Use questioning tone: "I wonder if..." "What might happen if..."
+  - Slightly faster pace, more conversational rhythm
+  - Natural pauses that invite reflection
+
+Remember: You are ONE agent with TWO personas. The voice characteristics are set for the session, but use distinct speaking patterns, pace, and intonation to differentiate the personas. Always identify which persona is speaking."""
 
     # Create unified agent with all tools
     unified_agent = Agent(
@@ -524,16 +534,60 @@ Remember: You are ONE agent with TWO personas. Switch smoothly between them base
             logger.info("✅ Using Perplexity LLM for unified agent")
         except Exception as e:
             logger.warning(f"⚠️ Could not configure Perplexity, using realtime model: {e}")
+            # ENHANCED: Intelligent voice selection for personas
+            # Choose voice based on expected primary persona or room metadata
+            primary_persona = "aristotle"  # Default to Aristotle for logical moderation
+            
+            # Check if room metadata suggests a primary persona preference
+            try:
+                if hasattr(ctx.room, 'metadata') and ctx.room.metadata:
+                    room_metadata = json.loads(ctx.room.metadata)
+                    preferred_persona = room_metadata.get("primary_persona", "aristotle")
+                    if preferred_persona in ["aristotle", "socrates"]:
+                        primary_persona = preferred_persona
+            except:
+                pass
+            
+            # Voice mapping for personas
+            voice_mapping = {
+                "aristotle": "ash",     # Deeper, more authoritative voice for logical moderator
+                "socrates": "echo"      # Warmer, more questioning voice for philosopher
+            }
+            
+            selected_voice = voice_mapping.get(primary_persona, "ash")
+            logger.info(f"🎭 Selected voice '{selected_voice}' for primary persona: {primary_persona}")
+            
             research_llm = openai.realtime.RealtimeModel(
                 model="gpt-4o-realtime-preview-2024-12-17",
-                voice="ash",  # Neutral voice that can handle both personas
+                voice=selected_voice,
                 temperature=0.7,
                 speed=1.2
             )
     else:
+        # ENHANCED: Same intelligent voice selection for non-Perplexity mode
+        primary_persona = "aristotle"
+        
+        # Check room metadata for persona preference
+        try:
+            if hasattr(ctx.room, 'metadata') and ctx.room.metadata:
+                room_metadata = json.loads(ctx.room.metadata)
+                preferred_persona = room_metadata.get("primary_persona", "aristotle")
+                if preferred_persona in ["aristotle", "socrates"]:
+                    primary_persona = preferred_persona
+        except:
+            pass
+        
+        voice_mapping = {
+            "aristotle": "ash",     # Deeper, more authoritative
+            "socrates": "echo"      # Warmer, more questioning
+        }
+        
+        selected_voice = voice_mapping.get(primary_persona, "ash")
+        logger.info(f"🎭 Selected voice '{selected_voice}' for primary persona: {primary_persona}")
+        
         research_llm = openai.realtime.RealtimeModel(
             model="gpt-4o-realtime-preview-2024-12-17",
-            voice="ash",
+            voice=selected_voice,
             temperature=0.7,
             speed=1.2
         )
