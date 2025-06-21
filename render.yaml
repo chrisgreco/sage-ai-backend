@@ -29,41 +29,13 @@ services:
       - key: PERPLEXITY_API_KEY
         fromGroup: sage-ai-env
 
-  # Background Worker 1: Aristotle (Moderator) Agent
+  # Unified Background Worker: Both Aristotle & Socrates in one agent
   - type: background
-    name: aristotle-agent
+    name: sage-unified-agent
     env: python
     repo: https://github.com/chrisgreco/sage-ai-backend.git
     buildCommand: pip install -r requirements.txt
-    startCommand: python debate_moderator_agent.py start
-    plan: starter
-    envVars:
-      - key: LIVEKIT_URL
-        fromGroup: sage-ai-env
-      - key: LIVEKIT_API_KEY
-        fromGroup: sage-ai-env
-      - key: LIVEKIT_API_SECRET
-        fromGroup: sage-ai-env
-      - key: OPENAI_API_KEY
-        fromGroup: sage-ai-env
-      - key: DEEPGRAM_API_KEY
-        fromGroup: sage-ai-env
-      - key: SUPABASE_URL
-        fromGroup: sage-ai-env
-      - key: SUPABASE_ANON_KEY
-        fromGroup: sage-ai-env
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        fromGroup: sage-ai-env
-      - key: PERPLEXITY_API_KEY
-        fromGroup: sage-ai-env
-
-  # Background Worker 2: Socrates (Philosopher) Agent  
-  - type: background
-    name: socrates-agent
-    env: python
-    repo: https://github.com/chrisgreco/sage-ai-backend.git
-    buildCommand: pip install -r requirements.txt
-    startCommand: python debate_philosopher_agent.py start
+    startCommand: python unified_debate_agent.py start
     plan: starter
     envVars:
       - key: LIVEKIT_URL
