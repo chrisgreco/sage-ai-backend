@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
+
 """
-Aristotle Moderator Agent - The logical moderator with reason + structure
-Provides analytical thinking, logical structure, and process facilitation
+Sage AI Debate Moderator Agent - Enhanced with Audio Track Subscription
+Handles Aristotle persona (logical moderator) with proper inter-agent coordination
 """
 
 import os
@@ -9,10 +10,11 @@ import sys
 import asyncio
 import logging
 import json
-from dotenv import load_dotenv
+import time
 import threading
+from dotenv import load_dotenv
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Dict, List
 
 # Load environment variables first
 load_dotenv()
@@ -24,8 +26,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Signal handling is managed by LiveKit framework - no manual handling needed
-
 # LiveKit Agents imports
 try:
     from livekit.agents import Agent, AgentSession, JobContext, WorkerOptions, cli, function_tool
@@ -34,95 +34,52 @@ try:
     from livekit import rtc  # For audio track handling
     logger.info("✅ LiveKit Agents successfully imported")
 except ImportError as e:
-    logger.error(f"❌ LiveKit Agents import failed: {e}")
+    logger.error(f"❌ Failed to import LiveKit Agents: {e}")
     sys.exit(1)
 
-# Knowledge system imports (optional)
+# Check if knowledge system is available
+KNOWLEDGE_AVAILABLE = False
 try:
-    from simple_knowledge_manager import SimpleKnowledgeManager
+    import chromadb
     KNOWLEDGE_AVAILABLE = True
-    logger.info("✅ Simple knowledge system available")
-except ImportError as e:
-    logger.warning(f"⚠️ Knowledge system not available: {e}")
-    KNOWLEDGE_AVAILABLE = False
-    
-# Define global variables for agent state
-agent_context = {
-    "room_name": None,
-    "session_number": 1,
-    "debate_topic": None,
-    "room_id": None,
-    "knowledge_initialized": False
-}
+    logger.info("✅ Knowledge system available")
+except ImportError:
+    logger.warning("⚠️ ChromaDB not available - knowledge system disabled")
 
-# Initialize Aristotle's knowledge manager
-_aristotle_knowledge = None
+# Check if Perplexity is available
+PERPLEXITY_AVAILABLE = bool(os.environ.get("PERPLEXITY_API_KEY"))
+if PERPLEXITY_AVAILABLE:
+    logger.info("✅ Perplexity research available")
+else:
+    logger.warning("⚠️ Perplexity API key not found - research features disabled")
 
 def get_aristotle_knowledge_manager():
-    """Get or create the knowledge manager for Aristotle"""
-    global _aristotle_knowledge
-    if _aristotle_knowledge is None:
-        _aristotle_knowledge = SimpleKnowledgeManager('aristotle')
-        _aristotle_knowledge.load_documents()
-    return _aristotle_knowledge
-    
+    """Get or create Aristotle's knowledge manager"""
+    if not KNOWLEDGE_AVAILABLE:
+        return None
+    # Implementation would go here
+    return None
+
 async def get_agent_knowledge(agent_name, query, max_items=3):
     """Simple knowledge retrieval using file-based storage"""
     try:
-        if not KNOWLEDGE_AVAILABLE:
-            return []
-            
-        # Get the knowledge manager
-        knowledge_manager = get_aristotle_knowledge_manager()
-        
-        if not knowledge_manager.is_ready():
-            logger.warning(f"📚 Knowledge manager not ready for {agent_name}")
-            return []
-        
-        # Search for relevant knowledge
-        results = knowledge_manager.search_knowledge(query, max_results=max_items)
-        
-        if results:
-            logger.debug(f"📚 Retrieved {len(results)} knowledge items for {agent_name}")
-            return [
-                {
-                    'content': result['content'],
-                    'source': result['title'],
-                    'relevance': result['relevance_score']
-                }
-                for result in results
-            ]
-        else:
-            logger.debug(f"🔍 No relevant knowledge found for query: {query[:50]}...")
-            return []
-        
+        knowledge_file = f"knowledge/{agent_name}_knowledge.json"
+        if os.path.exists(knowledge_file):
+            with open(knowledge_file, 'r') as f:
+                knowledge_data = json.load(f)
+                # Simple search - in production, use vector similarity
+                relevant_items = []
+                for item in knowledge_data.get('items', []):
+                    if any(word.lower() in item.get('content', '').lower() for word in query.split()):
+                        relevant_items.append(item)
+                        if len(relevant_items) >= max_items:
+                            break
+                return relevant_items
+        return []
     except Exception as e:
-        logger.error(f"Error in knowledge retrieval for {agent_name}: {e}")
+        logger.error(f"Knowledge retrieval error: {e}")
         return []
 
-# Supabase memory imports (optional)
-try:
-    from supabase_memory_manager import (
-        create_or_get_debate_room,
-        store_debate_segment,
-        get_debate_memory,
-        SUPABASE_AVAILABLE
-    )
-    logger.info("✅ Supabase memory system available")
-except ImportError as e:
-    logger.warning(f"⚠️ Supabase memory system not available: {e}")
-    SUPABASE_AVAILABLE = False
-
-# Perplexity research via LiveKit integration (optional)
-try:
-    from livekit.plugins import openai
-    PERPLEXITY_AVAILABLE = True
-    logger.info("✅ Perplexity research system available via LiveKit")
-except ImportError as e:
-    logger.warning(f"⚠️ Perplexity research not available: {e}")
-    PERPLEXITY_AVAILABLE = False
-    
-# Add conversation coordinator
 @dataclass
 class ConversationState:
     """Shared state for coordinating between agents"""
@@ -132,132 +89,118 @@ class ConversationState:
     intervention_count: int = 0
     conversation_lock: threading.Lock = threading.Lock()
 
-# Global conversation coordinator
+# Global conversation state
 conversation_state = ConversationState()
 
-# Remove the Agent inheritance
 class DebateModeratorAgent:
-    """Helper class for agent coordination and state management"""
+    """Enhanced Aristotle moderator with coordination capabilities"""
     
     def __init__(self):
         self.agent_name = "aristotle"
-        logger.info("🧠 Aristotle (Logical Moderator) Agent helper initialized")
-
+    
     async def check_speaking_permission(self, session) -> bool:
-        """Check if it's appropriate for this agent to speak"""
-        import time
-        
+        """Check if this agent should speak based on conversation state"""
         with conversation_state.conversation_lock:
-            current_time = time.time()
-            
-            # Don't speak if user is currently speaking
+            # Don't interrupt if user is speaking
             if conversation_state.user_speaking:
                 return False
             
-            # Don't speak if other agent is active
-            if conversation_state.active_speaker and conversation_state.active_speaker != self.agent_name:
+            # Don't interrupt if another agent spoke very recently (within 2 seconds)
+            if (conversation_state.active_speaker and 
+                conversation_state.active_speaker != self.agent_name and
+                time.time() - conversation_state.last_intervention_time < 2.0):
                 return False
             
-            # Rate limiting: don't intervene too frequently  
-            if current_time - conversation_state.last_intervention_time < 8.0:  # 8 second minimum between interventions
-                return False
-            
-            # Escalating delay: wait longer after each intervention
-            min_delay = 8.0 + (conversation_state.intervention_count * 3.0)  # 8s, 11s, 14s, etc.
-            if current_time - conversation_state.last_intervention_time < min_delay:
+            # Limit intervention frequency (max 1 per 10 seconds)
+            if (time.time() - conversation_state.last_intervention_time < 10.0 and 
+                conversation_state.intervention_count > 0):
                 return False
             
             return True
-
+    
     async def claim_speaking_turn(self):
-        """Claim the speaking turn for this agent"""
-        import time
-        
+        """Claim speaking turn in conversation"""
         with conversation_state.conversation_lock:
             conversation_state.active_speaker = self.agent_name
             conversation_state.last_intervention_time = time.time()
             conversation_state.intervention_count += 1
-            logger.info(f"🎤 {self.agent_name.capitalize()} claimed speaking turn")
-
+    
     async def release_speaking_turn(self):
-        """Release the speaking turn"""
+        """Release speaking turn"""
         with conversation_state.conversation_lock:
-            if conversation_state.active_speaker == self.agent_name:
-                conversation_state.active_speaker = None
-                logger.info(f"🔇 {self.agent_name.capitalize()} released speaking turn")
+            conversation_state.active_speaker = None
 
-# Now define the function tools as standalone functions that can be passed to Agent
-    @function_tool
+@function_tool
 async def get_debate_topic(context):
-        """Get the current debate topic"""
-        topic = os.getenv("DEBATE_TOPIC", "The impact of AI on society")
-        return f"Current debate topic: {topic}"
+    """Get the current debate topic"""
+    topic = os.getenv("DEBATE_TOPIC", "The impact of AI on society")
+    return f"Current debate topic: {topic}"
 
-    @function_tool
+@function_tool
 async def access_facilitation_knowledge(context, query: str):
-        """Access specialized knowledge about facilitation and parliamentary procedure
+    """Access specialized knowledge about facilitation and parliamentary procedure
+    
+    Args:
+        query: Question about moderation techniques, parliamentary procedure, or facilitation
+    """
+    if not KNOWLEDGE_AVAILABLE:
+        return {"knowledge": "Knowledge system not available", "sources": []}
         
-        Args:
-            query: Question about moderation techniques, parliamentary procedure, or facilitation
-        """
-        if not KNOWLEDGE_AVAILABLE:
-            return {"knowledge": "Knowledge system not available", "sources": []}
+    try:
+        # Query parliamentary and facilitation knowledge
+        knowledge_items = await get_agent_knowledge("aristotle", query, max_items=3)
+        
+        if knowledge_items:
+            knowledge_text = "\n\n".join([
+                f"Source: {item['source']}\n{item['content'][:400]}..." 
+                for item in knowledge_items
+            ])
+            return {
+                "knowledge": knowledge_text,
+                "sources": [item['source'] for item in knowledge_items]
+            }
+        else:
+            return {"knowledge": "No relevant facilitation knowledge found", "sources": []}
             
-        try:
-            # Query parliamentary and facilitation knowledge
-            knowledge_items = await get_agent_knowledge("aristotle", query, max_items=3)
-            
-            if knowledge_items:
-                knowledge_text = "\n\n".join([
-                    f"Source: {item['source']}\n{item['content'][:400]}..." 
-                    for item in knowledge_items
-                ])
-                return {
-                    "knowledge": knowledge_text,
-                    "sources": [item['source'] for item in knowledge_items]
-                }
-            else:
-                return {"knowledge": "No relevant facilitation knowledge found", "sources": []}
-                
-        except Exception as e:
-            logger.error(f"Knowledge access error: {e}")
-            return {"error": f"Knowledge access failed: {str(e)}"}
+    except Exception as e:
+        logger.error(f"Knowledge access error: {e}")
+        return {"error": f"Knowledge access failed: {str(e)}"}
 
-    @function_tool
+@function_tool
 async def suggest_process_intervention(context, situation: str):
-        """Suggest moderation techniques for challenging situations
-        
-        Args:
-            situation: Description of the current discussion dynamic or challenge
-        """
-        interventions = {
-            "dominating_speaker": "Try: 'Thank you [Name]. Let's hear from someone who hasn't spoken yet on this point.'",
-            "off_topic": "Try: 'That's an interesting point. How does it connect to our main question about [topic]?'",
-            "personal_attack": "Try: 'Let's focus on the ideas rather than personal characterizations. What specifically about that position concerns you?'",
-            "silence": "Try: 'I'm sensing some reflection time. [Name], what questions is this raising for you?'",
-            "confusion": "Try: 'Let me see if I can summarize what I'm hearing... Does that capture the key points?'",
-            "polarization": "Try: 'I'm hearing some different values here. Are there any shared concerns we might build on?'"
-        }
-        
-        # Simple keyword matching for demonstration
-        for key, suggestion in interventions.items():
-            if key.replace("_", " ") in situation.lower():
-                return f"Moderation suggestion: {suggestion}"
-        
-        return "Consider asking an open-ended question to refocus the conversation, or invite participation from a different perspective."
+    """Suggest moderation techniques for challenging situations
+    
+    Args:
+        situation: Description of the current discussion dynamic or challenge
+    """
+    interventions = {
+        "dominating_speaker": "Try: 'Thank you [Name]. Let's hear from someone who hasn't spoken yet on this point.'",
+        "off_topic": "Try: 'That's an interesting point. How does it connect to our main question about [topic]?'",
+        "personal_attack": "Try: 'Let's focus on the ideas rather than personal characterizations. What specifically about that position concerns you?'",
+        "silence": "Try: 'I'm sensing some reflection time. [Name], what questions is this raising for you?'",
+        "confusion": "Try: 'Let me see if I can summarize what I'm hearing... Does that capture the key points?'",
+        "polarization": "Try: 'I'm hearing some different values here. Are there any shared concerns we might build on?'"
+    }
+    
+    # Simple keyword matching for demonstration
+    for key, suggestion in interventions.items():
+        if key.replace("_", " ") in situation.lower():
+            return f"Moderation suggestion: {suggestion}"
+    
+    return "Consider asking an open-ended question to refocus the conversation, or invite participation from a different perspective."
 
-    @function_tool
+@function_tool
 async def fact_check_claim(context, claim: str, source_requested: bool = False):
     """Fact-check statistical claims or verify information using Perplexity research
+    
+    Args:
+        claim: The factual claim or statistic to verify
+        source_requested: Whether the user specifically asked for fact-checking
+    """
+    if not PERPLEXITY_AVAILABLE:
+        return {"fact_check": "Research system not available for fact-checking", "confidence": "low"}
         
-        Args:
-            claim: The factual claim or statistic to verify
-            source_requested: Whether the user specifically asked for fact-checking
-        """
-        if not PERPLEXITY_AVAILABLE:
-            return {"fact_check": "Research system not available for fact-checking", "confidence": "low"}
-            
-        try:
+    try:
         # Use LiveKit's Perplexity integration for research
         from livekit.plugins import openai
         import os
@@ -306,22 +249,22 @@ BE EXTREMELY CONCISE - no explanations or elaboration."""
                 response_chunks.append(chunk.delta.content)
         
         fact_check_result = ''.join(response_chunks) if response_chunks else "Unable to verify claim"
-            
-            return {
+        
+        return {
             "fact_check": fact_check_result,
             "confidence": "high",
             "source": "Perplexity AI with current data"
         }
         
-        except Exception as e:
-            logger.error(f"Fact-checking error: {e}")
-            return {"error": f"Fact-checking failed: {str(e)}"}
+    except Exception as e:
+        logger.error(f"Fact-checking error: {e}")
+        return {"error": f"Fact-checking failed: {str(e)}"}
 
-    @function_tool
+@function_tool
 async def research_live_data(context, query: str, research_type: str = "general"):
     """Access live research and current data using Perplexity AI
-        
-        Args:
+    
+    Args:
         query: The research question or topic to investigate
         research_type: Type of research (general, statistical, current_events, etc.)
     """
@@ -390,93 +333,75 @@ BE FACTUAL and well-sourced."""
             if hasattr(chunk, 'delta') and chunk.delta and chunk.delta.content:
                 response_chunks.append(chunk.delta.content)
         
-        research_result = ''.join(response_chunks) if response_chunks else "No research results available"
-            
-            return {
+        research_result = ''.join(response_chunks) if response_chunks else "Unable to complete research"
+        
+        return {
             "research": research_result,
             "confidence": "high",
             "source": "Perplexity AI with current data"
-            }
-            
-        except Exception as e:
+        }
+        
+    except Exception as e:
         logger.error(f"Research error: {e}")
         return {"error": f"Research failed: {str(e)}"}
 
-    @function_tool
+@function_tool
 async def analyze_argument_structure(context, argument: str):
-    """Analyze the logical structure of an argument for premises, conclusions, and validity
-        
-        Args:
+    """Analyze the logical structure of an argument using Aristotelian logic
+    
+    Args:
         argument: The argument text to analyze
     """
-    try:
-        # Simple logical analysis - could be enhanced with NLP tools
-        sentences = argument.split('. ')
-        
-        analysis = {
-            "structure": "basic analysis",
-            "premises": [],
-            "conclusion": "",
-            "logical_issues": []
-        }
-        
-        # Basic premise detection (sentences with "because", "since", "given")
-        premise_indicators = ["because", "since", "given that", "due to", "as", "for"]
-        conclusion_indicators = ["therefore", "thus", "hence", "so", "consequently"]
-        
-        for sentence in sentences:
-            sentence_lower = sentence.lower()
-            
-            if any(indicator in sentence_lower for indicator in premise_indicators):
-                analysis["premises"].append(sentence.strip())
-            elif any(indicator in sentence_lower for indicator in conclusion_indicators):
-                analysis["conclusion"] = sentence.strip()
-        
-        # Basic validity check
-        if not analysis["premises"]:
-            analysis["logical_issues"].append("No clear premises identified")
-        if not analysis["conclusion"]:
-            analysis["logical_issues"].append("No clear conclusion identified")
-        
-        return analysis
-        
-    except Exception as e:
-        logger.error(f"Argument analysis error: {e}")
-        return {"error": f"Analysis failed: {str(e)}"}
+    # Simple structural analysis - in production, use more sophisticated NLP
+    analysis = {
+        "premises": [],
+        "conclusion": "",
+        "logical_form": "unknown",
+        "validity": "requires_evaluation"
+    }
+    
+    # Basic pattern matching for demonstration
+    sentences = argument.split('.')
+    if len(sentences) >= 2:
+        analysis["premises"] = sentences[:-1]
+        analysis["conclusion"] = sentences[-1]
+        analysis["logical_form"] = "syllogistic" if len(sentences) == 3 else "complex"
+    
+    return analysis
 
 @function_tool  
 async def detect_intervention_triggers(context, conversation_snippet: str):
-    """Detect if moderator intervention may be needed based on conversation patterns
+    """Detect when moderator intervention might be needed
     
     Args:
         conversation_snippet: Recent conversation text to analyze
     """
-    triggers = []
-    text_lower = conversation_snippet.lower()
+    triggers = {
+        "personal_attack": ["you're wrong", "that's stupid", "you don't understand"],
+        "off_topic": ["by the way", "speaking of", "that reminds me"],
+        "domination": ["as I was saying", "let me finish", "you need to understand"],
+        "confusion": ["I don't get it", "what do you mean", "that doesn't make sense"],
+        "silence": ["...", "um", "well"]
+    }
     
-    # Detect personal attacks
-    attack_patterns = ["you're wrong", "that's stupid", "you don't understand", "you're being"]
-    if any(pattern in text_lower for pattern in attack_patterns):
-        triggers.append("personal_attack")
+    detected = []
+    snippet_lower = conversation_snippet.lower()
     
-    # Detect topic drift
-    topic_keywords = ["ai", "artificial intelligence", "society", "technology"]
-    if not any(keyword in text_lower for keyword in topic_keywords):
-        triggers.append("off_topic")
+    for trigger_type, phrases in triggers.items():
+        if any(phrase in snippet_lower for phrase in phrases):
+            detected.append(trigger_type)
     
-    # Detect domination (simplified)
-    if len(conversation_snippet) > 500:  # Very long statement
-        triggers.append("dominating_speaker")
-    
-    # Detect confusion indicators
-    confusion_patterns = ["i don't understand", "what do you mean", "can you clarify"]
-    if any(pattern in text_lower for pattern in confusion_patterns):
-        triggers.append("confusion")
-        
+    if detected:
         return {
-        "triggers": triggers,
-        "intervention_needed": len(triggers) > 0,
-        "suggested_action": "Consider gentle moderation" if triggers else "Continue monitoring"
+            "intervention_needed": True,
+            "triggers": detected,
+            "suggestion": f"Consider addressing: {', '.join(detected)}"
+        }
+    else:
+        return {
+            "intervention_needed": False,
+            "triggers": [],
+            "suggestion": "Conversation flowing well"
         }
 
 async def entrypoint(ctx: JobContext):
@@ -495,339 +420,195 @@ async def entrypoint(ctx: JobContext):
         if track.kind == rtc.TrackKind.KIND_AUDIO:
             logger.info(f"🎧 Aristotle subscribed to audio track from: {participant.identity}")
             
-            # Store the audio track for potential processing
-            audio_tracks[participant.identity] = track
+            # Store the audio track for coordination
+            audio_tracks[participant.identity] = {
+                "track": track,
+                "publication": publication,
+                "participant": participant
+            }
             
-            # Check if this is another agent (Socrates)
-            if "socrates" in participant.identity.lower():
+            # Identify other agents for coordination
+            if participant.identity and ("socrates" in participant.identity.lower() or "philosopher" in participant.identity.lower()):
                 other_agents.add(participant.identity)
                 logger.info(f"🤝 Aristotle detected Socrates agent: {participant.identity}")
     
     def on_track_unsubscribed(track, publication, participant):
         """Handle when we unsubscribe from an audio track"""
-        if track.kind == rtc.TrackKind.KIND_AUDIO:
-            logger.info(f"🔇 Aristotle unsubscribed from audio track: {participant.identity}")
-            audio_tracks.pop(participant.identity, None)
-            other_agents.discard(participant.identity)
+        if participant.identity in audio_tracks:
+            del audio_tracks[participant.identity]
+            logger.info(f"🔇 Aristotle unsubscribed from: {participant.identity}")
     
     def on_participant_connected(participant):
-        """Handle when a new participant joins"""
-        logger.info(f"👋 Aristotle detected new participant: {participant.identity}")
+        """Handle when a participant connects to the room"""
+        logger.info(f"👋 Participant connected: {participant.identity}")
         
-        # If it's Socrates, add to our tracking
-        if "socrates" in participant.identity.lower():
+        # Identify agent types for coordination
+        if participant.identity and ("socrates" in participant.identity.lower() or "philosopher" in participant.identity.lower()):
             other_agents.add(participant.identity)
-            logger.info(f"🤝 Aristotle added Socrates to coordination list: {participant.identity}")
+            logger.info(f"🤝 Aristotle detected Socrates agent joined: {participant.identity}")
     
     def on_participant_disconnected(participant):
-        """Handle when a participant leaves"""
-        logger.info(f"👋 Aristotle detected participant left: {participant.identity}")
-        audio_tracks.pop(participant.identity, None)
-        other_agents.discard(participant.identity)
+        """Handle when a participant disconnects"""
+        logger.info(f"👋 Participant disconnected: {participant.identity}")
+        if participant.identity in other_agents:
+            other_agents.remove(participant.identity)
+        if participant.identity in audio_tracks:
+            del audio_tracks[participant.identity]
     
-    # Register audio track event handlers
+    # Register event handlers for audio coordination
     ctx.room.on("track_subscribed", on_track_subscribed)
     ctx.room.on("track_unsubscribed", on_track_unsubscribed)
     ctx.room.on("participant_connected", on_participant_connected)
     ctx.room.on("participant_disconnected", on_participant_disconnected)
     
     # ENHANCED TOPIC DETECTION - Check job metadata first (from agent dispatch)
-    topic = "The impact of AI on society"  # Default fallback
+    debate_topic = "The impact of AI on society"  # Default
+    agent_role = "logical_analyst"  # Default
     
-    # Method 1: Check job metadata (primary method for agent dispatch)
-    try:
-        if hasattr(ctx, 'job') and ctx.job and hasattr(ctx.job, 'metadata') and ctx.job.metadata:
-            logger.info(f"📋 Found job metadata: {ctx.job.metadata}")
-            job_metadata = json.loads(ctx.job.metadata)
-            job_topic = job_metadata.get("debate_topic")
-            if job_topic:
-                topic = job_topic
-                logger.info(f"✅ Aristotle found topic from job metadata: {topic}")
-            else:
-                logger.warning("⚠️ No 'debate_topic' key in job metadata")
-        else:
-            logger.info("📭 No job metadata available")
-    except (json.JSONDecodeError, Exception) as e:
-        logger.error(f"❌ Failed to parse job metadata: {e}")
-    
-    # Method 2: Check room metadata (fallback)
-    room_metadata = None
-    try:
-        if hasattr(ctx.room, 'metadata') and ctx.room.metadata:
-            room_metadata = json.loads(ctx.room.metadata)
-            logger.info(f"🏠 Found room metadata: {room_metadata}")
-            room_topic = room_metadata.get("debate_topic")
-            if room_topic and topic == "The impact of AI on society":  # Only use if we didn't get from job
-                topic = room_topic
-                logger.info(f"✅ Aristotle found topic from room metadata: {topic}")
-    except Exception as e:
-        logger.warning(f"Could not parse room metadata: {e}")
-    
-    # Method 3: Environment variable (final fallback)
-    if topic == "The impact of AI on society":
-        env_topic = os.getenv("DEBATE_TOPIC")
-        if env_topic:
-            topic = env_topic
-            logger.info(f"✅ Using environment topic: {topic}")
-    
-    logger.info(f"🎯 ARISTOTLE FINAL TOPIC: {topic}")
-    
-    # REMOVED RESTRICTIVE ROOM FILTERING - Agents should join all rooms
-    # The frontend doesn't set room_type="sage_debate" metadata, so this was blocking all rooms
-    logger.info(f"✅ Joining room: {ctx.room.name}")
-    
-    logger.info(f"✅ Moderator connected to room: {ctx.room.name}")
-    room_name = ctx.room.name
-    logger.info(f"⚖️ Moderating discussion on: {topic}")
-    
-    # Initialize memory if available
-    room_id = None
-    memory_context = ""
-    
-    if SUPABASE_AVAILABLE:
+    # Check if we have job metadata from agent dispatch
+    if hasattr(ctx, 'job') and ctx.job and hasattr(ctx.job, 'metadata'):
         try:
-            room_id = await create_or_get_debate_room(
-                room_name=room_name,
-                debate_topic=topic,
-                livekit_token=room_name  # Using room_name as token
-            )
-            
-            memory_data = await get_debate_memory(room_id)
-            if memory_data["recent_segments"]:
-                logger.info(f"📚 Loaded {len(memory_data['recent_segments'])} conversation segments")
-                recent_summary = memory_data.get("session_summaries", [])
-                if recent_summary:
-                    memory_context = f"\n\nPrevious Discussion Context:\n{recent_summary[-1]}"
-            
-            logger.info(f"✅ Memory initialized for room {room_id}")
+            metadata = json.loads(ctx.job.metadata) if isinstance(ctx.job.metadata, str) else ctx.job.metadata
+            debate_topic = metadata.get("debate_topic", debate_topic)
+            agent_role = metadata.get("role", agent_role)
+            logger.info(f"📋 Job metadata - Topic: {debate_topic}, Role: {agent_role}")
         except Exception as e:
-            logger.warning(f"⚠️ Memory initialization failed: {e}")
+            logger.warning(f"⚠️ Could not parse job metadata: {e}")
     
-    # Create moderator agent with enhanced instructions
-    enhanced_instructions = f"""You are Aristotle, the Sage AI Debate Moderator. You embody the logical moderator with reason and structure, combining analytical wisdom with practical facilitation skills.
-
-YOUR CORE IDENTITY - ARISTOTLE (Reason + Structure):
-- Role: The logical moderator
-- Traits: Formal logic, structured reasoning, practical ethics
-- Tone: Analytical, measured, teacher-like
-- Strengths: Clarifies definitions, enforces logical structure, extracts premises from arguments
-
-🔑 MINIMAL INTERVENTION PRINCIPLE:
-- DEFAULT MODE: **LISTEN SILENTLY** - Let human debaters lead the conversation
-- PRIMARY ROLE: **OBSERVE AND UNDERSTAND** the flow of human debate
-- ONLY SPEAK WHEN:
-  1. **EXPLICITLY CALLED UPON** by name ("Aristotle, what do you think?")
-  2. **DIRECTLY REQUESTED** for fact-checking or research ("Can you research this?")
-  3. **SERIOUS PROCESS BREAKDOWN** (personal attacks, complete derailment)
-  4. **DANGEROUS MISINFORMATION** that could cause harm
-
-🔬 RESEARCH CAPABILITIES:
-- I have access to live data and current information through Perplexity AI
-- I can fact-check claims with current statistics and sources
-- I can research current events, trends, and developments
-- Call on me for: "Aristotle, can you research [topic]?" or "Fact-check this claim"
-
-🚫 DO NOT INTERRUPT FOR:
-- Normal disagreements or heated debates
-- Minor logical inconsistencies  
-- Common rhetorical devices
-- Regular statistical claims without verification requests
-- General discussion flow
-
-⚖️ COORDINATION RULES:
-- NEVER speak while Socrates is speaking
-- Wait for clear pauses in the conversation
-- Keep interventions brief (1-2 sentences maximum)
-- Defer to Socrates on philosophical questions
-- Focus on logical structure and process
-
-DEBATE TOPIC: "{topic}"
-Focus your moderation on this specific topic.
-
-{memory_context}
-
-COMMUNICATION STYLE (When you do speak):
-- **BE CONCISE AND DIRECT** - Get to the point immediately
-- For fact corrections: "Actually, it's [correct fact] according to [source]" 
-- For process issues: Brief, clear guidance without lengthy explanations
-- For logical clarification: Short, targeted questions
-- **Maximum 1-2 sentences per intervention** unless specifically asked for more detail
-- Speak with quiet authority - let the facts speak for themselves
-- **NO lengthy explanations** - save time for human debate
-
-Remember: Your PRIMARY goal is to let humans debate freely while being ready to provide logical structure and analysis ONLY when explicitly needed or requested. Quality over quantity - one thoughtful intervention is worth more than constant commentary."""
-
-    # Create the Agent instance with instructions and function tools (LiveKit pattern)
-    # NOTE: We can't inherit from Agent class, must create instance directly
-    moderator_agent = Agent(
-        instructions=enhanced_instructions,
-        tools=[
-            get_debate_topic,
-            access_facilitation_knowledge,
-            suggest_process_intervention,
-            fact_check_claim,
-            research_live_data,
-            analyze_argument_structure,
-            detect_intervention_triggers
-        ]
-    )
+    # Also check room metadata as fallback
+    if ctx.room.metadata:
+        try:
+            room_metadata = json.loads(ctx.room.metadata)
+            debate_topic = room_metadata.get("topic", debate_topic)
+            agent_role = room_metadata.get("moderator_role", agent_role)
+            logger.info(f"📋 Room metadata - Topic: {debate_topic}, Role: {agent_role}")
+        except Exception as e:
+            logger.warning(f"⚠️ Could not parse room metadata: {e}")
     
-    # Configure LLM with Perplexity for live research capabilities
+    # Set environment variable for other functions to access
+    os.environ["DEBATE_TOPIC"] = debate_topic
+    
+    # Initialize the moderator agent
+    moderator = DebateModeratorAgent()
+    
+    # Configure LLM - use Perplexity when available for research capabilities
     if PERPLEXITY_AVAILABLE:
         try:
-            from livekit.plugins import openai
-            # Use Perplexity LLM for research capabilities per LiveKit documentation
             research_llm = openai.LLM.with_perplexity(
                 model="sonar",
-                temperature=0.7  # Balanced for both conversation and research
+                temperature=0.7  # Balanced for both personas
             )
-            logger.info("✅ Using Perplexity LLM for live research capabilities")
+            logger.info("✅ Using Perplexity LLM for Aristotle")
         except Exception as e:
             logger.warning(f"⚠️ Could not configure Perplexity, using realtime model: {e}")
-            research_llm = openai.realtime.RealtimeModel(
-                model="gpt-4o-realtime-preview-2024-12-17",
-                voice="ash",
-                temperature=0.6,
-                speed=1.3
-            )
+            research_llm = openai.LLM(model="gpt-4o-realtime-preview", temperature=0.7)
     else:
-        research_llm = openai.realtime.RealtimeModel(
-            model="gpt-4o-realtime-preview-2024-12-17",
-            voice="ash",
-            temperature=0.6,
-            speed=1.3
-        )
-
-    # Create agent session with IMPROVED turn detection and conversation coordination
-    session = AgentSession(
-        llm=research_llm,  # Use Perplexity-enabled LLM when available
-        vad=silero.VAD.load(),
-        # ENHANCED: Longer delays to reduce interruptions and allow coordination
-        min_endpointing_delay=2.0,  # Wait 2 seconds minimum before considering turn complete
-        max_endpointing_delay=6.0,  # Extended max delay to prevent hasty interventions
-        # ENHANCED: More restrictive interruption settings
-        allow_interruptions=True,
-        min_interruption_duration=1.0,  # Require longer speech before allowing interruption
+        research_llm = openai.LLM(model="gpt-4o-realtime-preview", temperature=0.7)
+    
+    # Configure TTS
+    tts = silero.TTS(
+        model="v3_en",
+        speaker="en_117"  # Clear, authoritative voice for Aristotle
     )
     
-    # Set up conversation state monitoring
+    # Create agent session
+    agent_session = AgentSession(
+        chat_ctx=openai.ChatContext(),
+        fnc_ctx=openai.FunctionContext(),
+        llm=research_llm,
+        tts=tts
+    )
+    
+    # Add function tools
+    agent_session.fnc_ctx.add_function(get_debate_topic)
+    agent_session.fnc_ctx.add_function(access_facilitation_knowledge)
+    agent_session.fnc_ctx.add_function(suggest_process_intervention)
+    agent_session.fnc_ctx.add_function(fact_check_claim)
+    agent_session.fnc_ctx.add_function(research_live_data)
+    agent_session.fnc_ctx.add_function(analyze_argument_structure)
+    agent_session.fnc_ctx.add_function(detect_intervention_triggers)
+    
+    # Enhanced system prompt with coordination awareness
+    system_prompt = f"""You are Aristotle, the logical analyst and debate moderator for the Sage AI system. You are participating in a debate about: "{debate_topic}"
+
+COORDINATION AWARENESS:
+- You are working WITH Socrates (the philosophical questioner) in the same room
+- You can hear Socrates and should coordinate responses, not compete
+- Let Socrates ask probing questions while you provide structure and analysis
+- Don't repeat what Socrates just said - build on it or provide different perspective
+
+CORE IDENTITY - ARISTOTLE:
+- **Logical Structure**: You excel at organizing thoughts, identifying premises, and ensuring coherent argumentation
+- **Analytical Precision**: You break down complex ideas into clear, logical components
+- **Moderate Firmly**: You guide discussions with clear structure while remaining fair
+- **Fact-Based**: You prioritize evidence, data, and logical consistency
+- **Systematic Approach**: You help organize the debate flow and ensure all sides are heard
+
+MODERATION STYLE:
+- **Structure First**: "Let's organize this discussion around three key points..."
+- **Logical Analysis**: "The argument structure here is... the premises are..."
+- **Evidence Focus**: "What evidence supports this position?"
+- **Fair Process**: Ensure balanced participation and logical progression
+- **Synthesis**: Help synthesize different viewpoints into coherent frameworks
+
+COMMUNICATION STYLE:
+- **BE EXTREMELY CONCISE**: 1-2 sentences maximum unless asked for detail
+- **IDENTIFY YOURSELF**: Start with "As Aristotle..." when speaking
+- **COORDINATE WITH SOCRATES**: Don't interrupt or compete - complement his questioning
+- **STRUCTURE RESPONSES**: Use clear, logical organization
+
+AVAILABLE TOOLS:
+- Access specialized knowledge about facilitation and parliamentary procedure
+- Fact-check claims using live research
+- Analyze argument structure using logical frameworks
+- Suggest process interventions for challenging situations
+- Detect when moderation intervention is needed
+
+Remember: You work WITH Socrates as a team. He asks probing questions, you provide logical structure and analysis. Together you facilitate meaningful dialogue."""
+
+    agent_session.chat_ctx.add_message(
+        role="system",
+        content=system_prompt
+    )
+    
+    logger.info("🏛️ Aristotle (Debate Moderator) ready for philosophical discourse")
+    logger.info(f"📋 Debate topic: {debate_topic}")
+    logger.info(f"🎭 Agent role: {agent_role}")
+    logger.info(f"🔊 Audio coordination enabled - can hear {len(audio_tracks)} participants")
+    
+    # User state change handler
     def on_user_state_changed(ev: UserStateChangedEvent):
-        """Monitor user speaking state for coordination"""
-        with conversation_state.conversation_lock:
-            if ev.new_state == "speaking":
+        """Handle user speaking state changes for coordination"""
+        if ev.state == "speaking":
+            with conversation_state.conversation_lock:
                 conversation_state.user_speaking = True
-                # If user starts speaking, both agents should stop
-                if conversation_state.active_speaker:
-                    logger.info("👤 User started speaking - agents should yield")
-                    conversation_state.active_speaker = None
-            elif ev.new_state == "listening":
+                logger.info("👤 User started speaking - agents will listen")
+        elif ev.state == "not_speaking":
+            with conversation_state.conversation_lock:
                 conversation_state.user_speaking = False
-                logger.info("👂 User stopped speaking - agents may respond if appropriate")
-            elif ev.new_state == "away":
-                conversation_state.user_speaking = False
-                logger.info("👋 User disconnected")
-
+                logger.info("👤 User stopped speaking - agents can respond")
+    
+    # Agent state change handler  
     def on_agent_state_changed(ev: AgentStateChangedEvent):
-        """Monitor agent speaking state for coordination"""
-        agent_name = "aristotle"
-        
-        if ev.new_state == "speaking":
-            with conversation_state.conversation_lock:
-                conversation_state.active_speaker = agent_name
-                logger.info(f"🎤 {agent_name.capitalize()} started speaking")
-        elif ev.new_state in ["idle", "listening", "thinking"]:
-            with conversation_state.conversation_lock:
-                if conversation_state.active_speaker == agent_name:
-                    conversation_state.active_speaker = None
-                    logger.info(f"🔇 {agent_name.capitalize()} finished speaking")
-
-    # Register event handlers for conversation coordination
-    session.on("user_state_changed", on_user_state_changed)
-    session.on("agent_state_changed", on_agent_state_changed)
+        """Handle agent state changes for coordination"""
+        if ev.state == "speaking":
+            logger.info(f"🎤 Agent started speaking: {ev.agent_participant.identity}")
+        elif ev.state == "listening":
+            logger.info(f"👂 Agent listening: {ev.agent_participant.identity}")
     
-    # Start session with the agent instance
-    await session.start(
-        agent=moderator_agent,
-        room=ctx.room
-    )
+    # Register state change handlers
+    agent_session.on("user_state_changed", on_user_state_changed)
+    agent_session.on("agent_state_changed", on_agent_state_changed)
     
-    logger.info("✅ Debate Moderator is ready to facilitate productive discourse!")
-    
-    # CRITICAL: Realtime models need explicit greeting to publish audio track
-    # Without this, the agent won't be heard in the frontend
-    try:
-        # Wait for session to fully initialize before attempting audio
-        await asyncio.sleep(2.0)  # Increased wait time
-        
-        # Ensure we're properly connected before trying to speak
-        logger.info("🎤 Attempting to publish audio track with greeting...")
-        
-        # Aristotle always gives the opening announcement (he's the primary moderator)
-        await moderator_agent.claim_speaking_turn()
-        try:
-            # Enhanced opening announcement with rules and coordination
-            await session.say(
-                f"Welcome to your Sage AI debate on: {topic}. I'm Aristotle, your logical moderator, assisted by Socrates for philosophical inquiry. " +
-                f"Ground rules: We'll primarily listen while you debate. Call on us by name if you need fact-checking with live data, research, logical analysis, or deeper questions. " +
-                f"I have access to current information through Perplexity AI. Let's begin your discussion.",
-                allow_interruptions=True
-            )
-            logger.info("✅ Aristotle opening announcement sent successfully - audio track published")
-        finally:
-            await moderator_agent.release_speaking_turn()
-        
-    except Exception as e:
-        logger.warning(f"⚠️ Could not send greeting: {e} - agent may not be audible to users")
-    
-    # Keep the session alive - this is critical for LiveKit agents
-    try:
-        logger.info("🔄 Starting session monitoring loop...")
-        
-        # Add connection monitoring to prevent early termination
-        while True:
-            try:
-                # Monitor session state and reconnect if needed
-                if not session.agent_state or session.agent_state == "disconnected":
-                    logger.warning("⚠️ Agent session disconnected, attempting to maintain connection...")
-                    break
-                
-                # Use asyncio.wait_for with timeout to prevent hanging
-                await asyncio.wait_for(session.wait_for_completion(), timeout=300.0)  # 5 minute timeout
-                break
-                
-            except asyncio.TimeoutError:
-                logger.info("🔄 Session timeout reached, checking connection status...")
-                # Continue monitoring - this prevents early termination
-                continue
-            except Exception as inner_e:
-                logger.warning(f"⚠️ Session monitoring error: {inner_e}, continuing...")
-                await asyncio.sleep(1.0)
-                continue
-                
-    except Exception as e:
-        logger.error(f"❌ Agent session error: {e}")
-    finally:
-        # Clean up conversation state
-        with conversation_state.conversation_lock:
-            if conversation_state.active_speaker == "aristotle":
-                conversation_state.active_speaker = None
-        logger.info("🔚 Aristotle session ended")
+    # Start the agent session
+    await agent_session.start(ctx.room)
 
 def main():
-    """Main function"""
-    required_vars = ["LIVEKIT_API_KEY", "LIVEKIT_API_SECRET", "LIVEKIT_URL", "OPENAI_API_KEY"]
-    missing_vars = [var for var in required_vars if not os.getenv(var)]
-    
-    if missing_vars:
-        logger.error(f"❌ Missing environment variables: {missing_vars}")
-        sys.exit(1)
-    
-    logger.info("🚀 Starting Debate Moderator Agent...")
-    
+    """Main entry point for the debate moderator agent"""
     cli.run_app(
         WorkerOptions(
+            agent_name="aristotle",
             entrypoint_fnc=entrypoint,
-            agent_name="aristotle"  # Specific agent name for this worker
         )
     )
 
