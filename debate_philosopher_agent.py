@@ -65,8 +65,8 @@ def get_socrates_knowledge_manager():
         _socrates_knowledge = SimpleKnowledgeManager('socrates')
         _socrates_knowledge.load_documents()
     return _socrates_knowledge
-
-async def get_agent_knowledge(agent_name, query, max_items=3):
+    
+    async def get_agent_knowledge(agent_name, query, max_items=3):
     """Simple knowledge retrieval using file-based storage"""
     try:
         if not KNOWLEDGE_AVAILABLE:
@@ -126,87 +126,12 @@ class ConversationState:
 # Global conversation coordinator
 conversation_state = ConversationState()
 
-class DebatePhilosopherAgent(Agent):
-    """Socrates + Buddha - The inquisitive challenger with wisdom + compassion"""
+class DebatePhilosopherAgent:
+    """Helper class for agent coordination and state management"""
     
     def __init__(self):
-        # Socrates + Buddha philosophical instructions
-        instructions = """You are Socrates, the Sage AI Debate Philosopher. You embody the inquisitive challenger who seeks truth through questioning, combining Socratic inquiry with Buddhist wisdom and compassionate understanding.
-
-YOUR CORE IDENTITY - SOCRATES (Inquiry + Wisdom):
-- Role: The inquisitive challenger
-- Traits: Socratic questioning, Buddhist wisdom, compassionate understanding
-- Tone: Curious, humble, seeking truth
-- Strengths: Asks probing questions, challenges assumptions, explores deeper meanings
-
-🔑 MINIMAL INTERVENTION PRINCIPLE:
-- DEFAULT MODE: **LISTEN THOUGHTFULLY** - Let human debaters explore their ideas
-- PRIMARY ROLE: **OBSERVE AND REFLECT** on the philosophical dimensions
-- ONLY SPEAK WHEN:
-  1. **EXPLICITLY CALLED UPON** by name ("Socrates, what would you ask?")
-  2. **DIRECTLY REQUESTED** for philosophical perspective or questioning
-  3. **DEEPER INQUIRY NEEDED** (assumptions unexamined, meanings unclear)
-  4. **WISDOM TRADITION RELEVANT** (philosophical precedent applies)
-
-🚫 DO NOT INTERRUPT FOR:
-- Normal debate flow or disagreements
-- Surface-level discussions that are progressing
-- Technical details or statistics
-- Regular back-and-forth exchanges
-- Procedural matters
-
-🤔 COORDINATION RULES:
-- ARISTOTLE IS THE PRIMARY MODERATOR - he handles announcements and leads
-- NEVER speak while Aristotle is speaking
-- Wait for clear pauses in the conversation
-- Keep interventions brief (1-2 questions maximum)
-- Defer to Aristotle on logical structure and process
-- Focus on philosophical inquiry and deeper meaning
-- You are Aristotle's philosophical assistant, not a co-moderator
-
-PHILOSOPHICAL RESPONSIBILITIES (When intervention IS warranted):
-
-1. SOCRATIC QUESTIONING:
-   - Ask questions that reveal hidden assumptions
-   - Help participants examine their own beliefs
-   - Guide discovery through targeted inquiry
-   - Challenge participants to think deeper
-
-2. BUDDHIST WISDOM:
-   - Bring compassionate understanding to conflicts
-   - Help participants see interconnectedness
-   - Apply mindfulness principles to heated discussions
-   - Find balance between opposing positions
-
-3. DEEPER INQUIRY (When requested):
-   - Explore the underlying meaning of concepts
-   - Ask about the nature of truth, justice, beauty, etc.
-   - Help participants understand their own reasoning
-   - Connect current discussion to timeless philosophical questions
-
-4. WISDOM SYNTHESIS (When appropriate):
-   - Draw on philosophical traditions for perspective
-   - Help participants see patterns in their thinking
-   - Apply ancient wisdom to modern problems
-   - Bridge different worldviews with understanding
-
-KNOWLEDGE ACCESS:
-You have access to Socratic methods, Buddhist wisdom, and ancient philosophical traditions for inquiry and understanding.
-
-COMMUNICATION STYLE (When you do speak):
-- **ASK PROFOUND QUESTIONS** - Help participants examine their assumptions
-- Lead with curiosity: "I wonder..." or "What if we considered..."
-- For assumptions: "What leads us to believe that...?"
-- For deeper meaning: "When we say [term], what do we really mean?"
-- **Maximum 1-2 questions per intervention** unless specifically asked for more
-- Speak with humble wisdom - model intellectual humility
-- **NO lecturing** - let questions do the teaching
-
-Remember: Your PRIMARY goal is to deepen understanding through thoughtful questions ONLY when the conversation would benefit from philosophical reflection or when explicitly invited to participate."""
-
-        super().__init__(instructions=instructions)
         self.agent_name = "socrates"
-        logger.info("🤔 Socrates (Inquisitive Challenger) Agent initialized")
+        logger.info("🤔 Socrates (Inquisitive Challenger) Agent helper initialized")
 
     async def check_speaking_permission(self, session) -> bool:
         """Check if it's appropriate for this agent to speak"""
@@ -251,8 +176,9 @@ Remember: Your PRIMARY goal is to deepen understanding through thoughtful questi
                 conversation_state.active_speaker = None
                 logger.info(f"🔇 {self.agent_name.capitalize()} released speaking turn")
 
+# Now define the function tools as standalone functions that can be passed to Agent
     @function_tool
-    async def access_philosophical_knowledge(self, context, query: str, approach: str = "socratic"):
+async def access_philosophical_knowledge(context, query: str, approach: str = "socratic"):
         """Access specialized philosophical knowledge for Socratic questioning and wisdom
         
         Args:
@@ -288,13 +214,15 @@ Remember: Your PRIMARY goal is to deepen understanding through thoughtful questi
             return {"error": f"Knowledge access failed: {str(e)}"}
 
     @function_tool
-    async def suggest_philosophical_question(self, context, topic: str, approach: str = "socratic"):
+async def suggest_philosophical_question(context, topic: str, approach: str = "socratic"):
         """Suggest philosophical questions to deepen the discussion
         
         Args:
             topic: Current discussion topic or statement
             approach: Type of questioning (socratic, analytical, compassionate)
         """
+    import random
+    
         question_templates = {
             "socratic": [
                 f"What assumptions underlie the idea that {topic}?",
@@ -322,16 +250,14 @@ Remember: Your PRIMARY goal is to deepen understanding through thoughtful questi
         questions = question_templates.get(approach, question_templates["socratic"])
         suggested = random.choice(questions)
         
-        approach_map = {
-            "socratic": "🧠 Socratic questioning",
-            "analytical": "📚 Aristotelian analysis", 
-            "compassionate": "🕯️ Buddhist wisdom"
-        }
-        
-        return f"{approach_map[approach]}: {suggested}"
+    return {
+        "question": suggested,
+        "approach": approach.title(),
+        "type": f"{approach.title()} Inquiry"
+    }
 
     @function_tool
-    async def get_debate_topic(self, context):
+async def get_debate_topic(context):
         """Get the current debate topic"""
         topic = os.getenv("DEBATE_TOPIC", "The impact of AI on society")
         return f"Current debate topic: {topic}"
@@ -464,10 +390,16 @@ COMMUNICATION STYLE (When you do speak):
 
 Remember: Your PRIMARY goal is to deepen understanding through thoughtful questions ONLY when the conversation would benefit from philosophical reflection or when explicitly invited to participate."""
 
-    # Create philosopher agent with coordination capabilities
-    philosopher = DebatePhilosopherAgent()
-    philosopher.agent_name = "socrates"
-    philosopher.instructions = enhanced_instructions
+    # Create philosopher agent with direct Agent instantiation (LiveKit pattern)
+    # NOTE: We can't inherit from Agent class, must create instance directly
+    philosopher = Agent(
+        instructions=enhanced_instructions,
+        tools=[
+            access_philosophical_knowledge,
+            suggest_philosophical_question,
+            get_debate_topic
+        ]
+    )
     
     # Create agent session with IMPROVED turn detection and conversation coordination
     session = AgentSession(

@@ -26,6 +26,8 @@ services:
         fromGroup: sage-ai-env
       - key: SUPABASE_SERVICE_ROLE_KEY
         fromGroup: sage-ai-env
+      - key: PERPLEXITY_API_KEY
+        fromGroup: sage-ai-env
 
   # Background Worker 1: Aristotle (Moderator) Agent
   - type: background
@@ -52,6 +54,8 @@ services:
         fromGroup: sage-ai-env
       - key: SUPABASE_SERVICE_ROLE_KEY
         fromGroup: sage-ai-env
+      - key: PERPLEXITY_API_KEY
+        fromGroup: sage-ai-env
 
   # Background Worker 2: Socrates (Philosopher) Agent  
   - type: background
@@ -77,6 +81,8 @@ services:
       - key: SUPABASE_ANON_KEY
         fromGroup: sage-ai-env
       - key: SUPABASE_SERVICE_ROLE_KEY
+        fromGroup: sage-ai-env
+      - key: PERPLEXITY_API_KEY
         fromGroup: sage-ai-env
 
 # Environment variables must be configured in Render Dashboard

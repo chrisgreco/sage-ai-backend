@@ -64,8 +64,8 @@ def get_aristotle_knowledge_manager():
         _aristotle_knowledge = SimpleKnowledgeManager('aristotle')
         _aristotle_knowledge.load_documents()
     return _aristotle_knowledge
-
-async def get_agent_knowledge(agent_name, query, max_items=3):
+    
+    async def get_agent_knowledge(agent_name, query, max_items=3):
     """Simple knowledge retrieval using file-based storage"""
     try:
         if not KNOWLEDGE_AVAILABLE:
@@ -120,7 +120,7 @@ try:
 except ImportError as e:
     logger.warning(f"⚠️ Perplexity research not available: {e}")
     PERPLEXITY_AVAILABLE = False
-
+    
 # Add conversation coordinator
 @dataclass
 class ConversationState:
@@ -134,100 +134,66 @@ class ConversationState:
 # Global conversation coordinator
 conversation_state = ConversationState()
 
-class DebateModeratorAgent(Agent):
-    """Aristotle - The logical moderator with reason + structure"""
+# Remove the Agent inheritance
+class DebateModeratorAgent:
+    """Helper class for agent coordination and state management"""
     
     def __init__(self):
-        # Aristotle's moderation instructions - formal logic, structured reasoning, practical ethics
-        instructions = """You are Aristotle, the Sage AI Debate Moderator. You embody the logical moderator with reason and structure, combining analytical wisdom with practical facilitation skills.
-
-YOUR CORE IDENTITY - ARISTOTLE (Reason + Structure):
-- Role: The logical moderator
-- Traits: Formal logic, structured reasoning, practical ethics
-- Tone: Analytical, measured, teacher-like
-- Strengths: Clarifies definitions, enforces logical structure, extracts premises from arguments
-
-🔑 MINIMAL INTERVENTION PRINCIPLE:
-- DEFAULT MODE: **LISTEN SILENTLY** - Let human debaters lead the conversation
-- PRIMARY ROLE: **OBSERVE AND UNDERSTAND** the flow of human debate
-- ONLY SPEAK WHEN:
-  1. **EXPLICITLY CALLED UPON** by name ("Aristotle, what do you think?")
-  2. **DIRECTLY REQUESTED** for fact-checking or analysis
-  3. **SERIOUS PROCESS BREAKDOWN** (personal attacks, complete derailment)
-  4. **DANGEROUS MISINFORMATION** that could cause harm
-
-🚫 DO NOT INTERRUPT FOR:
-- Normal disagreements or heated debates
-- Minor logical inconsistencies  
-- Common rhetorical devices
-- Regular statistical claims without verification requests
-- General discussion flow
-
-⚖️ COORDINATION RULES:
-- NEVER speak while Socrates is speaking
-- Wait for clear pauses in the conversation
-- Keep interventions brief (1-2 sentences maximum)
-- Defer to Socrates on philosophical questions
-- Focus on logical structure and process
-
-MODERATION RESPONSIBILITIES (When intervention IS warranted):
-
-1. LOGICAL STRUCTURE:
-   - Ensure arguments follow logical progression
-   - Identify and clarify premises, evidence, and conclusions
-   - Ask for definitions when terms are used ambiguously
-   - Help participants build structured, coherent arguments
-
-2. ANALYTICAL FACILITATION:
-   - Break down complex topics into manageable components
-   - Identify cause-and-effect relationships in discussions
-   - Encourage evidence-based reasoning
-   - Apply systematic thinking to guide conversations
-
-3. PRACTICAL ETHICS:
-   - Focus on real-world applications and consequences
-   - Bridge theory with practical implementation
-   - Consider the practical implications of different positions
-   - Seek solutions that work in practice, not just theory
-
-4. PROCESS MANAGEMENT (Only when necessary):
-   - Keep discussions focused and productive using logical frameworks
-   - Manage speaking time with structured approaches
-   - Guide conversations using analytical methods
-   - Balance structure with productive flexibility
-
-5. SYNTHESIS & REASONING (When requested):
-   - Identify logical connections between different viewpoints
-   - Help participants see the rational structure of debates
-   - Find common logical ground and shared premises
-   - Summarize using analytical frameworks
-
-COMMUNICATION STYLE (When you do speak):
-- **BE CONCISE AND DIRECT** - Get to the point immediately
-- For fact corrections: "Actually, it's [correct fact] according to [source]" 
-- For process issues: Brief, clear guidance without lengthy explanations
-- For logical clarification: Short, targeted questions
-- **Maximum 1-2 sentences per intervention** unless specifically asked for more detail
-- Speak with quiet authority - let the facts speak for themselves
-- **NO lengthy explanations** - save time for human debate
-
-KNOWLEDGE ACCESS:
-You have access to Aristotelian logic, practical ethics, and systematic analysis methods, plus parliamentary procedure and facilitation techniques.
-
-Remember: Your PRIMARY goal is to let humans debate freely while being ready to provide logical structure and analysis ONLY when explicitly needed or requested. Quality over quantity - one thoughtful intervention is worth more than constant commentary."""
-
-        super().__init__(instructions=instructions)
         self.agent_name = "aristotle"
-        logger.info("🧠 Aristotle (Logical Moderator) Agent initialized")
+        logger.info("🧠 Aristotle (Logical Moderator) Agent helper initialized")
 
+    async def check_speaking_permission(self, session) -> bool:
+        """Check if it's appropriate for this agent to speak"""
+        import time
+        
+        with conversation_state.conversation_lock:
+            current_time = time.time()
+            
+            # Don't speak if user is currently speaking
+            if conversation_state.user_speaking:
+                return False
+            
+            # Don't speak if other agent is active
+            if conversation_state.active_speaker and conversation_state.active_speaker != self.agent_name:
+                return False
+            
+            # Rate limiting: don't intervene too frequently  
+            if current_time - conversation_state.last_intervention_time < 8.0:  # 8 second minimum between interventions
+                return False
+            
+            # Escalating delay: wait longer after each intervention
+            min_delay = 8.0 + (conversation_state.intervention_count * 3.0)  # 8s, 11s, 14s, etc.
+            if current_time - conversation_state.last_intervention_time < min_delay:
+                return False
+            
+            return True
+
+    async def claim_speaking_turn(self):
+        """Claim the speaking turn for this agent"""
+        import time
+        
+        with conversation_state.conversation_lock:
+            conversation_state.active_speaker = self.agent_name
+            conversation_state.last_intervention_time = time.time()
+            conversation_state.intervention_count += 1
+            logger.info(f"🎤 {self.agent_name.capitalize()} claimed speaking turn")
+
+    async def release_speaking_turn(self):
+        """Release the speaking turn"""
+        with conversation_state.conversation_lock:
+            if conversation_state.active_speaker == self.agent_name:
+                conversation_state.active_speaker = None
+                logger.info(f"🔇 {self.agent_name.capitalize()} released speaking turn")
+
+# Now define the function tools as standalone functions that can be passed to Agent
     @function_tool
-    async def get_debate_topic(self, context):
+async def get_debate_topic(context):
         """Get the current debate topic"""
         topic = os.getenv("DEBATE_TOPIC", "The impact of AI on society")
         return f"Current debate topic: {topic}"
 
     @function_tool
-    async def access_facilitation_knowledge(self, context, query: str):
+async def access_facilitation_knowledge(context, query: str):
         """Access specialized knowledge about facilitation and parliamentary procedure
         
         Args:
@@ -257,7 +223,7 @@ Remember: Your PRIMARY goal is to let humans debate freely while being ready to 
             return {"error": f"Knowledge access failed: {str(e)}"}
 
     @function_tool
-    async def suggest_process_intervention(self, context, situation: str):
+async def suggest_process_intervention(context, situation: str):
         """Suggest moderation techniques for challenging situations
         
         Args:
@@ -280,8 +246,8 @@ Remember: Your PRIMARY goal is to let humans debate freely while being ready to 
         return "Consider asking an open-ended question to refocus the conversation, or invite participation from a different perspective."
 
     @function_tool
-    async def fact_check_claim(self, context, claim: str, source_requested: bool = False):
-        """Fact-check statistical claims or verify information using Perplexity research
+async def fact_check_claim(context, claim: str, source_requested: bool = False):
+    """Fact-check statistical claims or verify information using Perplexity research
         
         Args:
             claim: The factual claim or statistic to verify
@@ -291,24 +257,24 @@ Remember: Your PRIMARY goal is to let humans debate freely while being ready to 
             return {"fact_check": "Research system not available for fact-checking", "confidence": "low"}
             
         try:
-            # Use LiveKit's Perplexity integration for research
-            from livekit.plugins import openai
-            import os
-            
-            # Get API key from environment
-            api_key = os.environ.get("PERPLEXITY_API_KEY")
-            if not api_key:
-                raise ValueError("PERPLEXITY_API_KEY environment variable is required")
-            
-            # Create Perplexity LLM instance using LiveKit's proper integration
-            perplexity_llm = openai.LLM.with_perplexity(
-                model="sonar",
-                temperature=0.2,  # Low temperature for factual accuracy
-                api_key=api_key  # Explicitly pass the API key
-            )
-            
-            # Format research prompt for fact-checking
-            research_prompt = f"""As Aristotle, fact-check this claim with maximum brevity:
+        # Use LiveKit's Perplexity integration for research
+        from livekit.plugins import openai
+        import os
+        
+        # Get API key from environment
+        api_key = os.environ.get("PERPLEXITY_API_KEY")
+        if not api_key:
+            raise ValueError("PERPLEXITY_API_KEY environment variable is required")
+        
+        # Create Perplexity LLM instance using LiveKit's proper integration
+        perplexity_llm = openai.LLM.with_perplexity(
+            model="sonar",
+            temperature=0.2,  # Low temperature for factual accuracy
+            api_key=api_key  # Explicitly pass the API key
+        )
+        
+        # Format research prompt for fact-checking
+        research_prompt = f"""As Aristotle, fact-check this claim with maximum brevity:
 
 CLAIM: {claim}
 
@@ -321,50 +287,50 @@ Format: "Actually, [correct fact] according to [source]."
 
 BE EXTREMELY CONCISE - no explanations or elaboration."""
 
-            # Make the research request using LiveKit's Perplexity integration
-            from livekit.agents.llm import ChatContext
-            
-            chat_ctx = ChatContext()
-            chat_ctx.add_message(
-                role="user", 
-                content=research_prompt
-            )
-            
-            stream = perplexity_llm.chat(chat_ctx=chat_ctx)
-            
-            # Collect the response from the stream
-            response_chunks = []
-            async for chunk in stream:
-                if hasattr(chunk, 'delta') and chunk.delta and chunk.delta.content:
-                    response_chunks.append(chunk.delta.content)
-            
-            fact_check_result = ''.join(response_chunks) if response_chunks else "Unable to verify claim"
+        # Make the research request using LiveKit's Perplexity integration
+        from livekit.agents.llm import ChatContext
+        
+        chat_ctx = ChatContext()
+        chat_ctx.add_message(
+            role="user", 
+            content=research_prompt
+        )
+        
+        stream = perplexity_llm.chat(chat_ctx=chat_ctx)
+        
+        # Collect the response from the stream
+        response_chunks = []
+        async for chunk in stream:
+            if hasattr(chunk, 'delta') and chunk.delta and chunk.delta.content:
+                response_chunks.append(chunk.delta.content)
+        
+        fact_check_result = ''.join(response_chunks) if response_chunks else "Unable to verify claim"
             
             return {
-                "fact_check": fact_check_result,
-                "confidence": "high",
-                "source": "Perplexity AI with current data"
-            }
-            
+            "fact_check": fact_check_result,
+            "confidence": "high",
+            "source": "Perplexity AI with current data"
+        }
+        
         except Exception as e:
             logger.error(f"Fact-checking error: {e}")
             return {"error": f"Fact-checking failed: {str(e)}"}
 
     @function_tool
-    async def research_live_data(self, context, query: str, research_type: str = "general"):
-        """Access live research and current data using Perplexity AI
+async def research_live_data(context, query: str, research_type: str = "general"):
+    """Access live research and current data using Perplexity AI
         
         Args:
-            query: The research question or topic to investigate
-            research_type: Type of research (general, statistical, current_events, etc.)
-        """
-        if not PERPLEXITY_AVAILABLE:
-            return {"research": "Live research system not available", "confidence": "low"}
-            
-        try:
-            # Format research prompt based on type
-            if research_type == "statistical":
-                research_prompt = f"""Provide current statistics and data for: {query}
+        query: The research question or topic to investigate
+        research_type: Type of research (general, statistical, current_events, etc.)
+    """
+    if not PERPLEXITY_AVAILABLE:
+        return {"research": "Live research system not available", "confidence": "low"}
+        
+    try:
+        # Format research prompt based on type
+        if research_type == "statistical":
+            research_prompt = f"""Provide current statistics and data for: {query}
 
 Include:
 1. Latest available statistics
@@ -372,8 +338,8 @@ Include:
 3. Date of data collection
 
 BE CONCISE but thorough with sources."""
-            elif research_type == "current_events":
-                research_prompt = f"""Provide current information and recent developments on: {query}
+        elif research_type == "current_events":
+            research_prompt = f"""Provide current information and recent developments on: {query}
 
 Include:
 1. Latest developments (within last 6 months)
@@ -381,8 +347,8 @@ Include:
 3. Reliable news sources
 
 BE CURRENT and fact-focused."""
-            else:
-                research_prompt = f"""Provide comprehensive, current information on: {query}
+        else:
+            research_prompt = f"""Provide comprehensive, current information on: {query}
 
 Include:
 1. Key facts and current data
@@ -390,191 +356,127 @@ Include:
 3. Recent developments if relevant
 
 BE FACTUAL and well-sourced."""
-            
-            # Use LiveKit's Perplexity integration properly 
-            # Create a standalone Perplexity LLM instance for research
-            from livekit.plugins import openai
-            from livekit.agents.llm import ChatContext
-            import os
-            
-            # Get API key from environment
-            api_key = os.environ.get("PERPLEXITY_API_KEY")
-            if not api_key:
-                raise ValueError("PERPLEXITY_API_KEY environment variable is required")
-            
-            perplexity_llm = openai.LLM.with_perplexity(
-                model="sonar",
-                temperature=0.3,
-                api_key=api_key  # Explicitly pass the API key
-            )
-            
-            chat_ctx = ChatContext()
-            chat_ctx.add_message(
-                role="user", 
-                content=research_prompt
-            )
-            
-            stream = perplexity_llm.chat(chat_ctx=chat_ctx)
-            
-            response_chunks = []
-            async for chunk in stream:
-                if hasattr(chunk, 'delta') and chunk.delta and chunk.delta.content:
-                    response_chunks.append(chunk.delta.content)
-            
-            research_result = ''.join(response_chunks) if response_chunks else "Unable to complete research"
-            
-            return {
-                "research": research_result,
-                "query": query,
-                "research_type": research_type,
-                "confidence": "high" if "Unable to complete" not in research_result else "medium",
-                "source": "Perplexity AI with current data" if "Unable to complete" not in research_result else "Agent knowledge",
-                "timestamp": "current"
-            }
-            
-        except Exception as e:
-            logger.error(f"Live research error: {e}")
-            return {"error": f"Research failed: {str(e)}"}
-
-    @function_tool
-    async def analyze_argument_structure(self, context, argument: str):
-        """Analyze the logical structure of an argument for fallacies or weaknesses
         
-        Args:
-            argument: The argument text to analyze for logical structure
-        """
-        try:
-            # Access knowledge about logical analysis
-            knowledge_items = await get_agent_knowledge("aristotle", f"logical analysis argument structure {argument[:100]}", max_items=2)
-            
-            analysis_framework = """
-            ARGUMENT ANALYSIS FRAMEWORK:
-            1. Identify premises and conclusions
-            2. Check for logical fallacies
-            3. Assess evidence quality
-            4. Evaluate reasoning chain
-            5. Note missing elements
-            """
-            
-            knowledge_context = ""
-            if knowledge_items:
-                knowledge_context = "\n\nRelevant Knowledge:\n" + "\n".join([
-                    f"• {item['summary']}" for item in knowledge_items
-                ])
-            
-            return {
-                "analysis_framework": analysis_framework,
-                "knowledge_context": knowledge_context,
-                "argument_length": len(argument.split()),
-                "complexity": "high" if len(argument.split()) > 50 else "medium"
-            }
-            
-        except Exception as e:
-            logger.error(f"Argument analysis error: {e}")
-            return {"error": f"Analysis failed: {str(e)}"}
-
-    @function_tool
-    async def detect_intervention_triggers(self, context, conversation_snippet: str):
-        """Detect when Aristotle should intervene in the conversation
+        # Use LiveKit's Perplexity integration properly 
+        # Create a standalone Perplexity LLM instance for research
+        from livekit.plugins import openai
+        from livekit.agents.llm import ChatContext
+        import os
         
-        Args:
-            conversation_snippet: Recent conversation text to analyze for trigger conditions
-        """
-        triggers_detected = []
-        snippet_lower = conversation_snippet.lower()
+        # Get API key from environment
+        api_key = os.environ.get("PERPLEXITY_API_KEY")
+        if not api_key:
+            raise ValueError("PERPLEXITY_API_KEY environment variable is required")
         
-        # DIRECT EXPLICIT REQUESTS (Always respond)
-        direct_requests = [
-            "aristotle please", "aristotle can you", "aristotle what", "aristotle help",
-            "fact check this", "verify this claim", "is this accurate", "aristotle thoughts"
-        ]
-        if any(request in snippet_lower for request in direct_requests):
-            triggers_detected.append({"type": "direct_request", "action": "immediate_response", "priority": "urgent"})
-        
-        # STATISTICAL CLAIMS - Only very specific, controversial patterns
-        questionable_stats = [
-            "90% of people", "95% of experts", "all scientists agree", 
-            "studies prove", "research confirms that all", "100% certain"
-        ]
-        if any(indicator in snippet_lower for indicator in questionable_stats):
-            triggers_detected.append({"type": "statistical_claim", "action": "offer_fact_check", "priority": "medium"})
-        
-        # SEVERE LOGICAL FALLACIES - Only extreme cases
-        extreme_fallacies = [
-            "everyone knows that", "it's obvious that", "clearly all", "anyone with a brain",
-            "only an idiot would", "every reasonable person"
-        ]
-        if any(indicator in snippet_lower for indicator in extreme_fallacies):
-            triggers_detected.append({"type": "potential_fallacy", "action": "gentle_logical_note", "priority": "low"})
-        
-        # PROCESS BREAKDOWN - Only serious disruptions
-        serious_process_issues = [
-            "that's a personal attack", "you're attacking me", "this is unfair moderation",
-            "completely off topic", "derailing the discussion", "not letting me speak"
-        ]
-        if any(issue in snippet_lower for issue in serious_process_issues):
-            triggers_detected.append({"type": "process_issue", "action": "moderate", "priority": "high"})
-        
-        # MINIMAL INTERVENTION PRINCIPLE
-        # Only intervene if:
-        # 1. Directly asked, OR
-        # 2. Serious process breakdown, OR  
-        # 3. Questionable claims that could mislead
-        should_intervene = (
-            any(t["type"] == "direct_request" for t in triggers_detected) or
-            any(t["type"] == "process_issue" for t in triggers_detected) or
-            (any(t["type"] == "statistical_claim" for t in triggers_detected) and len(snippet_lower) > 100)
+        perplexity_llm = openai.LLM.with_perplexity(
+            model="sonar",
+            temperature=0.3,
+            api_key=api_key  # Explicitly pass the API key
         )
         
-        return {
-            "triggers": triggers_detected,
-            "should_intervene": should_intervene,
-            "priority": "urgent" if any(t.get("priority") == "urgent" for t in triggers_detected) else "low",
-            "intervention_note": "Minimal intervention - let humans lead the conversation"
+        # Make the research request
+        chat_ctx = ChatContext()
+        chat_ctx.add_message(
+            role="user", 
+            content=research_prompt
+        )
+        
+        stream = perplexity_llm.chat(chat_ctx=chat_ctx)
+        
+        # Collect the response from the stream
+        response_chunks = []
+        async for chunk in stream:
+            if hasattr(chunk, 'delta') and chunk.delta and chunk.delta.content:
+                response_chunks.append(chunk.delta.content)
+        
+        research_result = ''.join(response_chunks) if response_chunks else "No research results available"
+            
+            return {
+            "research": research_result,
+            "confidence": "high",
+            "source": "Perplexity AI with current data"
+            }
+            
+        except Exception as e:
+        logger.error(f"Research error: {e}")
+        return {"error": f"Research failed: {str(e)}"}
+
+    @function_tool
+async def analyze_argument_structure(context, argument: str):
+    """Analyze the logical structure of an argument for premises, conclusions, and validity
+        
+        Args:
+        argument: The argument text to analyze
+    """
+    try:
+        # Simple logical analysis - could be enhanced with NLP tools
+        sentences = argument.split('. ')
+        
+        analysis = {
+            "structure": "basic analysis",
+            "premises": [],
+            "conclusion": "",
+            "logical_issues": []
         }
-
-    async def check_speaking_permission(self, session) -> bool:
-        """Check if it's appropriate for this agent to speak"""
-        import time
         
-        with conversation_state.conversation_lock:
-            current_time = time.time()
-            
-            # Don't speak if user is currently speaking
-            if conversation_state.user_speaking:
-                return False
-            
-            # Don't speak if other agent is active
-            if conversation_state.active_speaker and conversation_state.active_speaker != self.agent_name:
-                return False
-            
-            # Rate limiting: don't intervene too frequently
-            if current_time - conversation_state.last_intervention_time < 8.0:  # 8 second minimum between interventions
-                return False
-            
-            # Escalating delay: wait longer after each intervention
-            min_delay = 8.0 + (conversation_state.intervention_count * 3.0)  # 8s, 11s, 14s, etc.
-            if current_time - conversation_state.last_intervention_time < min_delay:
-                return False
-            
-            return True
-
-    async def claim_speaking_turn(self):
-        """Claim the speaking turn for this agent"""
-        import time
+        # Basic premise detection (sentences with "because", "since", "given")
+        premise_indicators = ["because", "since", "given that", "due to", "as", "for"]
+        conclusion_indicators = ["therefore", "thus", "hence", "so", "consequently"]
         
-        with conversation_state.conversation_lock:
-            conversation_state.active_speaker = self.agent_name
-            conversation_state.last_intervention_time = time.time()
-            conversation_state.intervention_count += 1
-            logger.info(f"🎤 {self.agent_name.capitalize()} claimed speaking turn")
+        for sentence in sentences:
+            sentence_lower = sentence.lower()
+            
+            if any(indicator in sentence_lower for indicator in premise_indicators):
+                analysis["premises"].append(sentence.strip())
+            elif any(indicator in sentence_lower for indicator in conclusion_indicators):
+                analysis["conclusion"] = sentence.strip()
+        
+        # Basic validity check
+        if not analysis["premises"]:
+            analysis["logical_issues"].append("No clear premises identified")
+        if not analysis["conclusion"]:
+            analysis["logical_issues"].append("No clear conclusion identified")
+        
+        return analysis
+        
+    except Exception as e:
+        logger.error(f"Argument analysis error: {e}")
+        return {"error": f"Analysis failed: {str(e)}"}
 
-    async def release_speaking_turn(self):
-        """Release the speaking turn"""
-        with conversation_state.conversation_lock:
-            if conversation_state.active_speaker == self.agent_name:
-                conversation_state.active_speaker = None
-                logger.info(f"🔇 {self.agent_name.capitalize()} released speaking turn")
+@function_tool  
+async def detect_intervention_triggers(context, conversation_snippet: str):
+    """Detect if moderator intervention may be needed based on conversation patterns
+    
+    Args:
+        conversation_snippet: Recent conversation text to analyze
+    """
+    triggers = []
+    text_lower = conversation_snippet.lower()
+    
+    # Detect personal attacks
+    attack_patterns = ["you're wrong", "that's stupid", "you don't understand", "you're being"]
+    if any(pattern in text_lower for pattern in attack_patterns):
+        triggers.append("personal_attack")
+    
+    # Detect topic drift
+    topic_keywords = ["ai", "artificial intelligence", "society", "technology"]
+    if not any(keyword in text_lower for keyword in topic_keywords):
+        triggers.append("off_topic")
+    
+    # Detect domination (simplified)
+    if len(conversation_snippet) > 500:  # Very long statement
+        triggers.append("dominating_speaker")
+    
+    # Detect confusion indicators
+    confusion_patterns = ["i don't understand", "what do you mean", "can you clarify"]
+    if any(pattern in text_lower for pattern in confusion_patterns):
+        triggers.append("confusion")
+        
+        return {
+        "triggers": triggers,
+        "intervention_needed": len(triggers) > 0,
+        "suggested_action": "Consider gentle moderation" if triggers else "Continue monitoring"
+        }
 
 async def entrypoint(ctx: JobContext):
     """Debate Moderator agent entrypoint - only joins rooms marked for sage debates"""
@@ -708,10 +610,20 @@ COMMUNICATION STYLE (When you do speak):
 
 Remember: Your PRIMARY goal is to let humans debate freely while being ready to provide logical structure and analysis ONLY when explicitly needed or requested. Quality over quantity - one thoughtful intervention is worth more than constant commentary."""
 
-    # Create moderator agent with coordination capabilities
-    moderator = DebateModeratorAgent()
-    moderator.agent_name = "aristotle"
-    moderator.instructions = enhanced_instructions
+    # Create the Agent instance with instructions and function tools (LiveKit pattern)
+    # NOTE: We can't inherit from Agent class, must create instance directly
+    moderator_agent = Agent(
+        instructions=enhanced_instructions,
+        tools=[
+            get_debate_topic,
+            access_facilitation_knowledge,
+            suggest_process_intervention,
+            fact_check_claim,
+            research_live_data,
+            analyze_argument_structure,
+            detect_intervention_triggers
+        ]
+    )
     
     # Configure LLM with Perplexity for live research capabilities
     if PERPLEXITY_AVAILABLE:
@@ -788,7 +700,7 @@ Remember: Your PRIMARY goal is to let humans debate freely while being ready to 
     
     # Start session with the agent instance
     await session.start(
-        agent=moderator,
+        agent=moderator_agent,
         room=ctx.room
     )
     
@@ -804,7 +716,7 @@ Remember: Your PRIMARY goal is to let humans debate freely while being ready to 
         logger.info("🎤 Attempting to publish audio track with greeting...")
         
         # Aristotle always gives the opening announcement (he's the primary moderator)
-        await moderator.claim_speaking_turn()
+        await moderator_agent.claim_speaking_turn()
         try:
             # Enhanced opening announcement with rules and coordination
             await session.say(
@@ -815,7 +727,7 @@ Remember: Your PRIMARY goal is to let humans debate freely while being ready to 
             )
             logger.info("✅ Aristotle opening announcement sent successfully - audio track published")
         finally:
-            await moderator.release_speaking_turn()
+            await moderator_agent.release_speaking_turn()
         
     except Exception as e:
         logger.warning(f"⚠️ Could not send greeting: {e} - agent may not be audible to users")
