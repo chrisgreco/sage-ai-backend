@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
 """
-Socrates Philosopher Agent - The inquisitive challenger with questioning + truth-seeking  
-Provides Socratic questioning method combined with compassionate wisdom
+Socrates Philosopher Agent - The inquisitive challenger with wisdom + questions
+Provides philosophical inquiry, Socratic questioning, and deeper exploration
 """
 
 import os
 import sys
 import asyncio
 import logging
-import random
 import json
 from dotenv import load_dotenv
 import threading
@@ -65,8 +64,8 @@ def get_socrates_knowledge_manager():
         _socrates_knowledge = SimpleKnowledgeManager('socrates')
         _socrates_knowledge.load_documents()
     return _socrates_knowledge
-    
-    async def get_agent_knowledge(agent_name, query, max_items=3):
+
+async def get_agent_knowledge(agent_name, query, max_items=3):
     """Simple knowledge retrieval using file-based storage"""
     try:
         if not KNOWLEDGE_AVAILABLE:
@@ -176,96 +175,99 @@ class DebatePhilosopherAgent:
                 conversation_state.active_speaker = None
                 logger.info(f"🔇 {self.agent_name.capitalize()} released speaking turn")
 
-# Now define the function tools as standalone functions that can be passed to Agent
-    @function_tool
-async def access_philosophical_knowledge(context, query: str, approach: str = "socratic"):
-        """Access specialized philosophical knowledge for Socratic questioning and wisdom
-        
-        Args:
-            query: Question or topic to explore philosophically
-            approach: Type of approach (socratic, compassionate)
-        """
-        if not KNOWLEDGE_AVAILABLE:
-            return {"knowledge": "Knowledge system not available", "sources": []}
-            
-        try:
-            # Choose knowledge source based on approach
-            knowledge_source = "socrates"  # Default to Socratic knowledge
-            if approach == "compassionate":
-                knowledge_source = "socrates"  # Still use Socrates but could be Buddha-focused
-            
-            knowledge_items = await get_agent_knowledge(knowledge_source, query, max_items=3)
-            
-            if knowledge_items:
-                knowledge_text = "\n\n".join([
-                    f"Source: {item['source']}\n{item['content'][:400]}..." 
-                    for item in knowledge_items
-                ])
-                return {
-                    "knowledge": knowledge_text,
-                    "sources": [item['source'] for item in knowledge_items],
-                    "approach": approach.title()
-                }
-            else:
-                return {"knowledge": "No relevant philosophical knowledge found", "sources": []}
-                
-        except Exception as e:
-            logger.error(f"Knowledge access error: {e}")
-            return {"error": f"Knowledge access failed: {str(e)}"}
+# Create philosopher agent helper instance
+philosopher_agent_helper = DebatePhilosopherAgent()
 
-    @function_tool
-async def suggest_philosophical_question(context, topic: str, approach: str = "socratic"):
-        """Suggest philosophical questions to deepen the discussion
+# Now define the function tools as standalone functions that can be passed to Agent
+@function_tool
+async def access_philosophical_knowledge(context, query: str, approach: str = "socratic"):
+    """Access specialized philosophical knowledge for Socratic questioning and wisdom
+    
+    Args:
+        query: Question or topic to explore philosophically
+        approach: Type of approach (socratic, compassionate)
+    """
+    if not KNOWLEDGE_AVAILABLE:
+        return {"knowledge": "Knowledge system not available", "sources": []}
         
-        Args:
-            topic: Current discussion topic or statement
-            approach: Type of questioning (socratic, analytical, compassionate)
-        """
+    try:
+        # Choose knowledge source based on approach
+        knowledge_source = "socrates"  # Default to Socratic knowledge
+        if approach == "compassionate":
+            knowledge_source = "socrates"  # Still use Socrates but could be Buddha-focused
+        
+        knowledge_items = await get_agent_knowledge(knowledge_source, query, max_items=3)
+        
+        if knowledge_items:
+            knowledge_text = "\n\n".join([
+                f"Source: {item['source']}\n{item['content'][:400]}..." 
+                for item in knowledge_items
+            ])
+            return {
+                "knowledge": knowledge_text,
+                "sources": [item['source'] for item in knowledge_items],
+                "approach": approach.title()
+            }
+        else:
+            return {"knowledge": "No relevant philosophical knowledge found", "sources": []}
+            
+    except Exception as e:
+        logger.error(f"Knowledge access error: {e}")
+        return {"error": f"Knowledge access failed: {str(e)}"}
+
+@function_tool
+async def suggest_philosophical_question(context, topic: str, approach: str = "socratic"):
+    """Suggest philosophical questions to deepen the discussion
+    
+    Args:
+        topic: Current discussion topic or statement
+        approach: Type of questioning (socratic, analytical, compassionate)
+    """
     import random
     
-        question_templates = {
-            "socratic": [
-                f"What assumptions underlie the idea that {topic}?",
-                f"How do we know {topic} is true?",
-                f"What would someone who disagrees with {topic} say?",
-                f"What does '{topic}' really mean?",
-                f"What are the implications if {topic}?"
-            ],
-            "analytical": [
-                f"What evidence supports {topic}?",
-                f"What are the logical consequences of {topic}?",
-                f"How can we categorize the different aspects of {topic}?",
-                f"What are the practical applications of {topic}?",
-                f"What causes {topic} and what effects does it have?"
-            ],
-            "compassionate": [
-                f"How does {topic} affect different people's wellbeing?",
-                f"What fears or hopes drive people's views on {topic}?",
-                f"Where might we find common ground regarding {topic}?",
-                f"How can we approach {topic} with greater understanding?",
-                f"What would a middle path look like for {topic}?"
-            ]
-        }
-        
-        questions = question_templates.get(approach, question_templates["socratic"])
-        suggested = random.choice(questions)
-        
+    question_templates = {
+        "socratic": [
+            f"What assumptions underlie the idea that {topic}?",
+            f"How do we know {topic} is true?",
+            f"What would someone who disagrees with {topic} say?",
+            f"What does '{topic}' really mean?",
+            f"What are the implications if {topic}?"
+        ],
+        "analytical": [
+            f"What evidence supports {topic}?",
+            f"What are the logical consequences of {topic}?",
+            f"How can we categorize the different aspects of {topic}?",
+            f"What are the practical applications of {topic}?",
+            f"What causes {topic} and what effects does it have?"
+        ],
+        "compassionate": [
+            f"How does {topic} affect different people's wellbeing?",
+            f"What fears or hopes drive people's views on {topic}?",
+            f"Where might we find common ground regarding {topic}?",
+            f"How can we approach {topic} with greater understanding?",
+            f"What would a middle path look like for {topic}?"
+        ]
+    }
+    
+    questions = question_templates.get(approach, question_templates["socratic"])
+    suggested = random.choice(questions)
+    
     return {
         "question": suggested,
         "approach": approach.title(),
         "type": f"{approach.title()} Inquiry"
     }
 
-    @function_tool
+@function_tool
 async def get_debate_topic(context):
-        """Get the current debate topic"""
-        topic = os.getenv("DEBATE_TOPIC", "The impact of AI on society")
-        return f"Current debate topic: {topic}"
+    """Get the current debate topic"""
+    topic = os.getenv("DEBATE_TOPIC", "The impact of AI on society")
+    return f"Current debate topic: {topic}"
 
 async def entrypoint(ctx: JobContext):
-    """Debate Philosopher agent entrypoint - only joins rooms marked for sage debates"""
+    """Debate Philosopher agent entrypoint - joins rooms to provide philosophical inquiry"""
     
-    logger.info("🧠 Sage AI Debate Philosopher checking room metadata...")
+    logger.info("🤔 Sage AI Debate Philosopher checking room metadata...")
     await ctx.connect()
     
     # ENHANCED TOPIC DETECTION - Check job metadata first (from agent dispatch)
@@ -315,7 +317,7 @@ async def entrypoint(ctx: JobContext):
     
     logger.info(f"✅ Philosopher connected to room: {ctx.room.name}")
     room_name = ctx.room.name
-    logger.info(f"🤔 Exploring the philosophical implications of: {topic}")
+    logger.info(f"🤔 Exploring philosophical dimensions of: {topic}")
     
     # Initialize memory if available
     room_id = None
@@ -341,38 +343,41 @@ async def entrypoint(ctx: JobContext):
             logger.warning(f"⚠️ Memory initialization failed: {e}")
     
     # Create philosopher agent with enhanced instructions
-    enhanced_instructions = f"""You are Socrates, the Sage AI Debate Philosopher. You embody the inquisitive challenger who seeks truth through questioning, combining Socratic inquiry with Buddhist wisdom and compassionate understanding.
+    enhanced_instructions = f"""You are Socrates, the Sage AI Debate Philosopher. You embody the inquisitive challenger with wisdom and questions, combining philosophical depth with compassionate inquiry.
 
-YOUR CORE IDENTITY - SOCRATES (Inquiry + Wisdom):
-- Role: The inquisitive challenger
-- Traits: Socratic questioning, Buddhist wisdom, compassionate understanding
-- Tone: Curious, humble, seeking truth
-- Strengths: Asks probing questions, challenges assumptions, explores deeper meanings
+YOUR CORE IDENTITY - SOCRATES (Wisdom + Questions):
+- Role: The philosophical inquirer
+- Traits: Curious, questioning, humble wisdom, intellectual humility
+- Tone: Gentle but probing, encouraging deeper thought
+- Strengths: Asks profound questions, challenges assumptions, reveals hidden beliefs
 
 🔑 MINIMAL INTERVENTION PRINCIPLE:
-- DEFAULT MODE: **LISTEN THOUGHTFULLY** - Let human debaters explore their ideas
-- PRIMARY ROLE: **OBSERVE AND REFLECT** on the philosophical dimensions
+- DEFAULT MODE: **LISTEN SILENTLY** - Let human debaters lead the conversation
+- PRIMARY ROLE: **OBSERVE AND UNDERSTAND** the deeper currents of human discussion
 - ONLY SPEAK WHEN:
-  1. **EXPLICITLY CALLED UPON** by name ("Socrates, what would you ask?")
-  2. **DIRECTLY REQUESTED** for philosophical perspective or questioning
-  3. **DEEPER INQUIRY NEEDED** (assumptions unexamined, meanings unclear)
-  4. **WISDOM TRADITION RELEVANT** (philosophical precedent applies)
+  1. **EXPLICITLY CALLED UPON** by name ("Socrates, what do you think?")
+  2. **DIRECTLY REQUESTED** for philosophical insight ("Can you ask a deeper question?")
+  3. **PERFECT MOMENT** for a clarifying question that could unlock new understanding
+  4. **ASSUMPTIONS NEED QUESTIONING** but only when specifically invited
+
+🤔 PHILOSOPHICAL CAPABILITIES:
+- I can ask Socratic questions that reveal hidden assumptions
+- I can suggest deeper inquiries that explore the "why" behind positions
+- I can help participants examine their own beliefs and reasoning
+- Call on me for: "Socrates, what should we be asking?" or "Help us think deeper"
 
 🚫 DO NOT INTERRUPT FOR:
-- Normal debate flow or disagreements
-- Surface-level discussions that are progressing
-- Technical details or statistics
-- Regular back-and-forth exchanges
-- Procedural matters
+- Normal disagreements or debates
+- Surface-level questions that participants can handle
+- Routine clarifications
+- General discussion flow that's working well
 
-🤔 COORDINATION RULES:
-- ARISTOTLE IS THE PRIMARY MODERATOR - he handles announcements and leads
+⚖️ COORDINATION RULES:
 - NEVER speak while Aristotle is speaking
-- Wait for clear pauses in the conversation
-- Keep interventions brief (1-2 questions maximum)
-- Defer to Aristotle on logical structure and process
-- Focus on philosophical inquiry and deeper meaning
-- You are Aristotle's philosophical assistant, not a co-moderator
+- Wait for clear pauses and invitation
+- Keep questions brief and profound
+- Defer to Aristotle on logical structure and fact-checking
+- Focus on philosophical depth and questioning
 
 DEBATE TOPIC: "{topic}"
 Focus your philosophical inquiry on this specific topic.
@@ -380,40 +385,42 @@ Focus your philosophical inquiry on this specific topic.
 {memory_context}
 
 COMMUNICATION STYLE (When you do speak):
-- **ASK PROFOUND QUESTIONS** - Help participants examine their assumptions
-- Lead with curiosity: "I wonder..." or "What if we considered..."
-- For assumptions: "What leads us to believe that...?"
-- For deeper meaning: "When we say [term], what do we really mean?"
-- **Maximum 1-2 questions per intervention** unless specifically asked for more
-- Speak with humble wisdom - model intellectual humility
-- **NO lecturing** - let questions do the teaching
+- **ASK ONE POWERFUL QUESTION** - Get to the heart of the matter
+- For assumptions: "What if we questioned the assumption that...?"
+- For deeper inquiry: "What does it mean to say...?" or "How do we know...?"
+- For perspective: "What would someone who experienced [X] say about this?"
+- **Maximum 1-2 sentences per intervention** - let the question do the work
+- Speak with gentle curiosity - invite exploration, don't lecture
+- **NO lengthy explanations** - the power is in the question itself
 
-Remember: Your PRIMARY goal is to deepen understanding through thoughtful questions ONLY when the conversation would benefit from philosophical reflection or when explicitly invited to participate."""
+Remember: Your PRIMARY goal is to deepen human understanding through carefully timed, profound questions. One perfect question that opens new thinking is worth more than many words. Wait for the right moment when a question could truly illuminate."""
 
-    # Create philosopher agent with direct Agent instantiation (LiveKit pattern)
-    # NOTE: We can't inherit from Agent class, must create instance directly
-    philosopher = Agent(
+    # Create the Agent instance with instructions and function tools (LiveKit pattern)
+    philosopher_agent = Agent(
         instructions=enhanced_instructions,
         tools=[
+            get_debate_topic,
             access_philosophical_knowledge,
-            suggest_philosophical_question,
-            get_debate_topic
+            suggest_philosophical_question
         ]
     )
     
+    # Configure LLM for philosophical conversation
+    llm = openai.realtime.RealtimeModel(
+        model="gpt-4o-realtime-preview-2024-12-17",
+        voice="sage",  # Different voice from Aristotle
+        temperature=0.8,  # Higher temperature for creative philosophical thinking
+        speed=1.1  # Slightly slower, more contemplative pace
+    )
+
     # Create agent session with IMPROVED turn detection and conversation coordination
     session = AgentSession(
-        llm=openai.realtime.RealtimeModel(
-            model="gpt-4o-realtime-preview-2024-12-17",
-            voice="echo",  # FIXED: Deep, serious male voice for Socrates - using supported voice
-            temperature=0.8,  # Higher temperature for more creative questioning
-            speed=1.3  # 30% faster speech
-        ),
+        llm=llm,
         vad=silero.VAD.load(),
-        # ENHANCED: Different timing from Aristotle to reduce conflicts
-        min_endpointing_delay=2.5,  # Wait slightly longer than Aristotle (2.5s vs 2.0s)
-        max_endpointing_delay=6.5,  # Extended max delay to prevent hasty interventions
-        # ENHANCED: More restrictive interruption settings
+        # ENHANCED: Even longer delays for philosophical reflection
+        min_endpointing_delay=2.5,  # Wait longer for philosophical pauses
+        max_endpointing_delay=7.0,  # Extended max delay for deeper thinking
+        # ENHANCED: More restrictive interruption settings for philosophical discourse
         allow_interruptions=True,
         min_interruption_duration=1.2,  # Require longer speech before allowing interruption
     )
@@ -455,15 +462,15 @@ Remember: Your PRIMARY goal is to deepen understanding through thoughtful questi
     
     # Start session with the agent instance
     await session.start(
-        agent=philosopher,
+        agent=philosopher_agent,
         room=ctx.room
     )
     
-    logger.info("✅ Debate Philosopher is ready to explore truth through inquiry!")
+    logger.info("✅ Debate Philosopher is ready to explore deeper questions!")
     
-    # ENHANCED: No greeting from Socrates - let Aristotle handle initial greeting
-    # This prevents both agents from trying to speak simultaneously at startup
-    logger.info("🤐 Socrates will wait for appropriate moment to participate - letting Aristotle handle greeting")
+    # Socrates does NOT give an opening greeting - Aristotle handles that
+    # This prevents both agents from speaking at startup
+    logger.info("🤫 Socrates waiting silently for philosophical opportunities...")
     
     # Keep the session alive - this is critical for LiveKit agents
     try:
@@ -508,7 +515,7 @@ def main():
         logger.error(f"❌ Missing environment variables: {missing_vars}")
         sys.exit(1)
     
-    logger.info("🚀 Starting Socrates (Inquisitive Challenger) Agent...")
+    logger.info("🚀 Starting Debate Philosopher Agent...")
     
     cli.run_app(
         WorkerOptions(
