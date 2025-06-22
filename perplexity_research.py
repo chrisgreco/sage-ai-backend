@@ -33,7 +33,7 @@ class PerplexityResearcher:
             load_dotenv(override=True)  # Override any existing env vars in development only
         
         self.api_key = os.getenv("PERPLEXITY_API_KEY")
-        self.base_url = "https://api.perplexity.ai/chat/completions"
+        self.base_url = "https://api.perplexity.ai/v1/chat/completions"
         self.model = "sonar"  # Current Perplexity model for real-time research
         
         if not self.api_key or self.api_key.startswith("your-"):
@@ -160,7 +160,14 @@ class PerplexityResearcher:
                     data = await response.json()
                     return self._parse_research_response(data, query)
                 else:
-                    logger.error(f"Perplexity API error: {response.status}")
+                    error_text = await response.text()
+                    logger.error(f"Perplexity API error: {response.status} - {error_text}")
+                    if response.status == 401:
+                        logger.error("Authentication failed - check PERPLEXITY_API_KEY")
+                    elif response.status == 403:
+                        logger.error("Access forbidden - check API key permissions")
+                    elif response.status == 429:
+                        logger.error("Rate limit exceeded - too many requests")
                     return None
                         
         except asyncio.TimeoutError:
