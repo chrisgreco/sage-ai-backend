@@ -7,10 +7,11 @@ The Sage AI debate agents now include **real-time transcription** capabilities t
 ## How It Works
 
 ### 🎯 **Multi-Speaker Transcription**
-- **Both Aristotle and Socrates agents** capture audio from all participants
+- **Socrates agent** captures audio from all participants (Aristotle focuses on moderation)
 - **Deepgram STT** converts speech to text in real-time
 - **Transcription segments** are forwarded to frontend clients
 - **Each speaker is identified** by their participant identity
+- **Single transcription source** prevents duplicate segments
 
 ### 🔧 **Technical Implementation**
 - Uses `STTSegmentsForwarder` from LiveKit Agents framework
@@ -71,7 +72,7 @@ livekit-agents[openai,silero,turn-detector,deepgram]>=1.0
 - **Speaker identification** (users, Aristotle, Socrates)
 - **Automatic forwarding** to frontend clients
 - **Integration with existing debate logic**
-- **Multi-agent coordination** (both agents capture transcriptions)
+- **Single-agent transcription** (Socrates only, prevents duplicates)
 
 ### 🔄 **Transcription Flow**
 1. **Audio Track Subscription**: Agents subscribe to all participant audio

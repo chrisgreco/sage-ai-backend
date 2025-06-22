@@ -31,8 +31,7 @@ try:
     from livekit.agents import Agent, AgentSession, JobContext, WorkerOptions, cli, function_tool, AutoSubscribe
     from livekit.plugins import openai, silero
     from livekit.agents import UserStateChangedEvent, AgentStateChangedEvent
-    from livekit.plugins import deepgram  # For transcription
-    from livekit.agents import STTSegmentsForwarder  # For forwarding transcriptions to frontend
+    # NOTE: Transcription handled by Socrates agent to avoid duplicates
     from livekit import rtc  # For audio track handling
     logger.info("✅ LiveKit Agents successfully imported")
 except ImportError as e:
@@ -433,13 +432,7 @@ async def entrypoint(ctx: JobContext):
     audio_tracks = {}  # Track audio sources from other participants
     other_agents = set()  # Track other agent identities
     
-    # ENHANCED: Set up transcription forwarding
-    stt = deepgram.STT()  # Speech-to-text for transcription
-    transcription_forwarder = STTSegmentsForwarder(
-        room=ctx.room,
-        participant=ctx.room.local_participant,
-        stt=stt
-    )
+    # NOTE: Transcription is handled by Socrates agent to avoid duplicates
     
     def on_track_subscribed(track, publication, participant):
         """Handle when we subscribe to an audio track from another participant"""
@@ -453,9 +446,6 @@ async def entrypoint(ctx: JobContext):
                 "publication": publication,
                 "participant": participant
             }
-            
-            # ENHANCED: Forward audio track to transcription system
-            transcription_forwarder.push_track(track)
             
             # Identify other agents for coordination
             if participant.identity and ("socrates" in participant.identity.lower() or "philosopher" in participant.identity.lower()):
