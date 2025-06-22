@@ -50,30 +50,51 @@ if PERPLEXITY_AVAILABLE:
 else:
     logger.warning("⚠️ Perplexity API key not found - research features disabled")
 
+# Global knowledge managers for each agent
+_knowledge_managers = {}
+
+def get_knowledge_manager(agent_name):
+    """Get or create knowledge manager for an agent"""
+    if agent_name not in _knowledge_managers:
+        try:
+            from simple_knowledge_manager import SimpleKnowledgeManager
+            _knowledge_managers[agent_name] = SimpleKnowledgeManager(agent_name)
+            _knowledge_managers[agent_name].load_documents()
+            logger.info(f"✅ Loaded knowledge manager for {agent_name}")
+        except Exception as e:
+            logger.error(f"Failed to load knowledge manager for {agent_name}: {e}")
+            _knowledge_managers[agent_name] = None
+    return _knowledge_managers[agent_name]
+
 def get_aristotle_knowledge_manager():
     """Get or create Aristotle's knowledge manager"""
-    # Currently using file-based knowledge system
-    # ChromaDB integration planned for future enhancement
-    return None  # Placeholder for future implementation
+    return get_knowledge_manager("aristotle")
 
 async def get_agent_knowledge(agent_name, query, max_items=3):
-    """Simple knowledge retrieval using file-based storage"""
+    """Knowledge retrieval using SimpleKnowledgeManager"""
     try:
-        knowledge_file = f"knowledge/{agent_name}_knowledge.json"
-        if os.path.exists(knowledge_file):
-            with open(knowledge_file, 'r') as f:
-                knowledge_data = json.load(f)
-                # Simple search - in production, use vector similarity
-                relevant_items = []
-                for item in knowledge_data.get('items', []):
-                    if any(word.lower() in item.get('content', '').lower() for word in query.split()):
-                        relevant_items.append(item)
-                        if len(relevant_items) >= max_items:
-                            break
-                return relevant_items
-        return []
+        km = get_knowledge_manager(agent_name)
+        if not km:
+            logger.warning(f"No knowledge manager available for {agent_name}")
+            return []
+        
+        # Use the knowledge manager's search function
+        results = km.search_knowledge(query, max_results=max_items)
+        
+        # Convert to the expected format
+        formatted_results = []
+        for result in results:
+            formatted_results.append({
+                'source': result.get('document', 'Unknown'),
+                'content': result.get('content', ''),
+                'title': result.get('title', 'Untitled'),
+                'relevance_score': result.get('relevance_score', 0.0)
+            })
+        
+        return formatted_results
+        
     except Exception as e:
-        logger.error(f"Knowledge retrieval error: {e}")
+        logger.error(f"Knowledge retrieval error for {agent_name}: {e}")
         return []
 
 @dataclass
@@ -139,20 +160,19 @@ async def access_facilitation_knowledge(context, query: str):
     Args:
         query: Question about moderation techniques, parliamentary procedure, or facilitation
     """
-    # Using file-based knowledge system
-        
     try:
-        # Query parliamentary and facilitation knowledge
+        # Query parliamentary and facilitation knowledge using updated system
         knowledge_items = await get_agent_knowledge("aristotle", query, max_items=3)
         
         if knowledge_items:
             knowledge_text = "\n\n".join([
-                f"Source: {item['source']}\n{item['content'][:400]}..." 
+                f"Source: {item['title']} ({item['source']})\n{item['content'][:400]}..." 
                 for item in knowledge_items
             ])
             return {
                 "knowledge": knowledge_text,
-                "sources": [item['source'] for item in knowledge_items]
+                "sources": [f"{item['title']} ({item['source']})" for item in knowledge_items],
+                "relevance_scores": [item.get('relevance_score', 0.0) for item in knowledge_items]
             }
         else:
             return {"knowledge": "No relevant facilitation knowledge found", "sources": []}

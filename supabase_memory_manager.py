@@ -131,7 +131,7 @@ class SupabaseMemoryManager:
                 "key_points": key_points or [],
                 "references_to": references_to or [],
                 "timestamp_start": datetime.now(timezone.utc).isoformat(),
-                "token_count": len(content_text.split()) * 1.3  # Rough estimate
+                "token_count": int(len(content_text.split()) * 1.3)  # Rough estimate, convert to int
             }
             
             result = self.client.table("conversation_memory").insert(segment_data).execute()
@@ -223,10 +223,26 @@ class SupabaseMemoryManager:
     ) -> bool:
         """Store a memory for a specific AI personality
         
+        Args:
+            memory_type: Must be one of: 'key_question', 'stance_taken', 'insight_shared', 'moderation_action'
+            personality: Must be one of: 'socrates', 'aristotle', 'buddha', 'hermes', 'solon'
+        
         Returns:
             True if successful, False if failed
         """
         if not self.client:
+            return False
+        
+        # Validate memory_type against database constraints
+        valid_memory_types = ['key_question', 'stance_taken', 'insight_shared', 'moderation_action']
+        if memory_type not in valid_memory_types:
+            logger.error(f"Invalid memory_type '{memory_type}'. Must be one of: {valid_memory_types}")
+            return False
+        
+        # Validate personality against database constraints  
+        valid_personalities = ['socrates', 'aristotle', 'buddha', 'hermes', 'solon']
+        if personality not in valid_personalities:
+            logger.error(f"Invalid personality '{personality}'. Must be one of: {valid_personalities}")
             return False
             
         try:
