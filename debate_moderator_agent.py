@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 
 # LiveKit Agents imports
 try:
-    from livekit.agents import Agent, AgentSession, JobContext, WorkerOptions, cli, function_tool
+    from livekit.agents import Agent, AgentSession, JobContext, WorkerOptions, cli, function_tool, AutoSubscribe
     from livekit.plugins import openai, silero
     from livekit.agents import UserStateChangedEvent, AgentStateChangedEvent
     from livekit import rtc  # For audio track handling
@@ -408,8 +408,8 @@ async def entrypoint(ctx: JobContext):
     """Debate Moderator agent entrypoint - only joins rooms marked for sage debates"""
     
     logger.info("🏛️ Sage AI Debate Moderator checking room metadata...")
-    # ENHANCED: Connect with auto_subscribe=True to hear all participants including other agents
-    await ctx.connect(auto_subscribe=True)
+    # ENHANCED: Connect with auto_subscribe to hear all participants including other agents
+    await ctx.connect(auto_subscribe=AutoSubscribe.SUBSCRIBE_ALL)
     
     # ENHANCED: Set up audio track monitoring for inter-agent coordination
     audio_tracks = {}  # Track audio sources from other participants
@@ -417,6 +417,7 @@ async def entrypoint(ctx: JobContext):
     
     def on_track_subscribed(track, publication, participant):
         """Handle when we subscribe to an audio track from another participant"""
+        from livekit import rtc  # Import within function scope
         if track.kind == rtc.TrackKind.KIND_AUDIO:
             logger.info(f"🎧 Aristotle subscribed to audio track from: {participant.identity}")
             
