@@ -226,10 +226,11 @@ async def fact_check_claim(context, claim: str, source_requested: bool = False):
             raise ValueError("PERPLEXITY_API_KEY environment variable is required")
         
         # Create Perplexity LLM instance using LiveKit's proper integration
+        # According to LiveKit docs, the default model is llama-3.1-sonar-small-128k-chat
         perplexity_llm = openai.LLM.with_perplexity(
-            model="sonar",
-            temperature=0.2,  # Low temperature for factual accuracy
-            api_key=api_key  # Explicitly pass the API key
+            model="llama-3.1-sonar-small-128k-chat",  # Updated to correct model name
+            temperature=0.2  # Low temperature for factual accuracy
+            # api_key is automatically read from PERPLEXITY_API_KEY environment variable
         )
         
         # Format research prompt for fact-checking
@@ -328,9 +329,9 @@ BE FACTUAL and well-sourced."""
             raise ValueError("PERPLEXITY_API_KEY environment variable is required")
         
         perplexity_llm = openai.LLM.with_perplexity(
-            model="sonar",
-            temperature=0.3,
-            api_key=api_key  # Explicitly pass the API key
+            model="llama-3.1-sonar-small-128k-chat",  # Updated to correct model name
+            temperature=0.3
+            # api_key is automatically read from PERPLEXITY_API_KEY environment variable
         )
         
         # Make the research request
