@@ -39,12 +39,9 @@ except ImportError as e:
 
 # Check if knowledge system is available
 KNOWLEDGE_AVAILABLE = False
-try:
-    import chromadb
-    KNOWLEDGE_AVAILABLE = True
-    logger.info("✅ Knowledge system available")
-except ImportError:
-    logger.warning("⚠️ ChromaDB not available - knowledge system disabled")
+# Note: ChromaDB integration is planned but not yet implemented
+# The knowledge system currently uses file-based storage
+logger.info("📝 Using file-based knowledge system (ChromaDB integration planned)")
 
 # Check if Perplexity is available
 PERPLEXITY_AVAILABLE = bool(os.environ.get("PERPLEXITY_API_KEY"))
@@ -55,10 +52,9 @@ else:
 
 def get_aristotle_knowledge_manager():
     """Get or create Aristotle's knowledge manager"""
-    if not KNOWLEDGE_AVAILABLE:
-        return None
-    # Implementation would go here
-    return None
+    # Currently using file-based knowledge system
+    # ChromaDB integration planned for future enhancement
+    return None  # Placeholder for future implementation
 
 async def get_agent_knowledge(agent_name, query, max_items=3):
     """Simple knowledge retrieval using file-based storage"""
@@ -143,8 +139,7 @@ async def access_facilitation_knowledge(context, query: str):
     Args:
         query: Question about moderation techniques, parliamentary procedure, or facilitation
     """
-    if not KNOWLEDGE_AVAILABLE:
-        return {"knowledge": "Knowledge system not available", "sources": []}
+    # Using file-based knowledge system
         
     try:
         # Query parliamentary and facilitation knowledge
