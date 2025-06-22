@@ -515,7 +515,7 @@ async def entrypoint(ctx: JobContext):
     if PERPLEXITY_AVAILABLE:
         try:
             research_llm = openai.LLM.with_perplexity(
-                model="llama-3.1-sonar-small-128k-chat",
+                model="sonar-pro",  # Updated to current Perplexity model (200k context)
                 temperature=0.2  # Lower temperature for analytical precision
             )
             logger.info("✅ Using Perplexity LLM for Aristotle")
