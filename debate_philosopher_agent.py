@@ -34,16 +34,9 @@ try:
     from livekit import rtc  # For audio track handling
     logger.info("✅ LiveKit Agents core successfully imported")
     
-    # Try to import transcription components (optional)
-    TRANSCRIPTION_AVAILABLE = False
-    try:
-        from livekit.plugins import deepgram  # For transcription
-        from livekit.agents import STTSegmentsForwarder  # For forwarding transcriptions to frontend
-        TRANSCRIPTION_AVAILABLE = True
-        logger.info("✅ Transcription components available")
-    except ImportError as e:
-        logger.warning(f"⚠️ Transcription not available: {e}")
-        TRANSCRIPTION_AVAILABLE = False
+    # NOTE: Transcription is handled automatically by the Agent framework
+    # No need for manual STTSegmentsForwarder - LiveKit handles this internally
+    logger.info("📝 Transcription will be handled by Agent framework automatically")
         
 except ImportError as e:
     logger.error(f"❌ Failed to import LiveKit Agents: {e}")
@@ -288,22 +281,9 @@ async def entrypoint(ctx: JobContext):
     audio_tracks = {}  # Track audio sources from other participants
     other_agents = set()  # Track other agent identities
     
-    # ENHANCED: Set up transcription forwarding (if available)
-    transcription_forwarder = None
-    if TRANSCRIPTION_AVAILABLE:
-        try:
-            stt = deepgram.STT()  # Speech-to-text for transcription
-            transcription_forwarder = STTSegmentsForwarder(
-                room=ctx.room,
-                participant=ctx.room.local_participant,
-                stt=stt
-            )
-            logger.info("✅ Transcription forwarding enabled")
-        except Exception as e:
-            logger.warning(f"⚠️ Failed to setup transcription: {e}")
-            transcription_forwarder = None
-    else:
-        logger.info("📝 Transcription not available - continuing without it")
+    # NOTE: Transcription is automatically handled by the Agent framework
+    # The Agent pattern with openai.realtime.RealtimeModel includes built-in transcription
+    # Clients will receive transcription via LiveKit's native transcription events
     
     def on_track_subscribed(track, publication, participant):
         """Handle when we subscribe to an audio track from another participant"""
@@ -314,13 +294,7 @@ async def entrypoint(ctx: JobContext):
             # Store the audio track for potential processing
             audio_tracks[participant.identity] = track
             
-            # ENHANCED: Forward audio track to transcription system (if available)
-            if transcription_forwarder:
-                try:
-                    transcription_forwarder.push_track(track)
-                    logger.debug(f"📝 Added track to transcription: {participant.identity}")
-                except Exception as e:
-                    logger.warning(f"⚠️ Failed to add track to transcription: {e}")
+            # NOTE: Transcription is handled automatically by the Agent framework
             
             # Check if this is another agent (Aristotle)
             if "aristotle" in participant.identity.lower():

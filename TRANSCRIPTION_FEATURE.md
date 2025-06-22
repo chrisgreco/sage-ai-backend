@@ -1,100 +1,120 @@
-# Transcription Feature (Optional)
+# Transcription Feature (Built-in)
 
 ## Overview
 
-The Sage AI debate agents include **optional real-time transcription** capabilities that capture and forward speech from all participants to the frontend clients. The system gracefully degrades when transcription components are not available.
+The Sage AI debate agents include **built-in real-time transcription** capabilities through LiveKit's native Agent framework. Transcription is handled automatically without requiring manual setup or additional dependencies.
 
 ## How It Works
 
-### 🎯 **Multi-Speaker Transcription (When Available)**
-- **Socrates agent** captures audio from all participants (Aristotle focuses on moderation)
-- **Deepgram STT** converts speech to text in real-time (if available)
-- **Transcription segments** are forwarded to frontend clients
-- **Each speaker is identified** by their participant identity
-- **Single transcription source** prevents duplicate segments
-- **Graceful fallback** when transcription components unavailable
+### 🎯 **Automatic Transcription**
+- **LiveKit Agent framework** automatically handles transcription for all participants
+- **Built-in Speech-to-Text** processes audio from users and agents
+- **Native transcription events** are sent to frontend clients automatically
+- **No manual setup required** - works out of the box with Agent pattern
+- **Speaker identification** included automatically
 
 ### 🔧 **Technical Implementation**
-- Uses conditional imports for `STTSegmentsForwarder` and `deepgram.STT`
-- Integrates with existing audio track subscription system
-- Forwards transcriptions as data messages to the room
+- Uses LiveKit's native `Agent` pattern with `openai.realtime.RealtimeModel`
+- Transcription is built into the Agent framework - no additional imports needed
+- Frontend receives transcription via standard LiveKit transcription events
 - Compatible with existing agent conversation logic
-- **Fails gracefully** if transcription dependencies missing
+- No dependencies on external STT services for basic transcription
+
+## Frontend Integration
+
+### 📡 **Receiving Transcriptions**
+Frontend clients automatically receive transcription data through LiveKit's built-in events:
+
+```typescript
+// Frontend receives transcription via LiveKit's native events
+room.on(RoomEvent.TranscriptionReceived, (segments: TranscriptionSegment[]) => {
+  segments.forEach(segment => {
+    console.log(`${segment.participant.identity}: ${segment.text}`);
+    // Display transcription in UI
+  });
+});
+```
+
+### 🎨 **UI Integration**
+- Real-time text display of all speech
+- Speaker identification (users + AI agents)
+- Automatic scrolling transcript
+- Export/save transcript functionality
+
+## Agent Configuration
+
+### ✅ **Current Implementation**
+Both Aristotle and Socrates agents use the built-in transcription:
+
+```python
+# Transcription is automatic with Agent pattern
+agent = Agent(
+    instructions="...",
+    tools=[...]
+)
+
+# RealtimeModel includes built-in transcription
+llm = openai.realtime.RealtimeModel(
+    model="gpt-4o-realtime-preview-2024-12-17",
+    voice="alloy",
+    temperature=0.2
+)
+
+session = AgentSession(
+    llm=llm,
+    vad=silero.VAD.load(),
+    # Transcription happens automatically
+)
+```
+
+### 🚫 **What We Don't Need**
+- ❌ No `STTSegmentsForwarder` (doesn't exist in LiveKit)
+- ❌ No manual deepgram imports
+- ❌ No manual transcription setup
+- ❌ No additional dependencies
 
 ## Deployment Compatibility
 
 ### ✅ **Production Ready**
-- **Works without transcription** - agents function normally
-- **Optional dependency** - deepgram not required for basic operation
-- **Error handling** - graceful degradation when components unavailable
-- **Conditional setup** - only enables transcription when possible
+- **Works on all deployments**: Render, local, cloud
+- **No additional dependencies**: Uses built-in LiveKit functionality
+- **Automatic failover**: If transcription fails, agents continue normally
+- **Zero configuration**: Works immediately upon deployment
 
-### 🚫 **What Happens Without Transcription**
-- Agents still function normally for voice debate
-- Audio coordination and conversation flow maintained
-- Knowledge retrieval and AI responses work perfectly
-- Only real-time text display is unavailable
-
-## Frontend Integration
-
-### 📡 **Receiving Transcriptions (When Available)**
-Frontend clients can listen for transcription events:
-
-```typescript
-// Listen for transcription segments
-room.on('transcription', (transcription) => {
-  console.log(`${transcription.participant}: ${transcription.text}`);
-  // Update UI with real-time transcription
-});
-```
-
-### 🎨 **UI Implementation**
-- **Transcription Panel**: Show real-time text as participants speak
-- **Speaker Labels**: Display who is speaking (User, Aristotle, Socrates)
-- **Conversation Log**: Maintain history of what was said
-- **Optional Display**: Hide transcription UI when not available
-
-### ✅ **What's Included (When Available)**
-- **Real-time transcription** of all participants
-- **Speaker identification** (users, Aristotle, Socrates)
-- **Automatic forwarding** to frontend clients
-- **Integration with existing debate logic**
-- **Single-agent transcription** (Socrates only, prevents duplicates)
-- **Graceful degradation** when unavailable
-
-## Configuration
-
-### 📋 **Environment Variables (Optional)**
+### 🔧 **Configuration**
 ```bash
-# Only needed if you want transcription
-DEEPGRAM_API_KEY=your_deepgram_key_here
+# No additional environment variables needed for basic transcription
+# Standard LiveKit variables are sufficient:
+LIVEKIT_API_KEY=your_key
+LIVEKIT_API_SECRET=your_secret
+LIVEKIT_URL=your_url
 ```
-
-### 🔧 **Installation (Optional)**
-```bash
-# Add deepgram to dependencies only if you want transcription
-pip install livekit-agents[deepgram]
-```
-
-## Status Monitoring
-
-The system logs transcription availability:
-- `✅ Transcription components available` - Full transcription enabled
-- `⚠️ Transcription not available` - System continues without transcription
-- `📝 Transcription not available - continuing without it` - Normal operation
 
 ## Benefits
 
-### ✅ **With Transcription**
-- Real-time text display for accessibility
-- Conversation logging and review
-- Better user experience for text-based analysis
-- Enhanced debate documentation
+### 🚀 **Advantages of Built-in Transcription**
+1. **Zero Setup**: Works immediately without configuration
+2. **Reliable**: Uses LiveKit's proven transcription infrastructure  
+3. **Integrated**: Seamlessly works with voice agents
+4. **Efficient**: No additional API calls or dependencies
+5. **Speaker ID**: Automatically identifies who is speaking
+6. **Real-time**: Low latency transcription delivery
 
-### ✅ **Without Transcription**
-- Full voice AI debate functionality
-- Agent coordination and responses
-- Knowledge-enhanced conversations
-- All core features operational
+### 🎯 **Use Cases**
+- **Live Captions**: Real-time captions during debates
+- **Meeting Notes**: Automatic transcript generation
+- **Accessibility**: Support for hearing-impaired users
+- **Analysis**: Post-debate transcript analysis
+- **Search**: Searchable conversation history
 
-The transcription feature enhances the experience when available but never blocks core functionality. 
+## Future Enhancements
+
+For advanced transcription features, consider:
+- **Custom STT providers**: For specialized domains
+- **Translation**: Real-time language translation
+- **Sentiment analysis**: Emotion detection in speech
+- **Summary generation**: AI-powered transcript summaries
+
+---
+
+**Note**: This transcription feature is built into the LiveKit Agent framework and requires no additional setup or dependencies. It works automatically with your existing agent deployment. 
