@@ -31,10 +31,12 @@ try:
     from livekit.agents import Agent, AgentSession, JobContext, WorkerOptions, cli, function_tool, AutoSubscribe
     from livekit.plugins import openai, silero
     from livekit.agents import UserStateChangedEvent, AgentStateChangedEvent
+    from livekit.plugins import deepgram  # For transcription
+    from livekit.agents import STTSegmentsForwarder  # For forwarding transcriptions to frontend
     from livekit import rtc  # For audio track handling
     logger.info("✅ LiveKit Agents successfully imported")
 except ImportError as e:
-    logger.error(f"❌ LiveKit Agents import failed: {e}")
+    logger.error(f"❌ Failed to import LiveKit Agents: {e}")
     sys.exit(1)
 
 # Knowledge system imports (optional)
@@ -269,12 +271,20 @@ async def entrypoint(ctx: JobContext):
     """Debate Philosopher agent entrypoint - joins rooms to provide philosophical inquiry"""
     
     logger.info("🤔 Sage AI Debate Philosopher checking room metadata...")
-    # ENHANCED: Connect with auto_subscribe to hear all participants including other agents
+        # ENHANCED: Connect with auto_subscribe to hear all participants including other agents  
     await ctx.connect(auto_subscribe=AutoSubscribe.SUBSCRIBE_ALL)
     
     # ENHANCED: Set up audio track monitoring for inter-agent coordination
     audio_tracks = {}  # Track audio sources from other participants
     other_agents = set()  # Track other agent identities
+    
+    # ENHANCED: Set up transcription forwarding
+    stt = deepgram.STT()  # Speech-to-text for transcription
+    transcription_forwarder = STTSegmentsForwarder(
+        room=ctx.room,
+        participant=ctx.room.local_participant,
+        stt=stt
+    )
     
     def on_track_subscribed(track, publication, participant):
         """Handle when we subscribe to an audio track from another participant"""
@@ -284,6 +294,9 @@ async def entrypoint(ctx: JobContext):
             
             # Store the audio track for potential processing
             audio_tracks[participant.identity] = track
+            
+            # ENHANCED: Forward audio track to transcription system
+            transcription_forwarder.push_track(track)
             
             # Check if this is another agent (Aristotle)
             if "aristotle" in participant.identity.lower():

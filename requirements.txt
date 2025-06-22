@@ -7,7 +7,7 @@ PyPDF2>=3.0.1
 
 # LiveKit dependencies
 livekit-api>=0.8.0
-livekit-agents[openai,silero,turn-detector]>=1.0
+livekit-agents[openai,silero,turn-detector,deepgram]>=1.0
 
 # AI and ML dependencies  
 openai>=1.14.0
