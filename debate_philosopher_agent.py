@@ -455,7 +455,7 @@ Remember: Your PRIMARY goal is to deepen human understanding through carefully t
     # Configure LLM for philosophical conversation
     llm = openai.realtime.RealtimeModel(
         model="gpt-4o-realtime-preview-2024-12-17",
-        voice="sage",  # Different voice from Aristotle
+        voice="echo",  # Different voice from Aristotle - echo is warmer, good for Socrates
         temperature=0.8,  # Higher temperature for creative philosophical thinking
         speed=1.1  # Slightly slower, more contemplative pace
     )
