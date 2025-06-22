@@ -515,8 +515,8 @@ async def entrypoint(ctx: JobContext):
     if PERPLEXITY_AVAILABLE:
         try:
             research_llm = openai.LLM.with_perplexity(
-                model="sonar",
-                temperature=0.7  # Balanced for both personas
+                model="llama-3.1-sonar-small-128k-chat",
+                temperature=0.2  # Lower temperature for analytical precision
             )
             logger.info("✅ Using Perplexity LLM for Aristotle")
         except Exception as e:
@@ -526,9 +526,9 @@ async def entrypoint(ctx: JobContext):
         research_llm = openai.LLM(model="gpt-4o-realtime-preview", temperature=0.7)
     
     # Configure TTS
-    tts = silero.TTS(
-        model="v3_en",
-        speaker="en_117"  # Clear, authoritative voice for Aristotle
+    tts = openai.TTS(
+        model="tts-1",
+        voice="onyx"  # Clear, authoritative voice for Aristotle
     )
     
     # Create agent session
