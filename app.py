@@ -125,6 +125,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add custom CORS middleware to handle Lovable's dynamic domains
+@app.middleware("http")
+async def cors_handler(request: Request, call_next):
+    origin = request.headers.get("origin")
+    
+    # Check if it's a Lovable domain
+    if origin and (
+        origin.endswith(".lovable.app") or 
+        origin.endswith(".lovable.dev") or 
+        origin.endswith(".lovableproject.com") or
+        "lovable" in origin
+    ):
+        response = await call_next(request)
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        return response
+    
+    return await call_next(request)
+
 # Define request models
 class DebateRequest(BaseModel):
     topic: str = "The impact of AI on society"  # Make optional with default
