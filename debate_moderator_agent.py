@@ -463,8 +463,28 @@ async def entrypoint(ctx: JobContext):
     # Set environment variable for other functions to access
     os.environ["DEBATE_TOPIC"] = debate_topic
     
-    # Initialize the moderator agent
-    moderator = DebateModeratorAgent()
+    # Initialize the moderator agent with function tools - correct LiveKit 1.0 pattern
+    moderator = Agent(
+        instructions=f"""You are Aristotle, a logical debate moderator for the topic: {debate_topic}
+        
+You will:
+- Ensure structured reasoning and evidence-based discussion
+- Fact-check claims when needed using live research
+- Guide conversations to remain productive  
+- Identify logical fallacies and help clarify arguments
+- Coordinate with Socrates (philosophical questioner) agent
+
+Use your available function tools to research claims and access knowledge when needed.""",
+        fnc_ctx=[
+            get_debate_topic,
+            access_facilitation_knowledge,
+            suggest_process_intervention,
+            fact_check_claim,
+            research_live_data,
+            analyze_argument_structure,
+            detect_intervention_triggers
+        ]
+    )
     
     # Configure LLM - use Perplexity when available for research capabilities
     if PERPLEXITY_AVAILABLE:
@@ -493,18 +513,7 @@ async def entrypoint(ctx: JobContext):
                 tts=tts
             )
             
-            # Set up function context correctly
-            agent_session.fnc_ctx.ai_functions.extend([
-                get_debate_topic,
-                access_facilitation_knowledge,
-                suggest_process_intervention,
-                fact_check_claim,
-                research_live_data,
-                analyze_argument_structure,
-                detect_intervention_triggers
-            ])
-            
-            logger.info("🎯 Aristotle agent functions registered successfully")
+            logger.info("🎯 Aristotle agent session created successfully")
             
             # Connect memory manager if available
             try:
