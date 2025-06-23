@@ -249,7 +249,7 @@ Format: "Actually, [correct fact] according to [source]."
 BE EXTREMELY CONCISE - no explanations or elaboration."""
 
         # Make the research request using LiveKit's Perplexity integration
-        from livekit.agents.llm import ChatContext
+        from livekit.plugins.openai import ChatContext
         
         chat_ctx = ChatContext()
         chat_ctx.add_message(
@@ -321,7 +321,7 @@ BE FACTUAL and well-sourced."""
         # Use LiveKit's Perplexity integration properly 
         # Create a standalone Perplexity LLM instance for research
         from livekit.plugins import openai
-        from livekit.agents.llm import ChatContext
+        from livekit.plugins.openai import ChatContext
         import os
         
         # Get API key from environment
