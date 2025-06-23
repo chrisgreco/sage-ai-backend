@@ -207,63 +207,49 @@ async def suggest_process_intervention(context, situation: str):
 
 @function_tool
 async def fact_check_claim(context, claim: str, source_requested: bool = False):
-    """Fact-check statistical claims or verify information using Perplexity research
+    """Fact-check a claim using live research and current data
     
     Args:
-        claim: The factual claim or statistic to verify
-        source_requested: Whether the user specifically asked for fact-checking
+        claim: The claim to be fact-checked
+        source_requested: Whether to provide detailed source information
     """
     if not PERPLEXITY_AVAILABLE:
-        return {"fact_check": "Research system not available for fact-checking", "confidence": "low"}
+        return {"fact_check": "Live fact-checking system not available", "confidence": "low"}
         
     try:
-        # Use LiveKit's Perplexity integration for research
-        from livekit.plugins import openai
-        import os
+        # Format fact-checking prompt
+        research_prompt = f"""Fact-check this claim: {claim}
+
+Please provide:
+1. Whether the claim is TRUE, FALSE, PARTIALLY TRUE, or UNVERIFIABLE
+2. Key evidence supporting or refuting the claim
+3. Authoritative sources (if available)
+4. Date of latest relevant information
+
+BE FACTUAL and cite sources when possible."""
         
-        # Get API key from environment
-        api_key = os.environ.get("PERPLEXITY_API_KEY")
-        if not api_key:
-            raise ValueError("PERPLEXITY_API_KEY environment variable is required")
+        # Use Perplexity LLM with proper ChatContext
+        from livekit.agents.llm import ChatContext
         
-        # Create Perplexity LLM instance using LiveKit's proper integration
-        # According to LiveKit docs, the default model is llama-3.1-sonar-small-128k-chat
         perplexity_llm = openai.LLM.with_perplexity(
-            model="llama-3.1-sonar-small-128k-chat",  # Updated to correct model name
-            temperature=0.2  # Low temperature for factual accuracy
-            # api_key is automatically read from PERPLEXITY_API_KEY environment variable
+            model="sonar-pro",  # Updated to current model
+            temperature=0.2
         )
         
-        # Format research prompt for fact-checking
-        research_prompt = f"""As Aristotle, fact-check this claim with maximum brevity:
-
-CLAIM: {claim}
-
-Provide ONLY:
-1. A direct correction in 1-2 sentences maximum
-2. The accurate fact/statistic with current data
-3. Authoritative source
-
-Format: "Actually, [correct fact] according to [source]."
-
-BE EXTREMELY CONCISE - no explanations or elaboration."""
-
-        # Make the research request using LiveKit's Perplexity integration
-        from livekit.plugins.openai import ChatContext
-        
+        # Create proper chat context
         chat_ctx = ChatContext()
-        chat_ctx.add_message(
-            role="user", 
-            content=research_prompt
-        )
+        chat_ctx.append(role="user", text=research_prompt)
         
+        # Make the API call
         stream = perplexity_llm.chat(chat_ctx=chat_ctx)
         
         # Collect the response from the stream
         response_chunks = []
         async for chunk in stream:
-            if hasattr(chunk, 'delta') and chunk.delta and chunk.delta.content:
-                response_chunks.append(chunk.delta.content)
+            if hasattr(chunk, 'choices') and chunk.choices:
+                for choice in chunk.choices:
+                    if hasattr(choice, 'delta') and choice.delta and choice.delta.content:
+                        response_chunks.append(choice.delta.content)
         
         fact_check_result = ''.join(response_chunks) if response_chunks else "Unable to verify claim"
         
@@ -318,37 +304,28 @@ Include:
 
 BE FACTUAL and well-sourced."""
         
-        # Use LiveKit's Perplexity integration properly 
-        # Create a standalone Perplexity LLM instance for research
-        from livekit.plugins import openai
-        from livekit.plugins.openai import ChatContext
-        import os
-        
-        # Get API key from environment
-        api_key = os.environ.get("PERPLEXITY_API_KEY")
-        if not api_key:
-            raise ValueError("PERPLEXITY_API_KEY environment variable is required")
+        # Use Perplexity LLM with proper ChatContext
+        from livekit.agents.llm import ChatContext
         
         perplexity_llm = openai.LLM.with_perplexity(
-            model="llama-3.1-sonar-small-128k-chat",  # Updated to correct model name
+            model="sonar-pro",  # Updated to current model
             temperature=0.3
-            # api_key is automatically read from PERPLEXITY_API_KEY environment variable
         )
         
-        # Make the research request
+        # Create proper chat context
         chat_ctx = ChatContext()
-        chat_ctx.add_message(
-            role="user", 
-            content=research_prompt
-        )
+        chat_ctx.append(role="user", text=research_prompt)
         
+        # Make the API call
         stream = perplexity_llm.chat(chat_ctx=chat_ctx)
         
         # Collect the response from the stream
         response_chunks = []
         async for chunk in stream:
-            if hasattr(chunk, 'delta') and chunk.delta and chunk.delta.content:
-                response_chunks.append(chunk.delta.content)
+            if hasattr(chunk, 'choices') and chunk.choices:
+                for choice in chunk.choices:
+                    if hasattr(choice, 'delta') and choice.delta and choice.delta.content:
+                        response_chunks.append(choice.delta.content)
         
         research_result = ''.join(response_chunks) if response_chunks else "Unable to complete research"
         
@@ -531,22 +508,22 @@ async def entrypoint(ctx: JobContext):
         voice="onyx"  # Clear, authoritative voice for Aristotle
     )
     
-    # Create agent session
+    # Create agent session with correct LiveKit 1.0 pattern
     agent_session = AgentSession(
-        chat_ctx=openai.ChatContext(),
-        fnc_ctx=openai.FunctionContext(),
         llm=research_llm,
         tts=tts
     )
     
-    # Add function tools
-    agent_session.fnc_ctx.add_function(get_debate_topic)
-    agent_session.fnc_ctx.add_function(access_facilitation_knowledge)
-    agent_session.fnc_ctx.add_function(suggest_process_intervention)
-    agent_session.fnc_ctx.add_function(fact_check_claim)
-    agent_session.fnc_ctx.add_function(research_live_data)
-    agent_session.fnc_ctx.add_function(analyze_argument_structure)
-    agent_session.fnc_ctx.add_function(detect_intervention_triggers)
+    # Set up function context correctly
+    agent_session.fnc_ctx.ai_functions.extend([
+        get_debate_topic,
+        access_facilitation_knowledge,
+        suggest_process_intervention,
+        fact_check_claim,
+        research_live_data,
+        analyze_argument_structure,
+        detect_intervention_triggers
+    ])
     
     # Enhanced system prompt with coordination awareness
     system_prompt = f"""You are Aristotle, the logical analyst and debate moderator for the Sage AI system. You are participating in a debate about: "{debate_topic}"
