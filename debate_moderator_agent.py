@@ -227,107 +227,85 @@ Please provide:
 4. Date of latest relevant information
 
 BE FACTUAL and cite sources when possible."""
-        
-        # Use Perplexity LLM with proper ChatContext
-        from livekit.agents.llm import ChatContext
-        
-        perplexity_llm = openai.LLM.with_perplexity(
-            model="sonar-pro",  # Updated to current model
-            temperature=0.2
-        )
-        
-        # Create proper chat context
-        chat_ctx = ChatContext()
-        chat_ctx.append(role="user", text=research_prompt)
-        
-        # Make the API call
-        stream = perplexity_llm.chat(chat_ctx=chat_ctx)
-        
-        # Collect the response from the stream
-        response_chunks = []
-        async for chunk in stream:
-            if hasattr(chunk, 'choices') and chunk.choices:
-                for choice in chunk.choices:
-                    if hasattr(choice, 'delta') and choice.delta and choice.delta.content:
-                        response_chunks.append(choice.delta.content)
-        
-        fact_check_result = ''.join(response_chunks) if response_chunks else "Unable to verify claim"
+
+        # Use async context manager for proper resource cleanup
+        async with openai.LLM.with_perplexity(
+            model="sonar-pro",
+            temperature=0.1
+        ) as perplexity_llm:
+            # Create chat context
+            from livekit.plugins.openai import ChatContext
+            chat_ctx = ChatContext()
+            chat_ctx.add_message(role="user", content=research_prompt)
+            
+            # Make the research request
+            stream = perplexity_llm.chat(chat_ctx=chat_ctx)
+            
+            # Collect the response from the stream
+            response_chunks = []
+            async for chunk in stream:
+                if hasattr(chunk, 'choices') and chunk.choices:
+                    for choice in chunk.choices:
+                        if hasattr(choice, 'delta') and choice.delta and choice.delta.content:
+                            response_chunks.append(choice.delta.content)
+            
+            fact_check_result = ''.join(response_chunks) if response_chunks else "Unable to complete fact-check"
         
         return {
             "fact_check": fact_check_result,
             "confidence": "high",
-            "source": "Perplexity AI with current data"
+            "source": "Perplexity AI with current data",
+            "sources_provided": source_requested
         }
         
     except Exception as e:
-        logger.error(f"Fact-checking error: {e}")
+        logger.error(f"Fact-check error: {e}")
         return {"error": f"Fact-checking failed: {str(e)}"}
 
 @function_tool
 async def research_live_data(context, query: str, research_type: str = "general"):
-    """Access live research and current data using Perplexity AI
+    """Research live data and current information using Perplexity
     
     Args:
-        query: The research question or topic to investigate
-        research_type: Type of research (general, statistical, current_events, etc.)
+        query: The research query
+        research_type: Type of research (general, academic, news, technical)
     """
     if not PERPLEXITY_AVAILABLE:
         return {"research": "Live research system not available", "confidence": "low"}
         
     try:
         # Format research prompt based on type
-        if research_type == "statistical":
-            research_prompt = f"""Provide current statistics and data for: {query}
-
-Include:
-1. Latest available statistics
-2. Authoritative sources (government, academic, industry)
-3. Date of data collection
-
-BE CONCISE but thorough with sources."""
-        elif research_type == "current_events":
-            research_prompt = f"""Provide current information and recent developments on: {query}
-
-Include:
-1. Latest developments (within last 6 months)
-2. Key facts and data
-3. Reliable news sources
-
-BE CURRENT and fact-focused."""
+        if research_type == "academic":
+            research_prompt = f"Research this topic with academic sources: {query}\nProvide scholarly perspective with citations."
+        elif research_type == "news":
+            research_prompt = f"Find recent news and current developments about: {query}\nFocus on latest events and trends."
+        elif research_type == "technical":
+            research_prompt = f"Provide technical analysis and expert insights on: {query}\nInclude technical details and specifications."
         else:
-            research_prompt = f"""Provide comprehensive, current information on: {query}
+            research_prompt = f"Research comprehensive information about: {query}\nProvide current, accurate information with sources."
 
-Include:
-1. Key facts and current data
-2. Multiple authoritative sources
-3. Recent developments if relevant
-
-BE FACTUAL and well-sourced."""
-        
-        # Use Perplexity LLM with proper ChatContext
-        from livekit.agents.llm import ChatContext
-        
-        perplexity_llm = openai.LLM.with_perplexity(
-            model="sonar-pro",  # Updated to current model
-            temperature=0.3
-        )
-        
-        # Create proper chat context
-        chat_ctx = ChatContext()
-        chat_ctx.append(role="user", text=research_prompt)
-        
-        # Make the API call
-        stream = perplexity_llm.chat(chat_ctx=chat_ctx)
-        
-        # Collect the response from the stream
-        response_chunks = []
-        async for chunk in stream:
-            if hasattr(chunk, 'choices') and chunk.choices:
-                for choice in chunk.choices:
-                    if hasattr(choice, 'delta') and choice.delta and choice.delta.content:
-                        response_chunks.append(choice.delta.content)
-        
-        research_result = ''.join(response_chunks) if response_chunks else "Unable to complete research"
+        # Use async context manager for proper resource cleanup
+        async with openai.LLM.with_perplexity(
+            model="sonar-pro",
+            temperature=0.2
+        ) as perplexity_llm:
+            # Create chat context
+            from livekit.plugins.openai import ChatContext
+            chat_ctx = ChatContext()
+            chat_ctx.add_message(role="user", content=research_prompt)
+            
+            # Make the research request
+            stream = perplexity_llm.chat(chat_ctx=chat_ctx)
+            
+            # Collect the response from the stream
+            response_chunks = []
+            async for chunk in stream:
+                if hasattr(chunk, 'choices') and chunk.choices:
+                    for choice in chunk.choices:
+                        if hasattr(choice, 'delta') and choice.delta and choice.delta.content:
+                            response_chunks.append(choice.delta.content)
+            
+            research_result = ''.join(response_chunks) if response_chunks else "Unable to complete research"
         
         return {
             "research": research_result,
@@ -502,103 +480,76 @@ async def entrypoint(ctx: JobContext):
     else:
         research_llm = openai.LLM(model="gpt-4o-realtime-preview", temperature=0.7)
     
-    # Configure TTS
-    tts = openai.TTS(
-        model="tts-1",
-        voice="onyx"  # Clear, authoritative voice for Aristotle
-    )
-    
-    # Create agent session with correct LiveKit 1.0 pattern
-    agent_session = AgentSession(
-        llm=research_llm,
-        tts=tts
-    )
-    
-    # Set up function context correctly
-    agent_session.fnc_ctx.ai_functions.extend([
-        get_debate_topic,
-        access_facilitation_knowledge,
-        suggest_process_intervention,
-        fact_check_claim,
-        research_live_data,
-        analyze_argument_structure,
-        detect_intervention_triggers
-    ])
-    
-    # Enhanced system prompt with coordination awareness
-    system_prompt = f"""You are Aristotle, the logical analyst and debate moderator for the Sage AI system. You are participating in a debate about: "{debate_topic}"
+    # Use async context manager for TTS to ensure proper cleanup
+    try:
+        async with openai.TTS(
+            model="tts-1",
+            voice="onyx"  # Clear, authoritative voice for Aristotle
+        ) as tts:
+            
+            # Create agent session with correct LiveKit 1.0 pattern
+            agent_session = AgentSession(
+                llm=research_llm,
+                tts=tts
+            )
+            
+            # Set up function context correctly
+            agent_session.fnc_ctx.ai_functions.extend([
+                get_debate_topic,
+                access_facilitation_knowledge,
+                suggest_process_intervention,
+                fact_check_claim,
+                research_live_data,
+                analyze_argument_structure,
+                detect_intervention_triggers
+            ])
+            
+            logger.info("🎯 Aristotle agent functions registered successfully")
+            
+            # Connect memory manager if available
+            try:
+                memory_manager = get_memory_manager()
+                if memory_manager:
+                    logger.info("🧠 Memory manager connected to Aristotle")
+                else:
+                    logger.warning("⚠️ Memory manager not available")
+            except Exception as e:
+                logger.warning(f"⚠️ Could not connect memory manager: {e}")
+            
+            # Register agent state change handlers
+            agent_session.on("user_state_changed", on_user_state_changed)
+            agent_session.on("agent_state_changed", on_agent_state_changed)
+            
+            # Start the moderation session
+            await agent_session.start(
+                agent=moderator,
+                room=ctx.room
+            )
+            
+            logger.info(f"🏛️ Debate Moderator 'Aristotle' active for topic: {debate_topic}")
+            
+            # Initial greeting and topic introduction
+            initial_prompt = f"""Welcome to this Sage AI debate on: {debate_topic}
 
-COORDINATION AWARENESS:
-- You are working WITH Socrates (the philosophical questioner) in the same room
-- You can hear Socrates and should coordinate responses, not compete
-- Let Socrates ask probing questions while you provide structure and analysis
-- Don't repeat what Socrates just said - build on it or provide different perspective
+I am Aristotle, your logical debate moderator. I will:
+- Ensure structured reasoning and evidence-based discussion
+- Fact-check claims when needed
+- Guide the conversation to remain productive
+- Identify logical fallacies and help clarify arguments
 
-CORE IDENTITY - ARISTOTLE:
-- **Logical Structure**: You excel at organizing thoughts, identifying premises, and ensuring coherent argumentation
-- **Analytical Precision**: You break down complex ideas into clear, logical components
-- **Moderate Firmly**: You guide discussions with clear structure while remaining fair
-- **Fact-Based**: You prioritize evidence, data, and logical consistency
-- **Systematic Approach**: You help organize the debate flow and ensure all sides are heard
+Let's begin with a thoughtful exploration of this important topic."""
 
-MODERATION STYLE:
-- **Structure First**: "Let's organize this discussion around three key points..."
-- **Logical Analysis**: "The argument structure here is... the premises are..."
-- **Evidence Focus**: "What evidence supports this position?"
-- **Fair Process**: Ensure balanced participation and logical progression
-- **Synthesis**: Help synthesize different viewpoints into coherent frameworks
+            await agent_session.generate_reply(instructions=initial_prompt)
 
-COMMUNICATION STYLE:
-- **BE EXTREMELY CONCISE**: 1-2 sentences maximum unless asked for detail
-- **IDENTIFY YOURSELF**: Start with "As Aristotle..." when speaking
-- **COORDINATE WITH SOCRATES**: Don't interrupt or compete - complement his questioning
-- **STRUCTURE RESPONSES**: Use clear, logical organization
-
-AVAILABLE TOOLS:
-- Access specialized knowledge about facilitation and parliamentary procedure
-- Fact-check claims using live research
-- Analyze argument structure using logical frameworks
-- Suggest process interventions for challenging situations
-- Detect when moderation intervention is needed
-
-Remember: You work WITH Socrates as a team. He asks probing questions, you provide logical structure and analysis. Together you facilitate meaningful dialogue."""
-
-    agent_session.chat_ctx.add_message(
-        role="system",
-        content=system_prompt
-    )
-    
-    logger.info("🏛️ Aristotle (Debate Moderator) ready for philosophical discourse")
-    logger.info(f"📋 Debate topic: {debate_topic}")
-    logger.info(f"🎭 Agent role: {agent_role}")
-    logger.info(f"🔊 Audio coordination enabled - can hear {len(audio_tracks)} participants")
-    
-    # User state change handler
-    def on_user_state_changed(ev: UserStateChangedEvent):
-        """Handle user speaking state changes for coordination"""
-        if ev.state == "speaking":
-            with conversation_state.conversation_lock:
-                conversation_state.user_speaking = True
-                logger.info("👤 User started speaking - agents will listen")
-        elif ev.state == "not_speaking":
-            with conversation_state.conversation_lock:
-                conversation_state.user_speaking = False
-                logger.info("👤 User stopped speaking - agents can respond")
-    
-    # Agent state change handler  
-    def on_agent_state_changed(ev: AgentStateChangedEvent):
-        """Handle agent state changes for coordination"""
-        if ev.state == "speaking":
-            logger.info(f"🎤 Agent started speaking: {ev.agent_participant.identity}")
-        elif ev.state == "listening":
-            logger.info(f"👂 Agent listening: {ev.agent_participant.identity}")
-    
-    # Register state change handlers
-    agent_session.on("user_state_changed", on_user_state_changed)
-    agent_session.on("agent_state_changed", on_agent_state_changed)
-    
-    # Start the agent session
-    await agent_session.start(ctx.room)
+    except Exception as e:
+        logger.error(f"❌ Error in Aristotle agent session: {e}")
+        # Ensure proper cleanup even on errors
+        if 'research_llm' in locals() and hasattr(research_llm, 'aclose'):
+            try:
+                await research_llm.aclose()
+            except Exception as cleanup_error:
+                logger.error(f"Error during LLM cleanup: {cleanup_error}")
+        raise
 
 def main():
     """Main entry point for the debate moderator agent"""
