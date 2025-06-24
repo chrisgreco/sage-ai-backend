@@ -233,8 +233,8 @@ BE FACTUAL and cite sources when possible."""
             model="sonar-pro",
             temperature=0.1
         ) as perplexity_llm:
-            # Create chat context
-            from livekit.plugins.openai import ChatContext
+            # Create chat context with correct import
+            from livekit.plugins.openai.llm import ChatContext
             chat_ctx = ChatContext()
             chat_ctx.add_message(role="user", content=research_prompt)
             
@@ -289,8 +289,8 @@ async def research_live_data(context, query: str, research_type: str = "general"
             model="sonar-pro",
             temperature=0.2
         ) as perplexity_llm:
-            # Create chat context
-            from livekit.plugins.openai import ChatContext
+            # Create chat context with correct import
+            from livekit.plugins.openai.llm import ChatContext
             chat_ctx = ChatContext()
             chat_ctx.add_message(role="user", content=research_prompt)
             
@@ -475,7 +475,7 @@ You will:
 - Coordinate with Socrates (philosophical questioner) agent
 
 Use your available function tools to research claims and access knowledge when needed.""",
-        fnc_ctx=[
+        tools=[
             get_debate_topic,
             access_facilitation_knowledge,
             suggest_process_intervention,
