@@ -509,8 +509,10 @@ Use your available function tools to research claims and access knowledge when n
             
             # Create agent session with correct LiveKit 1.0 pattern
             agent_session = AgentSession(
+                stt=openai.STT(),  # Add STT for voice input processing
                 llm=research_llm,
-                tts=tts
+                tts=tts,
+                vad=silero.VAD.load()  # Add VAD for voice activity detection
             )
             
             logger.info("🎯 Aristotle agent session created successfully")
@@ -524,6 +526,37 @@ Use your available function tools to research claims and access knowledge when n
                     logger.warning("⚠️ Memory manager not available")
             except Exception as e:
                 logger.warning(f"⚠️ Could not connect memory manager: {e}")
+            
+            # Set up conversation state monitoring
+            def on_user_state_changed(ev: UserStateChangedEvent):
+                """Monitor user speaking state for coordination"""
+                with conversation_state.conversation_lock:
+                    if ev.new_state == "speaking":
+                        conversation_state.user_speaking = True
+                        # If user starts speaking, both agents should stop
+                        if conversation_state.active_speaker:
+                            logger.info("👤 User started speaking - agents should yield")
+                            conversation_state.active_speaker = None
+                    elif ev.new_state == "listening":
+                        conversation_state.user_speaking = False
+                        logger.info("👂 User stopped speaking - agents may respond if appropriate")
+                    elif ev.new_state == "away":
+                        conversation_state.user_speaking = False
+                        logger.info("👋 User disconnected")
+
+            def on_agent_state_changed(ev: AgentStateChangedEvent):
+                """Monitor agent speaking state for coordination"""
+                agent_name = "aristotle"
+                
+                if ev.new_state == "speaking":
+                    with conversation_state.conversation_lock:
+                        conversation_state.active_speaker = agent_name
+                        logger.info(f"🎤 {agent_name.capitalize()} started speaking")
+                elif ev.new_state in ["idle", "listening", "thinking"]:
+                    with conversation_state.conversation_lock:
+                        if conversation_state.active_speaker == agent_name:
+                            conversation_state.active_speaker = None
+                            logger.info(f"🔇 {agent_name.capitalize()} finished speaking")
             
             # Register agent state change handlers
             agent_session.on("user_state_changed", on_user_state_changed)
@@ -549,6 +582,40 @@ I am Aristotle, your logical debate moderator. I will:
 Let's begin with a thoughtful exploration of this important topic."""
 
             await agent_session.generate_reply(instructions=initial_prompt)
+            
+            # Keep the session alive - this is critical for LiveKit agents
+            try:
+                logger.info("🔄 Starting session monitoring loop...")
+                
+                # Add connection monitoring to prevent early termination
+                while True:
+                    try:
+                        # Monitor session state and reconnect if needed
+                        if not agent_session.agent_state or agent_session.agent_state == "disconnected":
+                            logger.warning("⚠️ Agent session disconnected, attempting to maintain connection...")
+                            break
+                        
+                        # Use asyncio.wait_for with timeout to prevent hanging
+                        await asyncio.wait_for(agent_session.wait_for_completion(), timeout=300.0)  # 5 minute timeout
+                        break
+                        
+                    except asyncio.TimeoutError:
+                        logger.info("🔄 Session timeout reached, checking connection status...")
+                        # Continue monitoring - this prevents early termination
+                        continue
+                    except Exception as inner_e:
+                        logger.warning(f"⚠️ Session monitoring error: {inner_e}, continuing...")
+                        await asyncio.sleep(1.0)
+                        continue
+                        
+            except Exception as session_e:
+                logger.error(f"❌ Agent session monitoring error: {session_e}")
+            finally:
+                # Clean up conversation state
+                with conversation_state.conversation_lock:
+                    if conversation_state.active_speaker == "aristotle":
+                        conversation_state.active_speaker = None
+                logger.info("🔚 Aristotle session ended")
 
     except Exception as e:
         logger.error(f"❌ Error in Aristotle agent session: {e}")

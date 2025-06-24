@@ -466,16 +466,23 @@ Remember: Your PRIMARY goal is to deepen human understanding through carefully t
     )
     
     # Configure LLM for philosophical conversation
-    llm = openai.realtime.RealtimeModel(
-        model="gpt-4o-realtime-preview-2024-12-17",
-        voice="echo",  # Different voice from Aristotle - echo is warmer, good for Socrates
+    # Using standard LLM instead of RealtimeModel to avoid function tool conflicts
+    llm = openai.LLM(
+        model="gpt-4o-mini",  # Reliable model that works well with function tools
         temperature=0.8,  # Higher temperature for creative philosophical thinking
-        speed=1.1  # Slightly slower, more contemplative pace
     )
 
+    # Configure TTS for Socrates (warmer voice than Aristotle)
+    tts = openai.TTS(
+        model="tts-1",
+        voice="echo"  # Different voice from Aristotle - echo is warmer, good for Socrates
+    )
+    
     # Create agent session with IMPROVED turn detection and conversation coordination
     session = AgentSession(
+        stt=openai.STT(),  # Add STT for voice input processing
         llm=llm,
+        tts=tts,
         vad=silero.VAD.load(),
         # ENHANCED: Even longer delays for philosophical reflection
         min_endpointing_delay=2.5,  # Wait longer for philosophical pauses
