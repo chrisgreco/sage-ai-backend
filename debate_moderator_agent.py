@@ -519,8 +519,8 @@ Use your available function tools to research claims and access knowledge when n
             
             # Connect memory manager if available
             try:
-                memory_manager = get_memory_manager()
-                if memory_manager:
+                from supabase_memory_manager import memory_manager, SUPABASE_AVAILABLE
+                if SUPABASE_AVAILABLE:
                     logger.info("🧠 Memory manager connected to Aristotle")
                 else:
                     logger.warning("⚠️ Memory manager not available")
@@ -583,39 +583,7 @@ Let's begin with a thoughtful exploration of this important topic."""
 
             await agent_session.generate_reply(instructions=initial_prompt)
             
-            # Keep the session alive - this is critical for LiveKit agents
-            try:
-                logger.info("🔄 Starting session monitoring loop...")
-                
-                # Add connection monitoring to prevent early termination
-                while True:
-                    try:
-                        # Monitor session state and reconnect if needed
-                        if not agent_session.agent_state or agent_session.agent_state == "disconnected":
-                            logger.warning("⚠️ Agent session disconnected, attempting to maintain connection...")
-                            break
-                        
-                        # Use asyncio.wait_for with timeout to prevent hanging
-                        await asyncio.wait_for(agent_session.wait_for_completion(), timeout=300.0)  # 5 minute timeout
-                        break
-                        
-                    except asyncio.TimeoutError:
-                        logger.info("🔄 Session timeout reached, checking connection status...")
-                        # Continue monitoring - this prevents early termination
-                        continue
-                    except Exception as inner_e:
-                        logger.warning(f"⚠️ Session monitoring error: {inner_e}, continuing...")
-                        await asyncio.sleep(1.0)
-                        continue
-                        
-            except Exception as session_e:
-                logger.error(f"❌ Agent session monitoring error: {session_e}")
-            finally:
-                # Clean up conversation state
-                with conversation_state.conversation_lock:
-                    if conversation_state.active_speaker == "aristotle":
-                        conversation_state.active_speaker = None
-                logger.info("🔚 Aristotle session ended")
+            logger.info("🏛️ Aristotle agent is now active and listening for conversations...")
 
     except Exception as e:
         logger.error(f"❌ Error in Aristotle agent session: {e}")
