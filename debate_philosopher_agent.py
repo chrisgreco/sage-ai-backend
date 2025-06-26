@@ -468,7 +468,7 @@ Remember: Your PRIMARY goal is to deepen human understanding through carefully t
     # Configure LLM for philosophical conversation
     # Using standard LLM instead of RealtimeModel to avoid function tool conflicts
     llm = openai.LLM(
-        model="gpt-4o-mini",  # Reliable model that works well with function tools
+        model="gpt-4o",  # More reliable model, fix potential 404 issue
         temperature=0.8,  # Higher temperature for creative philosophical thinking
     )
 
@@ -540,6 +540,20 @@ Remember: Your PRIMARY goal is to deepen human understanding through carefully t
     logger.info("🤫 Socrates waiting silently for philosophical opportunities...")
     
     logger.info("🧠 Socrates agent is now active and listening for philosophical opportunities...")
+    
+    # Keep the agent session alive - this is critical for LiveKit agents
+    # The session will continue running and responding to events automatically
+    # We just need to prevent the function from returning
+    try:
+        # Wait indefinitely - the agent will handle events and responses
+        while True:
+            await asyncio.sleep(1.0)
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        logger.info("🔚 Socrates agent session interrupted")
+    except Exception as session_error:
+        logger.error(f"❌ Socrates session error: {session_error}")
+    finally:
+        logger.info("🔚 Socrates agent session ended")
 
 def main():
     """Main function"""

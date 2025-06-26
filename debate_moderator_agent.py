@@ -584,6 +584,20 @@ Let's begin with a thoughtful exploration of this important topic."""
             await agent_session.generate_reply(instructions=initial_prompt)
             
             logger.info("🏛️ Aristotle agent is now active and listening for conversations...")
+            
+            # Keep the agent session alive - this is critical for LiveKit agents
+            # The session will continue running and responding to events automatically
+            # We just need to prevent the function from returning
+            try:
+                # Wait indefinitely - the agent will handle events and responses
+                while True:
+                    await asyncio.sleep(1.0)
+            except (KeyboardInterrupt, asyncio.CancelledError):
+                logger.info("🔚 Aristotle agent session interrupted")
+            except Exception as session_error:
+                logger.error(f"❌ Agent session error: {session_error}")
+            finally:
+                logger.info("🔚 Aristotle agent session ended")
 
     except Exception as e:
         logger.error(f"❌ Error in Aristotle agent session: {e}")
