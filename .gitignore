@@ -100,7 +100,6 @@ coverage/
 
 # TaskMaster (keep the important files)
 .taskmaster/
-tasks.json
 tasks/ "sage-ai-backend/API Keys ENV.env.txt"
 
 # Added by Task Master AI
@@ -117,3 +116,7 @@ dev-debug.log
 *.sln
 *.sw?
 # OS specific
+
+# Task files
+# tasks.json
+# tasks/ 
