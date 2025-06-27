@@ -33,11 +33,11 @@ try:
     from livekit.agents import UserStateChangedEvent, AgentStateChangedEvent
     from livekit import rtc  # For audio track handling
     logger.info("✅ LiveKit Agents core successfully imported")
-    
+
     # NOTE: Transcription is handled automatically by the Agent framework
     # No need for manual STTSegmentsForwarder - LiveKit handles this internally
     logger.info("📝 Transcription will be handled by Agent framework automatically")
-        
+
 except ImportError as e:
     logger.error(f"❌ Failed to import LiveKit Agents: {e}")
     sys.exit(1)
@@ -50,7 +50,7 @@ try:
 except ImportError as e:
     logger.warning(f"⚠️ Knowledge system not available: {e}")
     KNOWLEDGE_AVAILABLE = False
-    
+
 # Define global variables for agent state
 agent_context = {
     "room_name": None,
@@ -63,6 +63,7 @@ agent_context = {
 # Initialize Socrates' knowledge manager
 _socrates_knowledge = None
 
+
 def get_socrates_knowledge_manager():
     """Get or create the knowledge manager for Socrates"""
     global _socrates_knowledge
@@ -71,22 +72,23 @@ def get_socrates_knowledge_manager():
         _socrates_knowledge.load_documents()
     return _socrates_knowledge
 
+
 async def get_agent_knowledge(agent_name, query, max_items=3):
     """Simple knowledge retrieval using file-based storage"""
     try:
         if not KNOWLEDGE_AVAILABLE:
             return []
-            
+
         # Get the knowledge manager
         knowledge_manager = get_socrates_knowledge_manager()
-        
+
         if not knowledge_manager.is_ready():
             logger.warning(f"📚 Knowledge manager not ready for {agent_name}")
             return []
-        
+
         # Search for relevant knowledge
         results = knowledge_manager.search_knowledge(query, max_results=max_items)
-        
+
         if results:
             logger.debug(f"📚 Retrieved {len(results)} knowledge items for {agent_name}")
             return [
@@ -100,7 +102,7 @@ async def get_agent_knowledge(agent_name, query, max_items=3):
         else:
             logger.debug(f"🔍 No relevant knowledge found for query: {query[:50]}...")
             return []
-        
+
     except Exception as e:
         logger.error(f"Error in knowledge retrieval for {agent_name}: {e}")
         return []
@@ -109,7 +111,6 @@ async def get_agent_knowledge(agent_name, query, max_items=3):
 try:
     from supabase_memory_manager import (
         create_or_get_debate_room,
-        store_debate_segment,
         get_debate_memory,
         SUPABASE_AVAILABLE
     )
@@ -118,7 +119,9 @@ except ImportError as e:
     logger.warning(f"⚠️ Supabase memory system not available: {e}")
     SUPABASE_AVAILABLE = False
 
+
 # Add conversation coordinator (shared with moderator)
+
 @dataclass
 class ConversationState:
     """Shared state for coordinating between agents"""
@@ -128,12 +131,14 @@ class ConversationState:
     intervention_count: int = 0
     conversation_lock: threading.Lock = threading.Lock()
 
+
 # Global conversation coordinator
 conversation_state = ConversationState()
 
+
 class DebatePhilosopherAgent:
     """Helper class for agent coordination and state management"""
-    
+
     def __init__(self):
         self.agent_name = "socrates"
         logger.info("🤔 Socrates (Inquisitive Challenger) Agent helper initialized")
@@ -141,33 +146,33 @@ class DebatePhilosopherAgent:
     async def check_speaking_permission(self, session) -> bool:
         """Check if it's appropriate for this agent to speak"""
         import time
-        
+
         with conversation_state.conversation_lock:
             current_time = time.time()
-            
+
             # Don't speak if user is currently speaking
             if conversation_state.user_speaking:
                 return False
-            
+
             # Don't speak if other agent is active
             if conversation_state.active_speaker and conversation_state.active_speaker != self.agent_name:
                 return False
-            
-            # Rate limiting: don't intervene too frequently  
+
+            # Rate limiting: don't intervene too frequently
             if current_time - conversation_state.last_intervention_time < 8.0:  # 8 second minimum between interventions
                 return False
-            
+
             # Escalating delay: wait longer after each intervention
             min_delay = 8.0 + (conversation_state.intervention_count * 3.0)  # 8s, 11s, 14s, etc.
             if current_time - conversation_state.last_intervention_time < min_delay:
                 return False
-            
+
             return True
 
     async def claim_speaking_turn(self):
         """Claim the speaking turn for this agent"""
         import time
-        
+
         with conversation_state.conversation_lock:
             conversation_state.active_speaker = self.agent_name
             conversation_state.last_intervention_time = time.time()
@@ -184,29 +189,30 @@ class DebatePhilosopherAgent:
 # Create philosopher agent helper instance
 philosopher_agent_helper = DebatePhilosopherAgent()
 
+
 # Now define the function tools as standalone functions that can be passed to Agent
 @function_tool
 async def access_philosophical_knowledge(context, query: str, approach: str = "socratic"):
     """Access specialized philosophical knowledge for Socratic questioning and wisdom
-    
+
     Args:
         query: Question or topic to explore philosophically
         approach: Type of approach (socratic, compassionate)
     """
     if not KNOWLEDGE_AVAILABLE:
         return {"knowledge": "Knowledge system not available", "sources": []}
-        
+
     try:
         # Choose knowledge source based on approach
         knowledge_source = "socrates"  # Default to Socratic knowledge
         if approach == "compassionate":
             knowledge_source = "socrates"  # Still use Socrates but could be Buddha-focused
-        
+
         knowledge_items = await get_agent_knowledge(knowledge_source, query, max_items=3)
-        
+
         if knowledge_items:
             knowledge_text = "\n\n".join([
-                f"Source: {item['source']}\n{item['content'][:400]}..." 
+                f"Source: {item['source']}\n{item['content'][:400]}..."
                 for item in knowledge_items
             ])
             return {
@@ -216,21 +222,22 @@ async def access_philosophical_knowledge(context, query: str, approach: str = "s
             }
         else:
             return {"knowledge": "No relevant philosophical knowledge found", "sources": []}
-            
+
     except Exception as e:
         logger.error(f"Knowledge access error: {e}")
         return {"error": f"Knowledge access failed: {str(e)}"}
 
+
 @function_tool
 async def suggest_philosophical_question(context, topic: str, approach: str = "socratic"):
     """Suggest philosophical questions to deepen the discussion
-    
+
     Args:
         topic: Current discussion topic or statement
         approach: Type of questioning (socratic, analytical, compassionate)
     """
     import random
-    
+
     question_templates = {
         "socratic": [
             f"What assumptions underlie the idea that {topic}?",
@@ -254,15 +261,16 @@ async def suggest_philosophical_question(context, topic: str, approach: str = "s
             f"What would a middle path look like for {topic}?"
         ]
     }
-    
+
     questions = question_templates.get(approach, question_templates["socratic"])
     suggested = random.choice(questions)
-    
+
     return {
         "question": suggested,
         "approach": approach.title(),
         "type": f"{approach.title()} Inquiry"
     }
+
 
 @function_tool
 async def get_debate_topic(context):
@@ -270,69 +278,103 @@ async def get_debate_topic(context):
     topic = os.getenv("DEBATE_TOPIC", "The impact of AI on society")
     return f"Current debate topic: {topic}"
 
+
+async def process_audio_stream(audio_stream, participant):
+    """Process audio frames from a participant's audio stream"""
+    try:
+        logger.info(f"🎵 Starting audio processing for {participant.identity}")
+        async for audio_frame in audio_stream:
+            # Log that we're receiving audio (but don't spam the logs)
+            if hasattr(process_audio_stream, '_frame_count'):
+                process_audio_stream._frame_count += 1
+            else:
+                process_audio_stream._frame_count = 1
+
+            # Log every 100th frame to confirm audio is flowing
+            if process_audio_stream._frame_count % 100 == 0:
+                logger.debug(f"🎵 Received {process_audio_stream._frame_count} audio frames from {participant.identity}")
+
+            # Here we could process the audio frame if needed
+            # For now, the main purpose is to ensure the audio stream is properly subscribed
+            # The actual speech processing is handled by the Agent framework's STT
+
+    except Exception as e:
+        logger.error(f"❌ Error processing audio stream from {participant.identity}: {e}")
+    finally:
+        logger.info(f"🎵 Audio processing ended for {participant.identity}")
+
+
 async def entrypoint(ctx: JobContext):
     """Debate Philosopher agent entrypoint - joins rooms to provide philosophical inquiry"""
-    
+
     logger.info("🤔 Sage AI Debate Philosopher checking room metadata...")
-        # ENHANCED: Connect with auto_subscribe to hear all participants including other agents  
+    # ENHANCED: Connect with auto_subscribe to hear all participants including other agents
     await ctx.connect(auto_subscribe=AutoSubscribe.SUBSCRIBE_ALL)
-    
+
     # ENHANCED: Set up audio track monitoring for inter-agent coordination
     audio_tracks = {}  # Track audio sources from other participants
     other_agents = set()  # Track other agent identities
-    
+
     # NOTE: Transcription is automatically handled by the Agent framework
     # The Agent pattern with openai.realtime.RealtimeModel includes built-in transcription
     # Clients will receive transcription via LiveKit's native transcription events
-    
-    def on_track_subscribed(track, publication, participant):
+
+    async def on_track_subscribed(track, publication, participant):
         """Handle when we subscribe to an audio track from another participant"""
-        from livekit import rtc  # Import within function scope
-        if track.kind == rtc.TrackKind.KIND_AUDIO:
+        if track.kind == rtc.TrackKind.AUDIO:
             logger.info(f"🎧 Socrates subscribed to audio track from: {participant.identity}")
-            
+
             # Store the audio track for potential processing
             audio_tracks[participant.identity] = track
-            
+
             # NOTE: Transcription is handled automatically by the Agent framework
-            
+
             # Check if this is another agent (Aristotle)
             if "aristotle" in participant.identity.lower():
                 other_agents.add(participant.identity)
                 logger.info(f"🤝 Socrates detected Aristotle agent: {participant.identity}")
-    
-    def on_track_unsubscribed(track, publication, participant):
+
+            # Process audio stream from this participant
+            try:
+                audio_stream = rtc.AudioStream(track)
+                logger.info(f"🎵 Created audio stream for {participant.identity}")
+
+                # Start processing audio frames in the background
+                asyncio.create_task(process_audio_stream(audio_stream, participant))
+            except Exception as e:
+                logger.error(f"❌ Failed to create audio stream for {participant.identity}: {e}")
+
+    async def on_track_unsubscribed(track, publication, participant):
         """Handle when we unsubscribe from an audio track"""
-        from livekit import rtc  # Import within function scope
-        if track.kind == rtc.TrackKind.KIND_AUDIO:
+        if track.kind == rtc.TrackKind.AUDIO:
             logger.info(f"🔇 Socrates unsubscribed from audio track: {participant.identity}")
             audio_tracks.pop(participant.identity, None)
             other_agents.discard(participant.identity)
-    
+
     def on_participant_connected(participant):
         """Handle when a new participant joins"""
         logger.info(f"👋 Socrates detected new participant: {participant.identity}")
-        
+
         # If it's Aristotle, add to our tracking
         if "aristotle" in participant.identity.lower():
             other_agents.add(participant.identity)
             logger.info(f"🤝 Socrates added Aristotle to coordination list: {participant.identity}")
-    
+
     def on_participant_disconnected(participant):
         """Handle when a participant leaves"""
         logger.info(f"👋 Socrates detected participant left: {participant.identity}")
         audio_tracks.pop(participant.identity, None)
         other_agents.discard(participant.identity)
-    
+
     # Register audio track event handlers
     ctx.room.on("track_subscribed", on_track_subscribed)
     ctx.room.on("track_unsubscribed", on_track_unsubscribed)
     ctx.room.on("participant_connected", on_participant_connected)
     ctx.room.on("participant_disconnected", on_participant_disconnected)
-    
+
     # ENHANCED TOPIC DETECTION - Check job metadata first (from agent dispatch)
     topic = "The impact of AI on society"  # Default fallback
-    
+
     # Method 1: Check job metadata (primary method for agent dispatch)
     try:
         if hasattr(ctx, 'job') and ctx.job and hasattr(ctx.job, 'metadata') and ctx.job.metadata:
@@ -348,7 +390,7 @@ async def entrypoint(ctx: JobContext):
             logger.info("📭 No job metadata available")
     except (json.JSONDecodeError, Exception) as e:
         logger.error(f"❌ Failed to parse job metadata: {e}")
-    
+
     # Method 2: Check room metadata (fallback)
     room_metadata = None
     try:
@@ -361,28 +403,28 @@ async def entrypoint(ctx: JobContext):
                 logger.info(f"✅ Socrates found topic from room metadata: {topic}")
     except Exception as e:
         logger.warning(f"Could not parse room metadata: {e}")
-    
+
     # Method 3: Environment variable (final fallback)
     if topic == "The impact of AI on society":
         env_topic = os.getenv("DEBATE_TOPIC")
         if env_topic:
             topic = env_topic
             logger.info(f"✅ Using environment topic: {topic}")
-    
+
     logger.info(f"🎯 SOCRATES FINAL TOPIC: {topic}")
-    
+
     # REMOVED RESTRICTIVE ROOM FILTERING - Agents should join all rooms
     # The frontend doesn't set room_type="sage_debate" metadata, so this was blocking all rooms
     logger.info(f"✅ Joining room: {ctx.room.name}")
-    
+
     logger.info(f"✅ Philosopher connected to room: {ctx.room.name}")
     room_name = ctx.room.name
     logger.info(f"🤔 Exploring philosophical dimensions of: {topic}")
-    
+
     # Initialize memory if available
     room_id = None
     memory_context = ""
-    
+
     if SUPABASE_AVAILABLE:
         try:
             room_id = await create_or_get_debate_room(
@@ -390,18 +432,18 @@ async def entrypoint(ctx: JobContext):
                 debate_topic=topic,
                 livekit_token=room_name  # Using room_name as token
             )
-            
+
             memory_data = await get_debate_memory(room_id)
             if memory_data["recent_segments"]:
                 logger.info(f"📚 Loaded {len(memory_data['recent_segments'])} conversation segments")
                 recent_summary = memory_data.get("session_summaries", [])
                 if recent_summary:
                     memory_context = f"\n\nPrevious Discussion Context:\n{recent_summary[-1]}"
-            
+
             logger.info(f"✅ Memory initialized for room {room_id}")
         except Exception as e:
             logger.warning(f"⚠️ Memory initialization failed: {e}")
-    
+
     # Create philosopher agent with enhanced instructions
     enhanced_instructions = f"""You are Socrates, the Sage AI Debate Philosopher. You embody the inquisitive challenger with wisdom and questions, combining philosophical depth with compassionate inquiry.
 
@@ -464,7 +506,7 @@ Remember: Your PRIMARY goal is to deepen human understanding through carefully t
             suggest_philosophical_question
         ]
     )
-    
+
     # Configure LLM for philosophical conversation
     # Using standard LLM instead of RealtimeModel to avoid function tool conflicts
     llm = openai.LLM(
@@ -477,7 +519,7 @@ Remember: Your PRIMARY goal is to deepen human understanding through carefully t
         model="tts-1",
         voice="echo"  # Different voice from Aristotle - echo is warmer, good for Socrates
     )
-    
+
     # Create agent session with IMPROVED turn detection and conversation coordination
     session = AgentSession(
         stt=openai.STT(),  # Add STT for voice input processing
@@ -491,7 +533,7 @@ Remember: Your PRIMARY goal is to deepen human understanding through carefully t
         allow_interruptions=True,
         min_interruption_duration=1.2,  # Require longer speech before allowing interruption
     )
-    
+
     # Set up conversation state monitoring
     def on_user_state_changed(ev: UserStateChangedEvent):
         """Monitor user speaking state for coordination"""
@@ -512,7 +554,7 @@ Remember: Your PRIMARY goal is to deepen human understanding through carefully t
     def on_agent_state_changed(ev: AgentStateChangedEvent):
         """Monitor agent speaking state for coordination"""
         agent_name = "socrates"
-        
+
         if ev.new_state == "speaking":
             with conversation_state.conversation_lock:
                 conversation_state.active_speaker = agent_name
@@ -526,21 +568,21 @@ Remember: Your PRIMARY goal is to deepen human understanding through carefully t
     # Register event handlers for conversation coordination
     session.on("user_state_changed", on_user_state_changed)
     session.on("agent_state_changed", on_agent_state_changed)
-    
+
     # Start session with the agent instance
     await session.start(
         agent=philosopher_agent,
         room=ctx.room
     )
-    
+
     logger.info("✅ Debate Philosopher is ready to explore deeper questions!")
-    
+
     # Socrates does NOT give an opening greeting - Aristotle handles that
     # This prevents both agents from speaking at startup
     logger.info("🤫 Socrates waiting silently for philosophical opportunities...")
-    
+
     logger.info("🧠 Socrates agent is now active and listening for philosophical opportunities...")
-    
+
     # Keep the agent session alive - this is critical for LiveKit agents
     # The session will continue running and responding to events automatically
     # We just need to prevent the function from returning
@@ -555,17 +597,18 @@ Remember: Your PRIMARY goal is to deepen human understanding through carefully t
     finally:
         logger.info("🔚 Socrates agent session ended")
 
+
 def main():
     """Main function"""
     required_vars = ["LIVEKIT_API_KEY", "LIVEKIT_API_SECRET", "LIVEKIT_URL", "OPENAI_API_KEY"]
     missing_vars = [var for var in required_vars if not os.getenv(var)]
-    
+
     if missing_vars:
         logger.error(f"❌ Missing environment variables: {missing_vars}")
         sys.exit(1)
-    
+
     logger.info("🚀 Starting Debate Philosopher Agent...")
-    
+
     cli.run_app(
         WorkerOptions(
             entrypoint_fnc=entrypoint,
@@ -574,4 +617,4 @@ def main():
     )
 
 if __name__ == "__main__":
-    main() 
+    main()
