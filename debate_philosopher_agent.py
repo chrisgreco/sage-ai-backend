@@ -496,7 +496,9 @@ COMMUNICATION STYLE (When you do speak):
 - Speak with gentle curiosity - invite exploration, don't lecture
 - **NO lengthy explanations** - the power is in the question itself
 
-Remember: Your PRIMARY goal is to deepen human understanding through carefully timed, profound questions. One perfect question that opens new thinking is worth more than many words. Wait for the right moment when a question could truly illuminate."""
+Remember: Your PRIMARY goal is to deepen human understanding through carefully timed,
+profound questions. One perfect question that opens new thinking is worth more than many
+words. Wait for the right moment when a question could truly illuminate."""
 
     # Create the Agent instance with instructions and function tools (LiveKit pattern)
     philosopher_agent = Agent(

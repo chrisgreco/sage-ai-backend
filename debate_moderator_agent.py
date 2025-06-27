@@ -199,16 +199,16 @@ async def suggest_process_intervention(context, situation: str):
     """
     interventions = {
         "dominating_speaker": ("Try: 'Thank you [Name]. Let's hear from someone who hasn't "
-                              "spoken yet on this point.'"),
+                               "spoken yet on this point.'"),
         "off_topic": ("Try: 'That's an interesting point. How does it connect to our main "
-                     "question about [topic]?'"),
+                      "question about [topic]?'"),
         "personal_attack": ("Try: 'Let's focus on the ideas rather than personal "
-                           "characterizations. What specifically about that position concerns you?'"),
+                            "characterizations. What specifically about that position concerns you?'"),
         "silence": "Try: 'I'm sensing some reflection time. [Name], what questions is this raising for you?'",
         "confusion": ("Try: 'Let me see if I can summarize what I'm hearing... "
-                     "Does that capture the key points?'"),
+                      "Does that capture the key points?'"),
         "polarization": ("Try: 'I'm hearing some different values here. Are there any shared "
-                        "concerns we might build on?'")
+                         "concerns we might build on?'")
     }
 
     # Simple keyword matching for demonstration
@@ -216,7 +216,8 @@ async def suggest_process_intervention(context, situation: str):
         if key.replace("_", " ") in situation.lower():
             return f"Moderation suggestion: {suggestion}"
 
-    return "Consider asking an open-ended question to refocus the conversation, or invite participation from a different perspective."
+    return ("Consider asking an open-ended question to refocus the conversation, "
+            "or invite participation from a different perspective.")
 
 
 @function_tool
@@ -291,13 +292,17 @@ async def research_live_data(context, query: str, research_type: str = "general"
     try:
         # Format research prompt based on type
         if research_type == "academic":
-            research_prompt = f"Research this topic with academic sources: {query}\nProvide scholarly perspective with citations."
+            research_prompt = (f"Research this topic with academic sources: {query}\n"
+                               "Provide scholarly perspective with citations.")
         elif research_type == "news":
-            research_prompt = f"Find recent news and current developments about: {query}\nFocus on latest events and trends."
+            research_prompt = (f"Find recent news and current developments about: {query}\n"
+                               "Focus on latest events and trends.")
         elif research_type == "technical":
-            research_prompt = f"Provide technical analysis and expert insights on: {query}\nInclude technical details and specifications."
+            research_prompt = (f"Provide technical analysis and expert insights on: {query}\n"
+                               "Include technical details and specifications.")
         else:
-            research_prompt = f"Research comprehensive information about: {query}\nProvide current, accurate information with sources."
+            research_prompt = (f"Research comprehensive information about: {query}\n"
+                               "Provide current, accurate information with sources.")
 
         # Use async context manager for proper resource cleanup
         async with openai.LLM.with_perplexity(
@@ -445,7 +450,9 @@ async def entrypoint(ctx: JobContext):
             }
 
             # Identify other agents for coordination
-            if participant.identity and ("socrates" in participant.identity.lower() or "philosopher" in participant.identity.lower()):
+            if (participant.identity and
+                    ("socrates" in participant.identity.lower() or
+                     "philosopher" in participant.identity.lower())):
                 other_agents.add(participant.identity)
                 logger.info(f"🤝 Aristotle detected Socrates agent: {participant.identity}")
 
@@ -470,7 +477,9 @@ async def entrypoint(ctx: JobContext):
         logger.info(f"👋 Participant connected: {participant.identity}")
 
         # Identify agent types for coordination
-        if participant.identity and ("socrates" in participant.identity.lower() or "philosopher" in participant.identity.lower()):
+        if (participant.identity and
+                ("socrates" in participant.identity.lower() or
+                 "philosopher" in participant.identity.lower())):
             other_agents.add(participant.identity)
             logger.info(f"🤝 Aristotle detected Socrates agent joined: {participant.identity}")
 
@@ -571,7 +580,7 @@ Use your available function tools to research claims and access knowledge when n
 
             # Connect memory manager if available
             try:
-                from supabase_memory_manager import memory_manager, SUPABASE_AVAILABLE
+                from supabase_memory_manager import SUPABASE_AVAILABLE
                 if SUPABASE_AVAILABLE:
                     logger.info("🧠 Memory manager connected to Aristotle")
                 else:
