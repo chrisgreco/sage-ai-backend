@@ -186,6 +186,7 @@ class DebatePhilosopherAgent:
                 conversation_state.active_speaker = None
                 logger.info(f"🔇 {self.agent_name.capitalize()} released speaking turn")
 
+
 # Create philosopher agent helper instance
 philosopher_agent_helper = DebatePhilosopherAgent()
 
