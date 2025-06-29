@@ -432,10 +432,10 @@ async def entrypoint(ctx: JobContext):
 
     # NOTE: Transcription is handled by Socrates agent to avoid duplicates
 
-    async def on_track_subscribed(track, publication, participant):
+    def on_track_subscribed(track, publication, participant):
         """Handle when we subscribe to an audio track from another participant"""
         if track.kind == rtc.TrackKind.AUDIO:
-            logger.info(f"🎧 Aristotle subscribed to audio track from: {participant.identity}")
+            logger.info(f"🎧 Moderator subscribed to audio track from: {participant.identity}")
 
             # Store the audio track for coordination
             audio_tracks[participant.identity] = {
@@ -449,14 +449,14 @@ async def entrypoint(ctx: JobContext):
                     ("socrates" in participant.identity.lower() or
                      "philosopher" in participant.identity.lower())):
                 other_agents.add(participant.identity)
-                logger.info(f"🤝 Aristotle detected Socrates agent: {participant.identity}")
+                logger.info(f"🤝 Moderator detected Socrates agent: {participant.identity}")
 
             # Process audio stream from this participant
             try:
                 audio_stream = rtc.AudioStream(track)
                 logger.info(f"🎵 Created audio stream for {participant.identity}")
 
-                # Start processing audio frames in the background
+                # Start processing audio frames in the background (use create_task for async)
                 asyncio.create_task(process_audio_stream(audio_stream, participant))
             except Exception as e:
                 logger.error(f"❌ Failed to create audio stream for {participant.identity}: {e}")
@@ -465,7 +465,7 @@ async def entrypoint(ctx: JobContext):
         """Handle when we unsubscribe from an audio track"""
         if participant.identity in audio_tracks:
             del audio_tracks[participant.identity]
-            logger.info(f"🔇 Aristotle unsubscribed from: {participant.identity}")
+            logger.info(f"🔇 Moderator unsubscribed from: {participant.identity}")
 
     def on_participant_connected(participant):
         """Handle when a participant connects to the room"""
@@ -476,7 +476,7 @@ async def entrypoint(ctx: JobContext):
                 ("socrates" in participant.identity.lower() or
                  "philosopher" in participant.identity.lower())):
             other_agents.add(participant.identity)
-            logger.info(f"🤝 Aristotle detected Socrates agent joined: {participant.identity}")
+            logger.info(f"🤝 Moderator detected Socrates agent joined: {participant.identity}")
 
     def on_participant_disconnected(participant):
         """Handle when a participant disconnects"""
