@@ -19,12 +19,16 @@ from typing import Optional
 # Load environment variables first
 load_dotenv()
 
-# Configure logging
+# Configure logging with more detailed debugging
 logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    level=logging.DEBUG,  # More verbose logging for debugging
+    format='%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+# Add error handling for API connections
+import traceback
+from contextlib import asynccontextmanager
 
 # LiveKit Agents imports
 try:
@@ -160,8 +164,13 @@ class DebateModeratorAgent:
 @function_tool
 async def get_debate_topic(context):
     """Get the current debate topic"""
-    topic = os.getenv("DEBATE_TOPIC", "The impact of AI on society")
-    return f"Current debate topic: {topic}"
+    try:
+        topic = os.getenv("DEBATE_TOPIC", "The impact of AI on society")
+        logger.debug(f"Retrieved debate topic: {topic}")
+        return f"Current debate topic: {topic}"
+    except Exception as e:
+        logger.error(f"Error getting debate topic: {e}")
+        return "Error: Could not retrieve debate topic"
 
 @function_tool
 async def access_facilitation_knowledge(context, query: str):
@@ -171,6 +180,8 @@ async def access_facilitation_knowledge(context, query: str):
         query: Question about moderation techniques, parliamentary procedure, or facilitation
     """
     try:
+        logger.debug(f"Accessing facilitation knowledge for query: {query}")
+        
         # Query parliamentary and facilitation knowledge using updated system
         knowledge_items = await get_agent_knowledge("aristotle", query, max_items=3)
 
@@ -179,16 +190,19 @@ async def access_facilitation_knowledge(context, query: str):
                 f"Source: {item['title']} ({item['source']})\n{item['content'][:400]}..."
                 for item in knowledge_items
             ])
+            logger.debug(f"Found {len(knowledge_items)} knowledge items")
             return {
                 "knowledge": knowledge_text,
                 "sources": [f"{item['title']} ({item['source']})" for item in knowledge_items],
                 "relevance_scores": [item.get('relevance_score', 0.0) for item in knowledge_items]
             }
         else:
+            logger.debug("No facilitation knowledge found")
             return {"knowledge": "No relevant facilitation knowledge found", "sources": []}
 
     except Exception as e:
         logger.error(f"Knowledge access error: {e}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return {"error": f"Knowledge access failed: {str(e)}"}
 
 @function_tool
@@ -637,6 +651,9 @@ Use your available function tools to research claims and access knowledge when n
     
     temp = persona_temperature.get(moderator_persona.lower(), 0.5)
     
+    # Configure LLM with comprehensive error handling and fallbacks
+    research_llm = None
+    
     if PERPLEXITY_AVAILABLE:
         try:
             research_llm = openai.LLM.with_perplexity(
@@ -645,10 +662,30 @@ Use your available function tools to research claims and access knowledge when n
             )
             logger.info(f"✅ Using Perplexity LLM for {moderator_persona} (temp: {temp})")
         except Exception as e:
-            logger.warning(f"⚠️ Could not configure Perplexity, using realtime model: {e}")
-            research_llm = openai.LLM(model="gpt-4o-realtime-preview", temperature=temp)
-    else:
-        research_llm = openai.LLM(model="gpt-4o-realtime-preview", temperature=temp)
+            logger.warning(f"⚠️ Could not configure Perplexity: {e}")
+            logger.warning(f"Perplexity error traceback: {traceback.format_exc()}")
+            research_llm = None
+    
+    # Fallback to OpenAI if Perplexity fails or is unavailable
+    if research_llm is None:
+        try:
+            research_llm = openai.LLM(
+                model="gpt-4o-realtime-preview", 
+                temperature=temp,
+                max_tokens=4000,  # Add explicit limits to prevent runaway costs
+                timeout=30.0  # Add timeout to prevent hanging
+            )
+            logger.info(f"✅ Using OpenAI GPT-4o for {moderator_persona} (temp: {temp})")
+        except Exception as e:
+            logger.error(f"❌ Failed to configure OpenAI LLM: {e}")
+            logger.error(f"OpenAI error traceback: {traceback.format_exc()}")
+            # Try basic configuration as last resort
+            try:
+                research_llm = openai.LLM(model="gpt-4o-realtime-preview", temperature=0.5)
+                logger.warning(f"⚠️ Using basic OpenAI configuration as fallback")
+            except Exception as fallback_error:
+                logger.error(f"❌ Complete LLM configuration failure: {fallback_error}")
+                raise RuntimeError(f"Could not configure any LLM: {e}")
 
     # Select voice based on persona
     persona_voices = {
@@ -662,18 +699,27 @@ Use your available function tools to research claims and access knowledge when n
 
     # Use async context manager for TTS to ensure proper cleanup
     try:
+        logger.info(f"🎤 Initializing TTS with voice: {selected_voice}")
         async with openai.TTS(
             model="tts-1",
             voice=selected_voice
         ) as tts:
+            logger.info(f"✅ TTS initialized successfully")
 
-            # Create agent session with correct LiveKit 1.0 pattern
-            agent_session = AgentSession(
-                stt=openai.STT(),  # Add STT for voice input processing
-                llm=research_llm,
-                tts=tts,
-                vad=silero.VAD.load()  # Add VAD for voice activity detection
-            )
+            # Create agent session with comprehensive error handling
+            try:
+                logger.info(f"🤖 Creating AgentSession for {moderator_persona}")
+                agent_session = AgentSession(
+                    stt=openai.STT(),  # Add STT for voice input processing
+                    llm=research_llm,
+                    tts=tts,
+                    vad=silero.VAD.load()  # Add VAD for voice activity detection
+                )
+                logger.info(f"✅ AgentSession created successfully")
+            except Exception as session_error:
+                logger.error(f"❌ Failed to create AgentSession: {session_error}")
+                logger.error(f"Session error traceback: {traceback.format_exc()}")
+                raise RuntimeError(f"Could not create agent session: {session_error}")
 
             logger.info(f"🎯 {moderator_persona} agent session created successfully")
 
@@ -722,11 +768,18 @@ Use your available function tools to research claims and access knowledge when n
                             conversation_state.active_speaker = None
                             logger.info(f"🔇 {moderator_persona} finished speaking")
 
-            # Start the moderation session
-            await agent_session.start(
-                agent=moderator,
-                room=ctx.room
-            )
+            # Start the moderation session with error handling
+            try:
+                logger.info(f"🚀 Starting agent session for {moderator_persona}")
+                await agent_session.start(
+                    agent=moderator,
+                    room=ctx.room
+                )
+                logger.info(f"✅ Agent session started successfully")
+            except Exception as start_error:
+                logger.error(f"❌ Failed to start agent session: {start_error}")
+                logger.error(f"Start error traceback: {traceback.format_exc()}")
+                raise RuntimeError(f"Could not start agent session: {start_error}")
 
             logger.info(f"🏛️ Debate Moderator '{moderator_persona}' active for topic: {debate_topic}")
 
@@ -753,9 +806,16 @@ I am Aristotle, your logical debate moderator. I will help ensure our discussion
 
 My role is to fact-check arguments, request sources for claims, and assess evidence. Let's begin with a thoughtful exploration of this important topic."""
 
-            initial_prompt = get_persona_greeting(moderator_persona, debate_topic)
-
-            await agent_session.generate_reply(instructions=initial_prompt)
+            try:
+                initial_prompt = get_persona_greeting(moderator_persona, debate_topic)
+                logger.info(f"🎭 Generated greeting for {moderator_persona}")
+                
+                await agent_session.generate_reply(instructions=initial_prompt)
+                logger.info(f"✅ Initial greeting sent successfully")
+            except Exception as greeting_error:
+                logger.error(f"❌ Failed to generate initial greeting: {greeting_error}")
+                logger.error(f"Greeting error traceback: {traceback.format_exc()}")
+                # Don't raise here - the agent can still function without initial greeting
 
             logger.info(f"🏛️ {moderator_persona} agent is now active and listening for conversations...")
 
