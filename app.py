@@ -151,12 +151,14 @@ class DebateRequest(BaseModel):
     topic: str = "The impact of AI on society"  # Make optional with default
     room_name: str = None
     participant_name: str = None
+    moderator: str = "Aristotle"  # Default moderator persona
 
 # Add a more flexible model for debugging
 class FlexibleDebateRequest(BaseModel):
     topic: str = None
     room_name: str = None
     participant_name: str = None
+    moderator: str = None
     # Allow any additional fields for debugging
     class Config:
         extra = "allow"
@@ -272,6 +274,7 @@ async def create_debate(request: DebateRequest):
         logger.info(f"Request topic: {request.topic}")
         logger.info(f"Request room_name: {request.room_name}")
         logger.info(f"Request participant_name: {request.participant_name}")
+        logger.info(f"Request moderator: {request.moderator}")
         
         # Debug logging for troubleshooting
         logger.info(f"DEBUG - livekit_available: {livekit_available}")
@@ -300,11 +303,21 @@ async def create_debate(request: DebateRequest):
         participant_identity = request.participant_name or "participant"
         participant_display_name = request.participant_name or "Participant"
         
-        # Create a token for the participant with room join permissions
+        # Validate moderator selection
+        valid_moderators = ["Socrates", "Aristotle", "Buddha"]
+        moderator = request.moderator if request.moderator in valid_moderators else "Aristotle"
+        
+        # Include moderator and topic in token metadata
+        metadata = json.dumps({
+            "moderator": moderator,
+            "topic": request.topic
+        })
+        
+        # Create a token for the participant with room join permissions and metadata
         token = api.AccessToken(
             api_key=LIVEKIT_API_KEY,
             api_secret=LIVEKIT_API_SECRET
-        ).with_identity(participant_identity).with_name(participant_display_name).with_grants(
+        ).with_identity(participant_identity).with_name(participant_display_name).with_metadata(metadata).with_grants(
             api.VideoGrants(
                 room_join=True,
                 room_create=True,
@@ -321,7 +334,8 @@ async def create_debate(request: DebateRequest):
             "room_name": room_name,
             "livekit_url": LIVEKIT_URL,
             "token": token,
-            "participant_name": participant_display_name
+            "participant_name": participant_display_name,
+            "moderator": moderator
         }
     except Exception as e:
         logger.error(f"Error creating debate: {str(e)}")
@@ -440,7 +454,7 @@ async def monitor_agent_connection(room_name: str, process_id: int, max_wait_tim
 @app.post("/launch-ai-agents")
 async def launch_ai_agents(request: DebateRequest):
     try:
-        logger.info(f"Creating LiveKit room for debate: {request.room_name}, topic: {request.topic}")
+        logger.info(f"Creating LiveKit room for debate: {request.room_name}, topic: {request.topic}, moderator: {request.moderator}")
         
         if not all([LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET]):
             return JSONResponse(
@@ -450,88 +464,71 @@ async def launch_ai_agents(request: DebateRequest):
         
         room_name = request.room_name or f"debate-{request.topic.replace(' ', '-').lower()}"
         
-        # Create LiveKit room and explicitly dispatch agents using AgentDispatchService
+        # Validate moderator selection
+        valid_moderators = ["Socrates", "Aristotle", "Buddha"]
+        moderator = request.moderator if request.moderator in valid_moderators else "Aristotle"
+        
+        # Create LiveKit room and dispatch single agent with moderator persona
         try:
-            # Initialize LiveKit services
-            # Initialize LiveKit API client (proper way)
+            # Initialize LiveKit API client
             livekit_api = api.LiveKitAPI(
                 url=LIVEKIT_URL,
                 api_key=LIVEKIT_API_KEY,
                 api_secret=LIVEKIT_API_SECRET
             )
             
-            # Room should already exist from /debate endpoint, just dispatch agents
-            logger.info(f"🔍 Dispatching agents to existing room: {room_name}")
+            # Room should already exist from /debate endpoint, just dispatch single agent
+            logger.info(f"🔍 Dispatching single agent with {moderator} persona to room: {room_name}")
             
             # Import the agent dispatch protocol classes
             from livekit.protocol import agent_dispatch
             
-            # Explicitly dispatch Aristotle agent using proper protocol
-            aristotle_dispatch_req = agent_dispatch.CreateAgentDispatchRequest(
+            # Dispatch single agent (using Aristotle codebase) with moderator persona
+            agent_dispatch_req = agent_dispatch.CreateAgentDispatchRequest(
                 room=room_name,
-                agent_name="aristotle",
+                agent_name="moderator",  # Single agent name
                 metadata=json.dumps({
-                    "role": "logical_analyst", 
+                    "moderator": moderator,
                     "debate_topic": request.topic,
-                    "agent_type": "aristotle"
+                    "agent_type": "moderator"
                 })
             )
             
-            aristotle_job = await livekit_api.agent_dispatch.create_dispatch(aristotle_dispatch_req)
-            logger.info(f"✅ Aristotle explicitly dispatched to room {room_name}, dispatch ID: {aristotle_job.id}")
-            
-            # Explicitly dispatch Socrates agent using proper protocol
-            socrates_dispatch_req = agent_dispatch.CreateAgentDispatchRequest(
-                room=room_name,
-                agent_name="socrates",
-                metadata=json.dumps({
-                    "role": "philosophical_inquirer", 
-                    "debate_topic": request.topic,
-                    "agent_type": "socrates"
-                })
-            )
-            
-            socrates_job = await livekit_api.agent_dispatch.create_dispatch(socrates_dispatch_req)
-            logger.info(f"✅ Socrates explicitly dispatched to room {room_name}, dispatch ID: {socrates_job.id}")
+            agent_job = await livekit_api.agent_dispatch.create_dispatch(agent_dispatch_req)
+            logger.info(f"✅ {moderator} moderator explicitly dispatched to room {room_name}, dispatch ID: {agent_job.id}")
             
             # Store room info for tracking
             active_agents[room_name] = {
                 "room_name": room_name,
                 "topic": request.topic,
+                "moderator": moderator,
                 "created_at": time.time(),
-                "status": "agents_dispatched",
-                "method": "explicit_agent_dispatch",
-                "agents_dispatched": {
-                    "aristotle": {
-                        "dispatch_id": aristotle_job.id,
+                "status": "agent_dispatched",
+                "method": "single_agent_dispatch",
+                "agent_dispatched": {
+                    "moderator": {
+                        "dispatch_id": agent_job.id,
                         "status": "dispatched",
-                        "role": "logical_analyst"
-                    },
-                    "socrates": {
-                        "dispatch_id": socrates_job.id,
-                        "status": "dispatched",
-                        "role": "philosophical_inquirer"
+                        "persona": moderator
                     }
                 }
             }
             
             logger.info(f"🎉 Debate room ready: {room_name}")
-            logger.info(f"📢 Both agents explicitly dispatched to room")
+            logger.info(f"📢 {moderator} moderator dispatched to room")
             
             return {
                 "status": "success",
-                "message": f"Agents dispatched to existing room: {room_name}",
+                "message": f"{moderator} moderator dispatched to room: {room_name}",
                 "room_name": room_name,
                 "topic": request.topic,
-                "method": "explicit_agent_dispatch",
-                "agents_dispatched": {
-                    "aristotle": {
-                        "dispatch_id": aristotle_job.id,
-                        "status": "dispatched"
-                    },
-                    "socrates": {
-                        "dispatch_id": socrates_job.id,
-                        "status": "dispatched"
+                "moderator": moderator,
+                "method": "single_agent_dispatch",
+                "agent_dispatched": {
+                    "moderator": {
+                        "dispatch_id": agent_job.id,
+                        "status": "dispatched",
+                        "persona": moderator
                     }
                 }
             }

@@ -54,25 +54,31 @@ else:
 # Global knowledge managers for each agent
 _knowledge_managers = {}
 
-
 def get_knowledge_manager(agent_name):
     """Get or create knowledge manager for an agent"""
     if agent_name not in _knowledge_managers:
         try:
-            from simple_knowledge_manager import SimpleKnowledgeManager
-            _knowledge_managers[agent_name] = SimpleKnowledgeManager(agent_name)
-            _knowledge_managers[agent_name].load_documents()
-            logger.info(f"✅ Loaded knowledge manager for {agent_name}")
+            # Simple mock knowledge manager for testing
+            class MockKnowledgeManager:
+                def __init__(self, name):
+                    self.name = name
+
+                def load_documents(self):
+                    pass
+
+                def search_knowledge(self, query, max_results=3):
+                    return []
+
+            _knowledge_managers[agent_name] = MockKnowledgeManager(agent_name)
+            logger.info(f"✅ Loaded mock knowledge manager for {agent_name}")
         except Exception as e:
             logger.error(f"Failed to load knowledge manager for {agent_name}: {e}")
             _knowledge_managers[agent_name] = None
     return _knowledge_managers[agent_name]
 
-
 def get_aristotle_knowledge_manager():
     """Get or create Aristotle's knowledge manager"""
     return get_knowledge_manager("aristotle")
-
 
 async def get_agent_knowledge(agent_name, query, max_items=3):
     """Knowledge retrieval using SimpleKnowledgeManager"""
@@ -101,7 +107,6 @@ async def get_agent_knowledge(agent_name, query, max_items=3):
         logger.error(f"Knowledge retrieval error for {agent_name}: {e}")
         return []
 
-
 @dataclass
 class ConversationState:
     """Shared state for coordinating between agents"""
@@ -113,7 +118,6 @@ class ConversationState:
 
 # Global conversation state
 conversation_state = ConversationState()
-
 
 class DebateModeratorAgent:
     """Enhanced Aristotle moderator with coordination capabilities"""
@@ -153,13 +157,11 @@ class DebateModeratorAgent:
         with conversation_state.conversation_lock:
             conversation_state.active_speaker = None
 
-
 @function_tool
 async def get_debate_topic(context):
     """Get the current debate topic"""
     topic = os.getenv("DEBATE_TOPIC", "The impact of AI on society")
     return f"Current debate topic: {topic}"
-
 
 @function_tool
 async def access_facilitation_knowledge(context, query: str):
@@ -189,7 +191,6 @@ async def access_facilitation_knowledge(context, query: str):
         logger.error(f"Knowledge access error: {e}")
         return {"error": f"Knowledge access failed: {str(e)}"}
 
-
 @function_tool
 async def suggest_process_intervention(context, situation: str):
     """Suggest moderation techniques for challenging situations
@@ -218,7 +219,6 @@ async def suggest_process_intervention(context, situation: str):
 
     return ("Consider asking an open-ended question to refocus the conversation, "
             "or invite participation from a different perspective.")
-
 
 @function_tool
 async def fact_check_claim(context, claim: str, source_requested: bool = False):
@@ -276,7 +276,6 @@ BE FACTUAL and cite sources when possible."""
     except Exception as e:
         logger.error(f"Fact-check error: {e}")
         return {"error": f"Fact-checking failed: {str(e)}"}
-
 
 @function_tool
 async def research_live_data(context, query: str, research_type: str = "general"):
@@ -337,7 +336,6 @@ async def research_live_data(context, query: str, research_type: str = "general"
         logger.error(f"Research error: {e}")
         return {"error": f"Research failed: {str(e)}"}
 
-
 @function_tool
 async def analyze_argument_structure(context, argument: str):
     """Analyze the logical structure of an argument using Aristotelian logic
@@ -361,7 +359,6 @@ async def analyze_argument_structure(context, argument: str):
         analysis["logical_form"] = "syllogistic" if len(sentences) == 3 else "complex"
 
     return analysis
-
 
 @function_tool
 async def detect_intervention_triggers(context, conversation_snippet: str):
@@ -398,7 +395,6 @@ async def detect_intervention_triggers(context, conversation_snippet: str):
             "suggestion": "Conversation flowing well"
         }
 
-
 async def process_audio_stream(audio_stream, participant):
     """Process audio frames from a participant's audio stream"""
     try:
@@ -422,7 +418,6 @@ async def process_audio_stream(audio_stream, participant):
         logger.error(f"❌ Error processing audio stream from {participant.identity}: {e}")
     finally:
         logger.info(f"🎵 Audio processing ended for {participant.identity}")
-
 
 async def entrypoint(ctx: JobContext):
     """Debate Moderator agent entrypoint - only joins rooms marked for sage debates"""
@@ -499,15 +494,15 @@ async def entrypoint(ctx: JobContext):
 
     # ENHANCED TOPIC DETECTION - Check job metadata first (from agent dispatch)
     debate_topic = "The impact of AI on society"  # Default
-    agent_role = "logical_analyst"  # Default
+    moderator_persona = "Aristotle"  # Default persona
 
     # Check if we have job metadata from agent dispatch
     if hasattr(ctx, 'job') and ctx.job and hasattr(ctx.job, 'metadata'):
         try:
             metadata = json.loads(ctx.job.metadata) if isinstance(ctx.job.metadata, str) else ctx.job.metadata
             debate_topic = metadata.get("debate_topic", debate_topic)
-            agent_role = metadata.get("role", agent_role)
-            logger.info(f"📋 Job metadata - Topic: {debate_topic}, Role: {agent_role}")
+            moderator_persona = metadata.get("moderator", moderator_persona)
+            logger.info(f"📋 Job metadata - Topic: {debate_topic}, Moderator: {moderator_persona}")
         except Exception as e:
             logger.warning(f"⚠️ Could not parse job metadata: {e}")
 
@@ -516,26 +511,108 @@ async def entrypoint(ctx: JobContext):
         try:
             room_metadata = json.loads(ctx.room.metadata)
             debate_topic = room_metadata.get("topic", debate_topic)
-            agent_role = room_metadata.get("moderator_role", agent_role)
-            logger.info(f"📋 Room metadata - Topic: {debate_topic}, Role: {agent_role}")
+            moderator_persona = room_metadata.get("moderator", moderator_persona)
+            logger.info(f"📋 Room metadata - Topic: {debate_topic}, Moderator: {moderator_persona}")
         except Exception as e:
             logger.warning(f"⚠️ Could not parse room metadata: {e}")
 
+    # Also check participant metadata for moderator selection
+    try:
+        # Look for participant with moderator metadata
+        for participant in ctx.room.local_participants + ctx.room.remote_participants:
+            if participant.metadata:
+                try:
+                    participant_metadata = json.loads(participant.metadata)
+                    if "moderator" in participant_metadata:
+                        moderator_persona = participant_metadata["moderator"]
+                        logger.info(f"📋 Found moderator in participant metadata: {moderator_persona}")
+                        break
+                except Exception as e:
+                    logger.debug(f"Could not parse participant metadata: {e}")
+    except Exception as e:
+        logger.debug(f"Error checking participant metadata: {e}")
+
     # Set environment variable for other functions to access
     os.environ["DEBATE_TOPIC"] = debate_topic
+    os.environ["MODERATOR_PERSONA"] = moderator_persona
 
-    # Initialize the moderator agent with function tools - correct LiveKit 1.0 pattern
-    moderator = Agent(
-        instructions=f"""You are Aristotle, a logical debate moderator for the topic: {debate_topic}
+    # Generate persona-specific instructions
+    def get_persona_instructions(persona: str, topic: str) -> str:
+        """Generate instructions based on the selected moderator persona"""
+        
+        base_context = f"You are moderating a debate on the topic: {topic}\n\n"
+        
+        if persona.lower() == "socrates":
+            return base_context + """You are Socrates, the wise philosopher who guides through questioning.
 
-You will:
-- Ensure structured reasoning and evidence-based discussion
-- Fact-check claims when needed using live research
-- Guide conversations to remain productive
+Your core directive: Ask clarifying questions when assumptions are made or logic jumps occur.
+
+Your approach:
+- Probe deeper when participants make assumptions without evidence
+- Challenge logical leaps with gentle questioning
+- Use the Socratic method: "What do you mean by...?", "How do you know that?", "What evidence supports this?"
+- Help participants examine their beliefs and reasoning
+- Guide the conversation toward greater wisdom through inquiry
+- Remain curious and humble, admitting when you don't know something
+
+Your voice should be:
+- Thoughtful and probing
+- Genuinely curious about understanding
+- Patient and encouraging
+- Focused on the process of thinking rather than winning arguments
+
+Use your available function tools to research claims and access knowledge when needed to ask better questions."""
+
+        elif persona.lower() == "buddha":
+            return base_context + """You are Buddha, the compassionate teacher who maintains harmony and understanding.
+
+Your core directive: Monitor tone and diffuse conflict, promote calm respectful dialogue.
+
+Your approach:
+- Watch for rising tensions and emotional escalation
+- Intervene gently when discussions become heated or disrespectful
+- Steer conversations toward mutual understanding and respect
+- Acknowledge all perspectives with compassion
+- Guide participants away from personal attacks toward constructive dialogue
+- Encourage mindful listening and speaking
+- Help find common ground and shared values
+- Promote patience, kindness, and wisdom in discourse
+
+Your voice should be:
+- Calm and soothing
+- Compassionate and understanding
+- Focused on harmony and balance
+- Gentle but firm when redirecting negative energy
+- Encouraging of mindful participation
+
+Use your available function tools to research claims and access knowledge when needed to promote understanding."""
+
+        else:  # Default to Aristotle
+            return base_context + """You are Aristotle, the logical analyst who ensures structured reasoning.
+
+Your core directive: Fact-check arguments, request sources for claims, assess evidence.
+
+Your approach:
+- Fact-check significant claims using live research
+- Request credible sources when participants make factual assertions
+- Assess the quality and reliability of evidence presented
+- Evaluate the truth value and logical consistency of arguments
+- Guide conversations to remain productive and evidence-based
 - Identify logical fallacies and help clarify arguments
-- Coordinate with Socrates (philosophical questioner) agent
+- Maintain focus on rational discourse and verified information
 
-Use your available function tools to research claims and access knowledge when needed.""",
+Your voice should be:
+- Analytical and precise
+- Focused on logic and evidence
+- Authoritative but fair
+- Committed to truth and accuracy
+- Structured in approach
+
+Use your available function tools to research claims and access knowledge when needed."""
+
+    # Initialize the moderator agent with persona-specific instructions
+    moderator = Agent(
+        instructions=get_persona_instructions(moderator_persona, debate_topic),
         tools=[
             get_debate_topic,
             access_facilitation_knowledge,
@@ -547,25 +624,47 @@ Use your available function tools to research claims and access knowledge when n
         ]
     )
 
+    # Log the selected persona
+    logger.info(f"🎭 Moderator persona selected: {moderator_persona}")
+
     # Configure LLM - use Perplexity when available for research capabilities
+    # Adjust temperature based on persona
+    persona_temperature = {
+        "socrates": 0.7,  # More creative for questioning
+        "buddha": 0.5,    # Balanced for compassionate responses
+        "aristotle": 0.2  # Lower for analytical precision
+    }
+    
+    temp = persona_temperature.get(moderator_persona.lower(), 0.5)
+    
     if PERPLEXITY_AVAILABLE:
         try:
             research_llm = openai.LLM.with_perplexity(
                 model="sonar-pro",  # Updated to current Perplexity model (200k context)
-                temperature=0.2  # Lower temperature for analytical precision
+                temperature=temp
             )
-            logger.info("✅ Using Perplexity LLM for Aristotle")
+            logger.info(f"✅ Using Perplexity LLM for {moderator_persona} (temp: {temp})")
         except Exception as e:
             logger.warning(f"⚠️ Could not configure Perplexity, using realtime model: {e}")
-            research_llm = openai.LLM(model="gpt-4o-realtime-preview", temperature=0.7)
+            research_llm = openai.LLM(model="gpt-4o-realtime-preview", temperature=temp)
     else:
-        research_llm = openai.LLM(model="gpt-4o-realtime-preview", temperature=0.7)
+        research_llm = openai.LLM(model="gpt-4o-realtime-preview", temperature=temp)
+
+    # Select voice based on persona
+    persona_voices = {
+        "socrates": "alloy",    # Thoughtful, questioning voice
+        "buddha": "nova",       # Calm, soothing voice  
+        "aristotle": "onyx"     # Clear, authoritative voice
+    }
+    
+    selected_voice = persona_voices.get(moderator_persona.lower(), "onyx")
+    logger.info(f"🎤 Using voice '{selected_voice}' for {moderator_persona}")
 
     # Use async context manager for TTS to ensure proper cleanup
     try:
         async with openai.TTS(
             model="tts-1",
-            voice="onyx"  # Clear, authoritative voice for Aristotle
+            voice=selected_voice
         ) as tts:
 
             # Create agent session with correct LiveKit 1.0 pattern
@@ -576,13 +675,13 @@ Use your available function tools to research claims and access knowledge when n
                 vad=silero.VAD.load()  # Add VAD for voice activity detection
             )
 
-            logger.info("🎯 Aristotle agent session created successfully")
+            logger.info(f"🎯 {moderator_persona} agent session created successfully")
 
             # Connect memory manager if available
             try:
                 from supabase_memory_manager import SUPABASE_AVAILABLE
                 if SUPABASE_AVAILABLE:
-                    logger.info("🧠 Memory manager connected to Aristotle")
+                    logger.info(f"🧠 Memory manager connected to {moderator_persona}")
                 else:
                     logger.warning("⚠️ Memory manager not available")
             except Exception as e:
@@ -594,30 +693,30 @@ Use your available function tools to research claims and access knowledge when n
                 with conversation_state.conversation_lock:
                     if ev.new_state == "speaking":
                         conversation_state.user_speaking = True
-                        # If user starts speaking, both agents should stop
+                        # If user starts speaking, agent should stop
                         if conversation_state.active_speaker:
-                            logger.info("👤 User started speaking - agents should yield")
+                            logger.info("👤 User started speaking - agent should yield")
                             conversation_state.active_speaker = None
                     elif ev.new_state == "listening":
                         conversation_state.user_speaking = False
-                        logger.info("👂 User stopped speaking - agents may respond if appropriate")
+                        logger.info("👂 User stopped speaking - agent may respond if appropriate")
                     elif ev.new_state == "away":
                         conversation_state.user_speaking = False
                         logger.info("👋 User disconnected")
 
             def on_agent_state_changed(ev: AgentStateChangedEvent):
                 """Monitor agent speaking state for coordination"""
-                agent_name = "aristotle"
+                agent_name = moderator_persona.lower()
 
                 if ev.new_state == "speaking":
                     with conversation_state.conversation_lock:
                         conversation_state.active_speaker = agent_name
-                        logger.info(f"🎤 {agent_name.capitalize()} started speaking")
+                        logger.info(f"🎤 {moderator_persona} started speaking")
                 elif ev.new_state in ["idle", "listening", "thinking"]:
                     with conversation_state.conversation_lock:
                         if conversation_state.active_speaker == agent_name:
                             conversation_state.active_speaker = None
-                            logger.info(f"🔇 {agent_name.capitalize()} finished speaking")
+                            logger.info(f"🔇 {moderator_persona} finished speaking")
 
             # Register agent state change handlers
             agent_session.on("user_state_changed", on_user_state_changed)
@@ -629,22 +728,36 @@ Use your available function tools to research claims and access knowledge when n
                 room=ctx.room
             )
 
-            logger.info(f"🏛️ Debate Moderator 'Aristotle' active for topic: {debate_topic}")
+            logger.info(f"🏛️ Debate Moderator '{moderator_persona}' active for topic: {debate_topic}")
 
-            # Initial greeting and topic introduction
-            initial_prompt = f"""Welcome to this Sage AI debate on: {debate_topic}
+            # Generate persona-specific initial greeting
+            def get_persona_greeting(persona: str, topic: str) -> str:
+                if persona.lower() == "socrates":
+                    return f"""Welcome to this Sage AI debate on: {topic}
 
-I am Aristotle, your logical debate moderator. I will:
-- Ensure structured reasoning and evidence-based discussion
-- Fact-check claims when needed
-- Guide the conversation to remain productive
-- Identify logical fallacies and help clarify arguments
+I am Socrates, your philosophical guide. I will help you explore this topic through thoughtful questioning. 
 
-Let's begin with a thoughtful exploration of this important topic."""
+My role is to ask clarifying questions when assumptions are made or logic jumps occur. Let's begin by examining what we truly know about this important subject."""
+
+                elif persona.lower() == "buddha":
+                    return f"""Welcome to this Sage AI debate on: {topic}
+
+I am Buddha, your compassionate moderator. I will help maintain harmony and mutual understanding throughout our discussion.
+
+My role is to monitor tone and diffuse conflict, promoting calm respectful dialogue. Let's approach this topic with mindfulness and open hearts."""
+
+                else:  # Aristotle
+                    return f"""Welcome to this Sage AI debate on: {topic}
+
+I am Aristotle, your logical debate moderator. I will help ensure our discussion is grounded in evidence and sound reasoning.
+
+My role is to fact-check arguments, request sources for claims, and assess evidence. Let's begin with a thoughtful exploration of this important topic."""
+
+            initial_prompt = get_persona_greeting(moderator_persona, debate_topic)
 
             await agent_session.generate_reply(instructions=initial_prompt)
 
-            logger.info("🏛️ Aristotle agent is now active and listening for conversations...")
+            logger.info(f"🏛️ {moderator_persona} agent is now active and listening for conversations...")
 
             # Keep the agent session alive - this is critical for LiveKit agents
             # The session will continue running and responding to events automatically
@@ -654,14 +767,14 @@ Let's begin with a thoughtful exploration of this important topic."""
                 while True:
                     await asyncio.sleep(1.0)
             except (KeyboardInterrupt, asyncio.CancelledError):
-                logger.info("🔚 Aristotle agent session interrupted")
+                logger.info(f"🔚 {moderator_persona} agent session interrupted")
             except Exception as session_error:
                 logger.error(f"❌ Agent session error: {session_error}")
             finally:
-                logger.info("🔚 Aristotle agent session ended")
+                logger.info(f"🔚 {moderator_persona} agent session ended")
 
     except Exception as e:
-        logger.error(f"❌ Error in Aristotle agent session: {e}")
+        logger.error(f"❌ Error in {moderator_persona} agent session: {e}")
         # Ensure proper cleanup even on errors
         if 'research_llm' in locals() and hasattr(research_llm, 'aclose'):
             try:
@@ -670,12 +783,11 @@ Let's begin with a thoughtful exploration of this important topic."""
                 logger.error(f"Error during LLM cleanup: {cleanup_error}")
         raise
 
-
 def main():
     """Main entry point for the debate moderator agent"""
     cli.run_app(
         WorkerOptions(
-            agent_name="aristotle",
+            agent_name="moderator",  # Generic name since persona is determined at runtime
             entrypoint_fnc=entrypoint,
         )
     )

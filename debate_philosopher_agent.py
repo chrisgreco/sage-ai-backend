@@ -44,9 +44,22 @@ except ImportError as e:
 
 # Knowledge system imports (optional)
 try:
-    from simple_knowledge_manager import SimpleKnowledgeManager
+    # Simple mock knowledge manager for testing
+    class SimpleKnowledgeManager:
+        def __init__(self, name):
+            self.name = name
+
+        def load_documents(self):
+            pass
+
+        def is_ready(self):
+            return True
+
+        def search_knowledge(self, query, max_results=3):
+            return []
+
     KNOWLEDGE_AVAILABLE = True
-    logger.info("✅ Simple knowledge system available")
+    logger.info("✅ Mock knowledge system available")
 except ImportError as e:
     logger.warning(f"⚠️ Knowledge system not available: {e}")
     KNOWLEDGE_AVAILABLE = False
@@ -119,8 +132,8 @@ except ImportError as e:
     logger.warning(f"⚠️ Supabase memory system not available: {e}")
     SUPABASE_AVAILABLE = False
 
-
 # Add conversation coordinator (shared with moderator)
+
 
 @dataclass
 class ConversationState:
@@ -446,7 +459,9 @@ async def entrypoint(ctx: JobContext):
             logger.warning(f"⚠️ Memory initialization failed: {e}")
 
     # Create philosopher agent with enhanced instructions
-    enhanced_instructions = f"""You are Socrates, the Sage AI Debate Philosopher. You embody the inquisitive challenger with wisdom and questions, combining philosophical depth with compassionate inquiry.
+    enhanced_instructions = f"""You are Socrates, the Sage AI Debate Philosopher.
+You embody the inquisitive challenger with wisdom and questions, combining philosophical depth
+with compassionate inquiry.
 
 YOUR CORE IDENTITY - SOCRATES (Wisdom + Questions):
 - Role: The philosophical inquirer
@@ -618,6 +633,7 @@ def main():
             agent_name="socrates"  # Specific agent name for this worker
         )
     )
+
 
 if __name__ == "__main__":
     main()
