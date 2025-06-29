@@ -687,40 +687,40 @@ Use your available function tools to research claims and access knowledge when n
             except Exception as e:
                 logger.warning(f"⚠️ Could not connect memory manager: {e}")
 
-            # Set up conversation state monitoring
-            def on_user_state_changed(ev: UserStateChangedEvent):
+
+
+            # Register agent state change handlers using decorator pattern
+            @agent_session.on("user_state_changed")
+            def handle_user_state_changed(event):
                 """Monitor user speaking state for coordination"""
                 with conversation_state.conversation_lock:
-                    if ev.new_state == "speaking":
+                    if event.new_state == "speaking":
                         conversation_state.user_speaking = True
                         # If user starts speaking, agent should stop
                         if conversation_state.active_speaker:
                             logger.info("👤 User started speaking - agent should yield")
                             conversation_state.active_speaker = None
-                    elif ev.new_state == "listening":
+                    elif event.new_state == "listening":
                         conversation_state.user_speaking = False
                         logger.info("👂 User stopped speaking - agent may respond if appropriate")
-                    elif ev.new_state == "away":
+                    elif event.new_state == "away":
                         conversation_state.user_speaking = False
                         logger.info("👋 User disconnected")
 
-            def on_agent_state_changed(ev: AgentStateChangedEvent):
+            @agent_session.on("agent_state_changed")
+            def handle_agent_state_changed(event):
                 """Monitor agent speaking state for coordination"""
                 agent_name = moderator_persona.lower()
 
-                if ev.new_state == "speaking":
+                if event.new_state == "speaking":
                     with conversation_state.conversation_lock:
                         conversation_state.active_speaker = agent_name
                         logger.info(f"🎤 {moderator_persona} started speaking")
-                elif ev.new_state in ["idle", "listening", "thinking"]:
+                elif event.new_state in ["idle", "listening", "thinking"]:
                     with conversation_state.conversation_lock:
                         if conversation_state.active_speaker == agent_name:
                             conversation_state.active_speaker = None
                             logger.info(f"🔇 {moderator_persona} finished speaking")
-
-            # Register agent state change handlers
-            agent_session.on("user_state_changed", on_user_state_changed)
-            agent_session.on("agent_state_changed", on_agent_state_changed)
 
             # Start the moderation session
             await agent_session.start(
