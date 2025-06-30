@@ -496,77 +496,93 @@ async def entrypoint(ctx: JobContext):
     connection_timeout = 30.0
     max_retries = 3
 
-    # Use decorator pattern for event handlers to fix async callback issues
+    # Use synchronous event handlers with asyncio.create_task for async operations
     @ctx.room.on("track_subscribed")
-    async def on_track_subscribed(track, publication, participant):
+    def on_track_subscribed(track, publication, participant):
         """Handle when we subscribe to an audio track from another participant"""
-        try:
-            if track.kind == rtc.TrackKind.AUDIO:
-                logger.info(f"🎧 Moderator subscribed to audio track from: {participant.identity}")
+        async def handle_track_subscribed():
+            try:
+                if track.kind == rtc.TrackKind.AUDIO:
+                    logger.info(f"🎧 Moderator subscribed to audio track from: {participant.identity}")
 
-                # Store the audio track for coordination
-                audio_tracks[participant.identity] = {
-                    "track": track,
-                    "publication": publication,
-                    "participant": participant
-                }
+                    # Store the audio track for coordination
+                    audio_tracks[participant.identity] = {
+                        "track": track,
+                        "publication": publication,
+                        "participant": participant
+                    }
 
-                # Identify other agents for coordination
+                    # Identify other agents for coordination
+                    if (participant.identity and
+                            ("socrates" in participant.identity.lower() or
+                             "philosopher" in participant.identity.lower())):
+                        other_agents.add(participant.identity)
+                        logger.info(f"🤝 Moderator detected Socrates agent: {participant.identity}")
+
+                    # Process audio stream from this participant
+                    try:
+                        audio_stream = rtc.AudioStream(track)
+                        logger.info(f"🎵 Created audio stream for {participant.identity}")
+
+                        # Start processing audio frames in the background
+                        asyncio.create_task(process_audio_stream(audio_stream, participant))
+                    except Exception as e:
+                        logger.error(f"❌ Failed to create audio stream for {participant.identity}: {e}")
+            except Exception as e:
+                logger.error(f"❌ Error in track_subscribed handler: {e}")
+                logger.error(f"Track subscribed error traceback: {traceback.format_exc()}")
+        
+        # Create task for async operations
+        asyncio.create_task(handle_track_subscribed())
+
+    @ctx.room.on("track_unsubscribed")
+    def on_track_unsubscribed(track, publication, participant):
+        """Handle when we unsubscribe from an audio track"""
+        async def handle_track_unsubscribed():
+            try:
+                if participant.identity in audio_tracks:
+                    del audio_tracks[participant.identity]
+                    logger.info(f"🔇 Moderator unsubscribed from: {participant.identity}")
+            except Exception as e:
+                logger.error(f"❌ Error in track_unsubscribed handler: {e}")
+        
+        # Create task for async operations
+        asyncio.create_task(handle_track_unsubscribed())
+
+    @ctx.room.on("participant_connected")
+    def on_participant_connected(participant):
+        """Handle when a participant connects to the room"""
+        async def handle_participant_connected():
+            try:
+                logger.info(f"👋 Participant connected: {participant.identity}")
+
+                # Identify agent types for coordination
                 if (participant.identity and
                         ("socrates" in participant.identity.lower() or
                          "philosopher" in participant.identity.lower())):
                     other_agents.add(participant.identity)
-                    logger.info(f"🤝 Moderator detected Socrates agent: {participant.identity}")
-
-                # Process audio stream from this participant
-                try:
-                    audio_stream = rtc.AudioStream(track)
-                    logger.info(f"🎵 Created audio stream for {participant.identity}")
-
-                    # Start processing audio frames in the background
-                    asyncio.create_task(process_audio_stream(audio_stream, participant))
-                except Exception as e:
-                    logger.error(f"❌ Failed to create audio stream for {participant.identity}: {e}")
-        except Exception as e:
-            logger.error(f"❌ Error in track_subscribed handler: {e}")
-            logger.error(f"Track subscribed error traceback: {traceback.format_exc()}")
-
-    @ctx.room.on("track_unsubscribed")
-    async def on_track_unsubscribed(track, publication, participant):
-        """Handle when we unsubscribe from an audio track"""
-        try:
-            if participant.identity in audio_tracks:
-                del audio_tracks[participant.identity]
-                logger.info(f"🔇 Moderator unsubscribed from: {participant.identity}")
-        except Exception as e:
-            logger.error(f"❌ Error in track_unsubscribed handler: {e}")
-
-    @ctx.room.on("participant_connected")
-    async def on_participant_connected(participant):
-        """Handle when a participant connects to the room"""
-        try:
-            logger.info(f"👋 Participant connected: {participant.identity}")
-
-            # Identify agent types for coordination
-            if (participant.identity and
-                    ("socrates" in participant.identity.lower() or
-                     "philosopher" in participant.identity.lower())):
-                other_agents.add(participant.identity)
-                logger.info(f"🤝 Moderator detected Socrates agent joined: {participant.identity}")
-        except Exception as e:
-            logger.error(f"❌ Error in participant_connected handler: {e}")
+                    logger.info(f"🤝 Moderator detected Socrates agent joined: {participant.identity}")
+            except Exception as e:
+                logger.error(f"❌ Error in participant_connected handler: {e}")
+        
+        # Create task for async operations
+        asyncio.create_task(handle_participant_connected())
 
     @ctx.room.on("participant_disconnected")
-    async def on_participant_disconnected(participant):
+    def on_participant_disconnected(participant):
         """Handle when a participant disconnects"""
-        try:
-            logger.info(f"👋 Participant disconnected: {participant.identity}")
-            if participant.identity in other_agents:
-                other_agents.remove(participant.identity)
-            if participant.identity in audio_tracks:
-                del audio_tracks[participant.identity]
-        except Exception as e:
-            logger.error(f"❌ Error in participant_disconnected handler: {e}")
+        async def handle_participant_disconnected():
+            try:
+                logger.info(f"👋 Participant disconnected: {participant.identity}")
+                if participant.identity in other_agents:
+                    other_agents.remove(participant.identity)
+                if participant.identity in audio_tracks:
+                    del audio_tracks[participant.identity]
+            except Exception as e:
+                logger.error(f"❌ Error in participant_disconnected handler: {e}")
+        
+        # Create task for async operations
+        asyncio.create_task(handle_participant_disconnected())
 
     # ENHANCED TOPIC DETECTION - Check job metadata first (from agent dispatch)
     debate_topic = "The impact of AI on society"  # Default
