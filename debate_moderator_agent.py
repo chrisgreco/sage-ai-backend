@@ -545,7 +545,6 @@ async def detect_intervention_triggers(conversation_snippet: str):
             "reasoning": f"Error in analysis: {str(e)}"
         }
 
-@log_async_exceptions(logger)
 async def process_audio_stream(audio_stream, participant):
     """Process audio frames from a participant's stream"""
     try:
@@ -1573,8 +1572,9 @@ async def entrypoint(ctx: JobContext):
                         audio_stream = rtc.AudioStream(track)
                         logger.info(f"🎵 Created audio stream for {participant.identity}")
 
-                        # Start processing audio frames in the background
-                        asyncio.create_task(process_audio_stream(audio_stream, participant))
+                        # Start processing audio frames in the background with exception handling
+                        protected_process_audio = log_async_exceptions(logger)(process_audio_stream)
+                        asyncio.create_task(protected_process_audio(audio_stream, participant))
                     except Exception as e:
                         logger.error(f"❌ Failed to create audio stream for {participant.identity}: {e}")
             except Exception as e:
