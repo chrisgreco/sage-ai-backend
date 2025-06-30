@@ -545,6 +545,7 @@ async def detect_intervention_triggers(conversation_snippet: str):
             "reasoning": f"Error in analysis: {str(e)}"
         }
 
+@log_async_exceptions(logger)
 async def process_audio_stream(audio_stream, participant):
     """Process audio frames from a participant's stream"""
     try:
@@ -736,6 +737,140 @@ def validate_message_alternation(messages: List[Dict[str, Any]]) -> bool:
     
     return True
 
+# Global async task exception handling
+def log_async_exceptions(logger=None):
+    """Decorator to catch and log exceptions in async tasks"""
+    if logger is None:
+        logger = logging.getLogger(__name__)
+    
+    def decorator(func):
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            try:
+                return await func(*args, **kwargs)
+            except asyncio.CancelledError:
+                # CancelledError should be re-raised to properly cancel tasks
+                logger.debug(f"🚫 Task {func.__name__} cancelled")
+                raise
+            except Exception as e:
+                logger.error(f"❌ Unhandled exception in async task {func.__name__}: {e}")
+                logger.error(f"Exception traceback: {traceback.format_exc()}")
+                
+                # For critical inference tasks, trigger session recovery
+                if 'inference' in func.__name__.lower() or 'recognize' in func.__name__.lower():
+                    logger.error(f"🚨 Critical inference task {func.__name__} failed - triggering recovery")
+                    if 'agent_session_recovery' in globals():
+                        try:
+                            await agent_session_recovery.handle_unrecoverable_error(e, f"async_task_{func.__name__}")
+                        except Exception as recovery_error:
+                            logger.error(f"❌ Session recovery also failed: {recovery_error}")
+                
+                # Don't re-raise for non-critical tasks to prevent cascade failures
+                if 'monitor' in func.__name__.lower() or 'cleanup' in func.__name__.lower():
+                    logger.warning(f"⚠️ Non-critical task {func.__name__} failed, continuing operation")
+                    return None
+                else:
+                    raise
+        return wrapper
+    return decorator
+
+# Additional session-level validation patch
+original_agent_session_generate_reply = None
+
+def patch_agent_session_generate_reply():
+    """Patch AgentSession.generate_reply to validate chat context before LLM calls"""
+    global original_agent_session_generate_reply
+    
+    try:
+        from livekit.agents import AgentSession
+        
+        # Store original generate_reply method
+        if original_agent_session_generate_reply is None:
+            original_agent_session_generate_reply = AgentSession.generate_reply
+        
+        async def patched_generate_reply(self, *, instructions: str = None, user_input: str = None):
+            """Patched generate_reply that validates chat context for Perplexity compatibility"""
+            try:
+                # Check if we're using Perplexity LLM
+                is_perplexity = False
+                if hasattr(self, 'llm') and hasattr(self.llm, '_client'):
+                    client = self.llm._client
+                    if hasattr(client, 'base_url'):
+                        base_url_str = str(client.base_url).lower()
+                        is_perplexity = 'perplexity' in base_url_str
+                    if not is_perplexity and hasattr(client, '_api_key'):
+                        api_key = str(client._api_key)[:8]
+                        is_perplexity = api_key.startswith('pplx-')
+                
+                if is_perplexity:
+                    logger.info("🔍 AgentSession using Perplexity - validating chat context")
+                    
+                    # Get current chat context if available
+                    if hasattr(self, '_chat_ctx') and self._chat_ctx:
+                        chat_ctx = self._chat_ctx
+                        if hasattr(chat_ctx, 'messages') and chat_ctx.messages:
+                            # Extract messages for validation
+                            current_messages = []
+                            for msg in chat_ctx.messages:
+                                if hasattr(msg, 'role') and hasattr(msg, 'content'):
+                                    current_messages.append({
+                                        'role': msg.role,
+                                        'content': msg.content
+                                    })
+                            
+                            if current_messages:
+                                logger.info(f"📝 Pre-generate_reply chat context: {len(current_messages)} messages")
+                                
+                                # Log current message sequence 
+                                for i, msg in enumerate(current_messages):
+                                    logger.debug(f"  [{i}] {msg.get('role', 'unknown')}: {msg.get('content', '')[:50]}...")
+                                
+                                # Validate alternation BEFORE adding new input
+                                if not validate_message_alternation(current_messages):
+                                    logger.warning(f"⚠️ Chat context has invalid alternation before generate_reply!")
+                                
+                                # Check if last message follows Perplexity rules
+                                last_msg = current_messages[-1]
+                                if last_msg.get('role') not in ['user', 'tool']:
+                                    logger.warning(f"⚠️ Chat context ends with role '{last_msg.get('role')}' - may cause Perplexity error")
+                                
+                                # If adding user_input, simulate the final message sequence
+                                if user_input:
+                                    simulated_messages = current_messages + [{'role': 'user', 'content': user_input}]
+                                    if not validate_message_alternation(simulated_messages):
+                                        logger.error(f"❌ Adding user_input would create invalid alternation!")
+                                        # Fix by adjusting current context
+                                        logger.info("🔧 Attempting to fix chat context before adding user input")
+                                        fixed_messages = validate_perplexity_message_format(current_messages)
+                                        
+                                        # Update the chat context with fixed messages
+                                        if len(fixed_messages) != len(current_messages):
+                                            logger.info(f"🔧 Fixed chat context: {len(current_messages)} → {len(fixed_messages)} messages")
+                                            chat_ctx.messages.clear()
+                                            for fixed_msg in fixed_messages:
+                                                from livekit.agents import ChatMessage
+                                                new_msg = ChatMessage.create(
+                                                    text=fixed_msg['content'],
+                                                    role=fixed_msg['role']
+                                                )
+                                                chat_ctx.messages.append(new_msg)
+                
+            except Exception as validation_error:
+                logger.error(f"❌ Error in AgentSession validation: {validation_error}")
+                logger.error(f"AgentSession validation error traceback: {traceback.format_exc()}")
+                # Continue with original behavior if validation fails
+            
+            # Call original method
+            return await original_agent_session_generate_reply(self, instructions=instructions, user_input=user_input)
+        
+        # Apply the patch
+        AgentSession.generate_reply = patched_generate_reply
+        logger.info("✅ Applied AgentSession.generate_reply validation patch")
+        
+    except Exception as patch_error:
+        logger.error(f"❌ Failed to apply AgentSession validation patch: {patch_error}")
+        logger.error(f"AgentSession patch error traceback: {traceback.format_exc()}")
+
 # Monkey patch the OpenAI LLM to validate Perplexity messages
 original_llm_chat = None
 
@@ -857,9 +992,15 @@ import random
 class OpenAIErrorHandler:
     """Specialized error handler for OpenAI API interactions"""
     
-    def __init__(self, max_retries: int = 5, base_delay: float = 1.0):
+    def __init__(self, max_retries: int = 5, base_delay: float = 1.0, circuit_breaker=None):
         self.max_retries = max_retries
         self.base_delay = base_delay
+        # Use weak reference to avoid circular dependencies
+        if circuit_breaker:
+            import weakref
+            self._circuit_breaker_ref = weakref.ref(circuit_breaker)
+        else:
+            self._circuit_breaker_ref = None
         
     def log_api_interaction(self, request_type: str, status_code: int = None, error: Exception = None, 
                            tokens_used: int = None, request_id: str = None):
@@ -960,10 +1101,28 @@ class OpenAIErrorHandler:
                 fallback_message = f"OpenAI API unexpected status {status_code}. Retrying..."
                 
         elif isinstance(error, openai.APIConnectionError):
-            # Connection errors - retry with backoff
+            # Connection errors - retry with enhanced backoff and circuit breaker coordination
             should_retry = attempt < self.max_retries
-            delay = min(self.base_delay * (2 ** (attempt - 1)) + random.uniform(0, 1), 15)
-            fallback_message = f"OpenAI API connection error. Retrying in {delay:.1f}s..."
+            
+            # Exponential backoff with jitter, but more aggressive for connection errors
+            base_delay = min(2.0 * (1.5 ** (attempt - 1)), 30)  # Increased base delay
+            jitter = random.uniform(0, base_delay * 0.3)  # 30% jitter
+            delay = base_delay + jitter
+            
+            error_detail = str(error)[:100]
+            fallback_message = f"OpenAI API connection error: {error_detail}. Retrying in {delay:.1f}s... (attempt {attempt}/{self.max_retries})"
+            
+            # Log additional connection error details
+            logger.warning(f"🔌 Connection error details: {error}")
+            if hasattr(error, '__cause__') and error.__cause__:
+                logger.warning(f"🔌 Root cause: {error.__cause__}")
+                
+            # Check circuit breaker state for adaptive retry behavior
+            if hasattr(self, '_circuit_breaker_ref'):
+                cb = self._circuit_breaker_ref()
+                if cb and cb.failure_count >= 3:  # If multiple failures, increase delay
+                    delay = min(delay * 2, 60)
+                    fallback_message = f"API connection issues detected. Extended retry in {delay:.1f}s... (attempt {attempt}/{self.max_retries})"
             
         else:
             # Unknown error type - minimal retry
@@ -1286,8 +1445,8 @@ def resilient_function_tool(func):
     
     return wrapper
 
-# Create global OpenAI error handler
-openai_error_handler = OpenAIErrorHandler(max_retries=5, base_delay=1.0)
+# Create global OpenAI error handler with circuit breaker coordination
+openai_error_handler = OpenAIErrorHandler(max_retries=5, base_delay=1.0, circuit_breaker=llm_circuit_breaker)
 
 async def safe_llm_generate_reply(agent_session, instructions: str, context: str = "generate_reply") -> bool:
     """
@@ -1372,7 +1531,9 @@ async def entrypoint(ctx: JobContext):
     """Main entry point for the Aristotle debate moderator agent"""
     logger.info("🏛️ Debate Moderator Agent starting... (v2.0 - Fixed Async Callbacks)")
     
-    # Apply Perplexity message format validation patch early
+    # Apply message format validation patches early
+    logger.info("🔧 Applying AgentSession and LLM validation patches...")
+    patch_agent_session_generate_reply()
     patch_perplexity_llm_validation()
 
     # Track audio streams and other agents for coordination
@@ -1387,6 +1548,7 @@ async def entrypoint(ctx: JobContext):
     @ctx.room.on("track_subscribed")
     def on_track_subscribed(track, publication, participant):
         """Handle when we subscribe to an audio track from another participant"""
+        @log_async_exceptions(logger)
         async def handle_track_subscribed():
             try:
                 if track.kind == TrackKind.AUDIO:
@@ -1425,6 +1587,7 @@ async def entrypoint(ctx: JobContext):
     @ctx.room.on("track_unsubscribed")
     def on_track_unsubscribed(track, publication, participant):
         """Handle when we unsubscribe from an audio track"""
+        @log_async_exceptions(logger)
         async def handle_track_unsubscribed():
             try:
                 if participant.identity in audio_tracks:
@@ -1439,6 +1602,7 @@ async def entrypoint(ctx: JobContext):
     @ctx.room.on("participant_connected")
     def on_participant_connected(participant):
         """Handle when a participant connects to the room"""
+        @log_async_exceptions(logger)
         async def handle_participant_connected():
             try:
                 logger.info(f"👋 Participant connected: {participant.identity}")
@@ -1458,6 +1622,7 @@ async def entrypoint(ctx: JobContext):
     @ctx.room.on("participant_disconnected")
     def on_participant_disconnected(participant):
         """Handle when a participant disconnects"""
+        @log_async_exceptions(logger)
         async def handle_participant_disconnected():
             try:
                 logger.info(f"👋 Participant disconnected: {participant.identity}")
@@ -1812,6 +1977,7 @@ My role is to fact-check arguments, request sources for claims, and assess evide
             # We just need to prevent the function from returning
             
             # Start background monitoring task for resource leaks and circuit breaker health
+            @log_async_exceptions(logger)
             async def monitor_resources():
                 """Periodically check for resource leaks and circuit breaker health"""
                 while not shutdown_event.is_set():
