@@ -486,7 +486,7 @@ async def process_audio_stream(audio_stream, participant):
 
 async def entrypoint(ctx: JobContext):
     """Main entry point for the Aristotle debate moderator agent"""
-    logger.info("🏛️ Debate Moderator Agent starting...")
+    logger.info("🏛️ Debate Moderator Agent starting... (v2.0 - Fixed Async Callbacks)")
 
     # Track audio streams and other agents for coordination
     audio_tracks = {}
