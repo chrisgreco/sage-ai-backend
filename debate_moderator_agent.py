@@ -15,6 +15,7 @@ import threading
 import signal
 import aiohttp
 import weakref
+import functools
 from dotenv import load_dotenv
 from dataclasses import dataclass
 from typing import Optional, Set, Dict, List, Any, Callable
@@ -558,6 +559,9 @@ async def process_audio_stream(audio_stream, participant):
         logger.error(f"❌ Error processing audio stream from {participant.identity}: {e}")
         logger.error(f"Audio stream error traceback: {traceback.format_exc()}")
 
+# Global variable to store original chat method for patching
+original_llm_chat = None
+
 # Perplexity wrapper to fix message formatting issues
 def validate_perplexity_message_format(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """Validate and fix Perplexity API message format with proper alternation rules.
@@ -749,41 +753,102 @@ def patch_perplexity_llm_validation():
         def patched_chat(self, **kwargs):
             """Patched chat method that validates message format for Perplexity"""
             try:
-                # Check if this is a Perplexity LLM (base_url contains perplexity)
-                is_perplexity = (
-                    hasattr(self, '_client') and 
-                    hasattr(self._client, 'base_url') and 
-                    'perplexity' in str(self._client.base_url).lower()
-                )
+                # Check if this is a Perplexity LLM - multiple detection methods
+                is_perplexity = False
+                
+                # Method 1: Check base_url
+                if hasattr(self, '_client') and hasattr(self._client, 'base_url'):
+                    base_url_str = str(self._client.base_url).lower()
+                    is_perplexity = 'perplexity' in base_url_str
+                    logger.debug(f"🔍 Perplexity detection via base_url: {base_url_str} -> {is_perplexity}")
+                
+                # Method 2: Check model name if available  
+                if not is_perplexity and hasattr(self, '_opts'):
+                    model_name = getattr(self._opts, 'model', '').lower()
+                    is_perplexity = 'perplexity' in model_name or 'sonar' in model_name
+                    logger.debug(f"🔍 Perplexity detection via model: {model_name} -> {is_perplexity}")
+                
+                # Method 3: Check API key pattern (starts with pplx-)
+                if not is_perplexity and hasattr(self, '_client') and hasattr(self._client, '_api_key'):
+                    api_key = str(self._client._api_key)[:8]  # Only log first 8 chars for security
+                    is_perplexity = api_key.startswith('pplx-')
+                    logger.debug(f"🔍 Perplexity detection via API key pattern: {api_key}... -> {is_perplexity}")
+                
+                if is_perplexity:
+                    logger.info("🔧 Detected Perplexity API - applying message validation")
                 
                 if is_perplexity and 'chat_ctx' in kwargs:
                     chat_ctx = kwargs['chat_ctx']
-                    if hasattr(chat_ctx, 'messages'):
-                        # Get the messages and validate format
-                        messages = []
+                    if hasattr(chat_ctx, 'messages') and chat_ctx.messages:
+                        # Extract messages for validation
+                        original_messages = []
                         for msg in chat_ctx.messages:
                             if hasattr(msg, 'role') and hasattr(msg, 'content'):
-                                messages.append({
+                                original_messages.append({
                                     'role': msg.role,
                                     'content': msg.content
                                 })
                         
-                        if messages:
-                            validated_messages = validate_perplexity_message_format(messages)
-                            logger.debug(f"✅ Validated {len(validated_messages)} messages for Perplexity API")
+                        if original_messages:
+                            # Log original messages for debugging
+                            logger.info(f"📝 Original messages before validation: {len(original_messages)} messages")
+                            for i, msg in enumerate(original_messages):
+                                logger.debug(f"  [{i}] {msg.get('role', 'unknown')}: {msg.get('content', '')[:100]}...")
+                            
+                            # Check if last message follows Perplexity rules
+                            last_msg = original_messages[-1]
+                            if last_msg.get('role') not in ['user', 'tool']:
+                                logger.warning(f"⚠️ Last message has role '{last_msg.get('role')}' - Perplexity requires 'user' or 'tool'")
+                            
+                            # Validate and fix message format
+                            validated_messages = validate_perplexity_message_format(original_messages)
+                            logger.info(f"✅ Perplexity validation: {len(original_messages)} → {len(validated_messages)} messages")
+                            
+                            # Log validated messages for debugging
+                            for i, msg in enumerate(validated_messages):
+                                logger.debug(f"  Validated [{i}] {msg.get('role', 'unknown')}: {msg.get('content', '')[:100]}...")
+                            
+                            # Update the chat_ctx messages if validation made changes
+                            if len(validated_messages) != len(original_messages) or validated_messages != original_messages:
+                                logger.info(f"🔧 Fixed Perplexity message format: {len(original_messages)} → {len(validated_messages)} messages")
+                                
+                                # Clear existing messages and add validated ones
+                                chat_ctx.messages.clear()
+                                for validated_msg in validated_messages:
+                                    # Create new message object with validated data
+                                    from livekit.agents import ChatMessage
+                                    new_msg = ChatMessage.create(
+                                        text=validated_msg['content'],
+                                        role=validated_msg['role']
+                                    )
+                                    chat_ctx.messages.append(new_msg)
+                                    
+                                logger.info(f"✅ Updated chat_ctx with {len(validated_messages)} validated messages")
+                                
+                                # Verify final message follows Perplexity rules
+                                final_msg = validated_messages[-1]
+                                if final_msg.get('role') in ['user', 'tool']:
+                                    logger.info(f"✅ Final message role '{final_msg.get('role')}' is valid for Perplexity")
+                                else:
+                                    logger.error(f"❌ Final message role '{final_msg.get('role')}' is INVALID for Perplexity - this should not happen!")
+                            else:
+                                logger.debug("✅ No message validation changes needed")
+                            
             except Exception as validation_error:
-                logger.warning(f"⚠️ Error during message validation: {validation_error}")
+                logger.error(f"❌ Error during Perplexity message validation: {validation_error}")
+                logger.error(f"Validation error traceback: {traceback.format_exc()}")
                 # Continue with original behavior if validation fails
             
-            # Call original method
+            # Call original method with potentially updated chat_ctx
             return original_llm_chat(self, **kwargs)
         
         # Apply the patch
         OpenAILLM.chat = patched_chat
-        logger.info("✅ Applied Perplexity message format validation patch")
+        logger.info("✅ Applied enhanced Perplexity message format validation patch")
         
     except Exception as patch_error:
         logger.error(f"❌ Failed to apply Perplexity validation patch: {patch_error}")
+        logger.error(f"Patch error traceback: {traceback.format_exc()}")
 
 # Enhanced OpenAI API error handling
 import openai
@@ -1245,8 +1310,32 @@ async def safe_llm_generate_reply(agent_session, instructions: str, context: str
             return False
     
     async def _generate_reply():
-        await agent_session.generate_reply(instructions=instructions)
-        return True
+        try:
+            await agent_session.generate_reply(instructions=instructions)
+            return True
+        except Exception as generate_error:
+            # Log the exact error details for debugging
+            logger.error(f"❌ generate_reply failed: {type(generate_error).__name__}: {generate_error}")
+            
+            # Check if this is a Perplexity message format error
+            error_str = str(generate_error).lower()
+            if ('last message must have role user or tool' in error_str or 
+                'invalid_message' in error_str or
+                'message alternation' in error_str):
+                logger.error(f"🔥 PERPLEXITY MESSAGE FORMAT ERROR DETECTED!")
+                logger.error(f"Error details: {generate_error}")
+                
+                # This suggests our patch isn't working or isn't being applied correctly
+                if hasattr(agent_session, 'llm') and hasattr(agent_session.llm, '_client'):
+                    client = agent_session.llm._client
+                    if hasattr(client, 'base_url'):
+                        logger.error(f"LLM client base_url: {client.base_url}")
+                    if hasattr(client, '_api_key'):
+                        logger.error(f"LLM API key pattern: {str(client._api_key)[:8]}...")
+                        
+                logger.error(f"🚨 This error should have been prevented by our message validation patch!")
+            
+            raise  # Re-raise the error for the retry mechanism
     
     try:
         result = await openai_error_handler.retry_openai_operation(_generate_reply, context)
