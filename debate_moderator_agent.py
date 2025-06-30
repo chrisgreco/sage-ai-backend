@@ -30,21 +30,27 @@ logger = logging.getLogger(__name__)
 
 # LiveKit Agents imports
 try:
-    from livekit.agents import Agent, AgentSession, JobContext, WorkerOptions, cli, function_tool
+    from livekit import api, rtc
+    from livekit.agents import AutoSubscribe, JobContext, WorkerOptions, cli, llm
+    from livekit.agents.voice_assistant import VoiceAssistant, AgentSession
     from livekit.plugins import openai, silero
-    from livekit import rtc
-    from livekit.rtc import TrackKind
+    from livekit.agents.llm import function_tool
     logger.info("✅ LiveKit Agents successfully imported")
 except ImportError as e:
     logger.error(f"❌ Failed to import LiveKit Agents: {e}")
     sys.exit(1)
 
-# Check if Perplexity is available
-PERPLEXITY_AVAILABLE = bool(os.environ.get("PERPLEXITY_API_KEY"))
-if PERPLEXITY_AVAILABLE:
-    logger.info("✅ Perplexity research available")
-else:
-    logger.warning("⚠️ Perplexity API key not found - research features disabled")
+# Check for Perplexity availability
+PERPLEXITY_AVAILABLE = False
+try:
+    import openai as openai_client
+    if os.getenv("PERPLEXITY_API_KEY"):
+        PERPLEXITY_AVAILABLE = True
+        logger.info("✅ Perplexity API available")
+    else:
+        logger.info("ℹ️ Perplexity API key not found - using OpenAI only")
+except ImportError:
+    logger.info("ℹ️ Perplexity not available - using OpenAI only")
 
 @dataclass
 class ConversationState:
@@ -200,13 +206,83 @@ async def entrypoint(ctx: JobContext):
     # Create agent session
     try:
         logger.info(f"🤖 Creating AgentSession for {moderator_persona}")
+        
+        # Create persona-specific system prompt
+        def get_persona_system_prompt(persona: str, topic: str) -> str:
+            persona_lower = persona.lower()
+            
+            if persona_lower == "socrates":
+                return f"""You are Socrates, the ancient Greek philosopher. You are moderating a debate on: {topic}.
+
+Your approach:
+- Ask probing questions to help participants examine their assumptions
+- Use the Socratic method - guide people to discover truth through questioning
+- Say "I know that I know nothing" - maintain intellectual humility
+- Help participants clarify their thinking through gentle inquiry
+- When someone makes a claim, ask: "How do you know this?" or "What do you mean by...?"
+
+Keep responses brief and focused on questions that promote deeper thinking."""
+
+            elif persona_lower == "solon":
+                return f"""You are Solon, the ancient Greek lawgiver. You are moderating a debate on: {topic}.
+
+Your approach:
+- Enforce fair debate rules and procedures
+- Ensure all participants get equal speaking time
+- Interrupt when rules are violated (personal attacks, interruptions)
+- Maintain order and structure in the discussion
+- Say things like "Let's follow proper procedure" or "Everyone deserves to be heard"
+
+Keep responses brief and focused on maintaining fair and orderly discourse."""
+
+            elif persona_lower == "buddha":
+                return f"""You are Buddha, the enlightened teacher. You are moderating a debate on: {topic}.
+
+Your approach:
+- Promote compassion and understanding between participants
+- De-escalate conflicts with gentle wisdom
+- Help participants see different perspectives
+- Encourage mindful listening and speaking
+- When tensions rise, guide toward common ground and shared humanity
+
+Keep responses brief and focused on promoting harmony and understanding."""
+
+            elif persona_lower == "hermes":
+                return f"""You are Hermes, messenger of the gods. You are moderating a debate on: {topic}.
+
+Your approach:
+- Synthesize and summarize key points made by participants
+- Help transition between different aspects of the topic
+- Clarify complex ideas and make connections
+- Facilitate communication between different viewpoints
+- Say things like "Let me summarize what I'm hearing" or "This connects to the earlier point about..."
+
+Keep responses brief and focused on synthesis and clarity."""
+
+            else:  # Aristotle (default)
+                return f"""You are Aristotle, the ancient Greek philosopher. You are moderating a debate on: {topic}.
+
+Your approach:
+- Focus on logic, evidence, and sound reasoning
+- Ask for sources and verification of factual claims
+- Help identify logical fallacies and weak arguments
+- Encourage structured, evidence-based discussion
+- Say things like "What evidence supports this?" or "Let's examine the logic here"
+
+Keep responses brief and focused on promoting rational, evidence-based discourse."""
+
+        system_prompt = get_persona_system_prompt(moderator_persona, debate_topic)
+        
         agent_session = AgentSession(
             stt=openai.STT(),
             llm=research_llm,
             tts=tts,
-            vad=silero.VAD.load()
+            vad=silero.VAD.load(),
+            chat_ctx=llm.ChatContext(
+                system=system_prompt
+            )
         )
-        logger.info(f"✅ AgentSession created successfully")
+        logger.info(f"✅ AgentSession created successfully with {moderator_persona} persona")
     except Exception as session_error:
         logger.error(f"❌ Failed to create AgentSession: {session_error}")
         raise
@@ -256,12 +332,18 @@ async def entrypoint(ctx: JobContext):
 
     # Generate initial greeting
     def get_persona_greeting(persona: str, topic: str) -> str:
-        if persona.lower() == "socrates":
-            return f"Welcome to this debate on: {topic}. I am Socrates. I will help explore this topic through thoughtful questioning."
-        elif persona.lower() == "buddha":
-            return f"Welcome to this debate on: {topic}. I am Buddha. I will help maintain harmony and understanding in our discussion."
-        else:  # Aristotle
-            return f"Welcome to this debate on: {topic}. I am Aristotle. I will help ensure our discussion is grounded in evidence and sound reasoning."
+        persona_lower = persona.lower()
+        
+        if persona_lower == "socrates":
+            return f"Greetings, friends. I am Socrates. We gather to explore: {topic}. I know that I know nothing, so let us discover truth together through questions. What do you think you know about this topic?"
+        elif persona_lower == "solon":
+            return f"Welcome to this debate on: {topic}. I am Solon, the lawgiver. I will ensure our discussion follows proper rules and that all voices are heard fairly."
+        elif persona_lower == "buddha":
+            return f"Welcome, friends, to this discussion on: {topic}. I am Buddha. Let us approach this topic with compassion, mindfulness, and understanding for all perspectives."
+        elif persona_lower == "hermes":
+            return f"Greetings! I am Hermes, messenger of the gods. We're here to discuss: {topic}. I'll help synthesize our key points and guide our transitions between ideas."
+        else:  # Aristotle (default)
+            return f"Welcome to this debate on: {topic}. I am Aristotle. I will help ensure our discussion is grounded in evidence, sound reasoning, and logical analysis."
 
     try:
         initial_prompt = get_persona_greeting(moderator_persona, debate_topic)

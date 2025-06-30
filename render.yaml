@@ -29,41 +29,13 @@ services:
       - key: PERPLEXITY_API_KEY
         fromGroup: sage-ai-env
 
-  # Aristotle Moderator Agent - logical structure and fact-checking
+  # Single AI Agent - adapts to different personas (Aristotle, Socrates, Buddha, etc.)
   - type: background
-    name: aristotle-agent
+    name: sage-ai-agent
     env: python
     repo: https://github.com/chrisgreco/sage-ai-backend.git
     buildCommand: pip install -r requirements.txt
     startCommand: python debate_moderator_agent.py
-    plan: starter
-    envVars:
-      - key: LIVEKIT_URL
-        fromGroup: sage-ai-env
-      - key: LIVEKIT_API_KEY
-        fromGroup: sage-ai-env
-      - key: LIVEKIT_API_SECRET
-        fromGroup: sage-ai-env
-      - key: OPENAI_API_KEY
-        fromGroup: sage-ai-env
-      - key: DEEPGRAM_API_KEY
-        fromGroup: sage-ai-env
-      - key: SUPABASE_URL
-        fromGroup: sage-ai-env
-      - key: SUPABASE_ANON_KEY
-        fromGroup: sage-ai-env
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        fromGroup: sage-ai-env
-      - key: PERPLEXITY_API_KEY
-        fromGroup: sage-ai-env
-
-  # Socrates Philosopher Agent - questioning and deeper inquiry
-  - type: background
-    name: socrates-agent
-    env: python
-    repo: https://github.com/chrisgreco/sage-ai-backend.git
-    buildCommand: pip install -r requirements.txt
-    startCommand: python debate_philosopher_agent.py
     plan: starter
     envVars:
       - key: LIVEKIT_URL
