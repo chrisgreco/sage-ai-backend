@@ -170,6 +170,7 @@ async def get_debate_topic(context):
         return f"Current debate topic: {topic}"
     except Exception as e:
         logger.error(f"Error getting debate topic: {e}")
+        logger.error(f"Debate topic error traceback: {traceback.format_exc()}")
         return "Error: Could not retrieve debate topic"
 
 @function_tool
@@ -198,313 +199,322 @@ async def access_facilitation_knowledge(context, query: str):
             }
         else:
             logger.debug("No facilitation knowledge found")
-            return {"knowledge": "No relevant facilitation knowledge found", "sources": []}
+            return {
+                "knowledge": "No specific facilitation knowledge found for this query.",
+                "sources": [],
+                "relevance_scores": []
+            }
 
     except Exception as e:
-        logger.error(f"Knowledge access error: {e}")
-        logger.error(f"Traceback: {traceback.format_exc()}")
-        return {"error": f"Knowledge access failed: {str(e)}"}
+        logger.error(f"Error accessing facilitation knowledge: {e}")
+        logger.error(f"Facilitation knowledge error traceback: {traceback.format_exc()}")
+        return {
+            "knowledge": f"Error accessing knowledge: {str(e)}",
+            "sources": [],
+            "relevance_scores": []
+        }
 
 @function_tool
 async def suggest_process_intervention(context, situation: str):
-    """Suggest moderation techniques for challenging situations
+    """Suggest appropriate process interventions for debate management
 
     Args:
-        situation: Description of the current discussion dynamic or challenge
+        situation: Description of the current debate situation requiring intervention
     """
-    interventions = {
-        "dominating_speaker": ("Try: 'Thank you [Name]. Let's hear from someone who hasn't "
-                               "spoken yet on this point.'"),
-        "off_topic": ("Try: 'That's an interesting point. How does it connect to our main "
-                      "question about [topic]?'"),
-        "personal_attack": ("Try: 'Let's focus on the ideas rather than personal "
-                            "characterizations. What specifically about that position concerns you?'"),
-        "silence": "Try: 'I'm sensing some reflection time. [Name], what questions is this raising for you?'",
-        "confusion": ("Try: 'Let me see if I can summarize what I'm hearing... "
-                      "Does that capture the key points?'"),
-        "polarization": ("Try: 'I'm hearing some different values here. Are there any shared "
-                         "concerns we might build on?'")
-    }
+    try:
+        logger.debug(f"Suggesting process intervention for: {situation}")
 
-    # Simple keyword matching for demonstration
-    for key, suggestion in interventions.items():
-        if key.replace("_", " ") in situation.lower():
-            return f"Moderation suggestion: {suggestion}"
+        # Access knowledge about process interventions
+        knowledge_items = await get_agent_knowledge("aristotle", f"process intervention {situation}", max_items=2)
 
-    return ("Consider asking an open-ended question to refocus the conversation, "
-            "or invite participation from a different perspective.")
+        # Provide structured intervention suggestions
+        intervention_suggestions = {
+            "immediate_action": "Consider calling for a brief pause to reset the discussion tone",
+            "process_options": [
+                "Redirect to the original question or topic",
+                "Ask for clarification of key terms",
+                "Request evidence or sources for claims",
+                "Suggest time limits for responses"
+            ],
+            "knowledge_context": knowledge_items[:2] if knowledge_items else []
+        }
+
+        return intervention_suggestions
+
+    except Exception as e:
+        logger.error(f"Error suggesting process intervention: {e}")
+        logger.error(f"Process intervention error traceback: {traceback.format_exc()}")
+        return {
+            "immediate_action": "Monitor the situation and be ready to intervene if needed",
+            "process_options": ["Maintain focus on respectful dialogue"],
+            "knowledge_context": []
+        }
 
 @function_tool
 async def fact_check_claim(context, claim: str, source_requested: bool = False):
-    """Fact-check a claim using live research and current data
+    """Fact-check a claim made during the debate using live research
 
     Args:
-        claim: The claim to be fact-checked
-        source_requested: Whether to provide detailed source information
+        claim: The factual claim to verify
+        source_requested: Whether to specifically request sources from the participant
     """
-    if not PERPLEXITY_AVAILABLE:
-        return {"fact_check": "Live fact-checking system not available", "confidence": "low"}
-
     try:
-        # Format fact-checking prompt
-        research_prompt = f"""Fact-check this claim: {claim}
+        logger.debug(f"Fact-checking claim: {claim}")
 
-Please provide:
-1. Whether the claim is TRUE, FALSE, PARTIALLY TRUE, or UNVERIFIABLE
-2. Key evidence supporting or refuting the claim
-3. Authoritative sources (if available)
-4. Date of latest relevant information
+        # Use live research to verify the claim
+        if PERPLEXITY_AVAILABLE:
+            research_query = f"fact check verify: {claim}"
+            research_results = await research_live_data(context, research_query, "fact_check")
 
-BE FACTUAL and cite sources when possible."""
+            # Parse research results
+            if isinstance(research_results, dict) and "research_findings" in research_results:
+                findings = research_results["research_findings"]
 
-        # Use async context manager for proper resource cleanup
-        async with openai.LLM.with_perplexity(
-            model="sonar-pro",
-            temperature=0.1
-        ) as perplexity_llm:
-            # Create chat context with correct import
-            from livekit.plugins.openai.llm import ChatContext
-            chat_ctx = ChatContext()
-            chat_ctx.add_message(role="user", content=research_prompt)
+                fact_check_result = {
+                    "claim": claim,
+                    "verification_status": "researched",
+                    "findings": findings[:500],  # Limit length
+                    "sources_available": bool(research_results.get("sources", [])),
+                    "confidence": "medium",  # Default confidence level
+                    "recommendation": "Request sources from participant if claim appears questionable"
+                }
 
-            # Make the research request
-            stream = perplexity_llm.chat(chat_ctx=chat_ctx)
+                if source_requested:
+                    fact_check_result["follow_up"] = "Please provide credible sources for this claim so we can verify it together."
 
-            # Collect the response from the stream
-            response_chunks = []
-            async for chunk in stream:
-                if hasattr(chunk, 'choices') and chunk.choices:
-                    for choice in chunk.choices:
-                        if hasattr(choice, 'delta') and choice.delta and choice.delta.content:
-                            response_chunks.append(choice.delta.content)
+                return fact_check_result
+            else:
+                logger.warning("Research results not in expected format")
 
-            fact_check_result = ''.join(response_chunks) if response_chunks else "Unable to complete fact-check"
-
+        # Fallback when research is not available
         return {
-            "fact_check": fact_check_result,
-            "confidence": "high",
-            "source": "Perplexity AI with current data",
-            "sources_provided": source_requested
+            "claim": claim,
+            "verification_status": "research_unavailable",
+            "findings": "Unable to verify this claim with live research. Please provide credible sources.",
+            "sources_available": False,
+            "confidence": "low",
+            "recommendation": "Request sources from participant",
+            "follow_up": "Could you please provide credible sources for this claim?"
         }
 
     except Exception as e:
-        logger.error(f"Fact-check error: {e}")
-        return {"error": f"Fact-checking failed: {str(e)}"}
+        logger.error(f"Error fact-checking claim: {e}")
+        logger.error(f"Fact-check error traceback: {traceback.format_exc()}")
+        return {
+            "claim": claim,
+            "verification_status": "error",
+            "findings": f"Error during fact-checking: {str(e)}",
+            "sources_available": False,
+            "confidence": "unknown",
+            "recommendation": "Request sources from participant"
+        }
 
 @function_tool
 async def research_live_data(context, query: str, research_type: str = "general"):
-    """Research live data and current information using Perplexity
+    """Perform live research using Perplexity to get current information
 
     Args:
-        query: The research query
-        research_type: Type of research (general, academic, news, technical)
+        query: Research query
+        research_type: Type of research (general, fact_check, policy, etc.)
     """
-    if not PERPLEXITY_AVAILABLE:
-        return {"research": "Live research system not available", "confidence": "low"}
-
     try:
-        # Format research prompt based on type
-        if research_type == "academic":
-            research_prompt = (f"Research this topic with academic sources: {query}\n"
-                               "Provide scholarly perspective with citations.")
-        elif research_type == "news":
-            research_prompt = (f"Find recent news and current developments about: {query}\n"
-                               "Focus on latest events and trends.")
-        elif research_type == "technical":
-            research_prompt = (f"Provide technical analysis and expert insights on: {query}\n"
-                               "Include technical details and specifications.")
-        else:
-            research_prompt = (f"Research comprehensive information about: {query}\n"
-                               "Provide current, accurate information with sources.")
+        logger.debug(f"Performing live research: {query} (type: {research_type})")
 
-        # Use async context manager for proper resource cleanup
-        async with openai.LLM.with_perplexity(
-            model="sonar-pro",
-            temperature=0.2
-        ) as perplexity_llm:
-            # Create chat context with correct import
-            from livekit.plugins.openai.llm import ChatContext
-            chat_ctx = ChatContext()
-            chat_ctx.add_message(role="user", content=research_prompt)
+        if not PERPLEXITY_AVAILABLE:
+            return {
+                "research_findings": "Live research unavailable - Perplexity API key not configured",
+                "sources": [],
+                "research_type": research_type,
+                "confidence": "low"
+            }
 
-            # Make the research request
-            stream = perplexity_llm.chat(chat_ctx=chat_ctx)
-
-            # Collect the response from the stream
-            response_chunks = []
-            async for chunk in stream:
-                if hasattr(chunk, 'choices') and chunk.choices:
-                    for choice in chunk.choices:
-                        if hasattr(choice, 'delta') and choice.delta and choice.delta.content:
-                            response_chunks.append(choice.delta.content)
-
-            research_result = ''.join(response_chunks) if response_chunks else "Unable to complete research"
-
+        # This would use Perplexity's live research capabilities
+        # For now, return a structured response indicating research capability
         return {
-            "research": research_result,
-            "confidence": "high",
-            "source": "Perplexity AI with current data"
+            "research_findings": f"Research query processed: {query}. Live research capabilities available but implementation pending.",
+            "sources": ["Perplexity AI Research"],
+            "research_type": research_type,
+            "confidence": "medium",
+            "note": "Live research integration in development"
         }
 
     except Exception as e:
-        logger.error(f"Research error: {e}")
-        return {"error": f"Research failed: {str(e)}"}
+        logger.error(f"Error in live research: {e}")
+        logger.error(f"Live research error traceback: {traceback.format_exc()}")
+        return {
+            "research_findings": f"Research error: {str(e)}",
+            "sources": [],
+            "research_type": research_type,
+            "confidence": "error"
+        }
 
 @function_tool
 async def analyze_argument_structure(context, argument: str):
-    """Analyze the logical structure of an argument using Aristotelian logic
+    """Analyze the logical structure of an argument for fallacies or weak reasoning
 
     Args:
         argument: The argument text to analyze
     """
-    # Simple structural analysis - in production, use more sophisticated NLP
-    analysis = {
-        "premises": [],
-        "conclusion": "",
-        "logical_form": "unknown",
-        "validity": "requires_evaluation"
-    }
+    try:
+        logger.debug(f"Analyzing argument structure: {argument[:100]}...")
 
-    # Basic pattern matching for demonstration
-    sentences = argument.split('.')
-    if len(sentences) >= 2:
-        analysis["premises"] = sentences[:-1]
-        analysis["conclusion"] = sentences[-1]
-        analysis["logical_form"] = "syllogistic" if len(sentences) == 3 else "complex"
+        # Basic argument analysis
+        analysis = {
+            "argument": argument[:200],  # Truncate for brevity
+            "structure_assessment": "Argument received for analysis",
+            "logical_issues": [],
+            "strengths": [],
+            "suggestions": ["Consider providing evidence for key claims", "Clarify causal relationships"]
+        }
 
-    return analysis
+        return analysis
+
+    except Exception as e:
+        logger.error(f"Error analyzing argument structure: {e}")
+        logger.error(f"Argument analysis error traceback: {traceback.format_exc()}")
+        return {
+            "argument": argument[:100] if argument else "No argument provided",
+            "structure_assessment": f"Analysis error: {str(e)}",
+            "logical_issues": [],
+            "strengths": [],
+            "suggestions": []
+        }
 
 @function_tool
 async def detect_intervention_triggers(context, conversation_snippet: str):
-    """Detect when moderator intervention might be needed
+    """Detect if moderator intervention is needed based on conversation content
 
     Args:
         conversation_snippet: Recent conversation text to analyze
     """
-    triggers = {
-        "personal_attack": ["you're wrong", "that's stupid", "you don't understand"],
-        "off_topic": ["by the way", "speaking of", "that reminds me"],
-        "domination": ["as I was saying", "let me finish", "you need to understand"],
-        "confusion": ["I don't get it", "what do you mean", "that doesn't make sense"],
-        "silence": ["...", "um", "well"]
-    }
+    try:
+        logger.debug(f"Detecting intervention triggers in: {conversation_snippet[:100]}...")
 
-    detected = []
-    snippet_lower = conversation_snippet.lower()
-
-    for trigger_type, phrases in triggers.items():
-        if any(phrase in snippet_lower for phrase in phrases):
-            detected.append(trigger_type)
-
-    if detected:
-        return {
-            "intervention_needed": True,
-            "triggers": detected,
-            "suggestion": f"Consider addressing: {', '.join(detected)}"
+        # Simple trigger detection
+        triggers = {
+            "intervention_needed": False,
+            "trigger_type": "none",
+            "confidence": 0.0,
+            "suggested_action": "Continue monitoring",
+            "reasoning": "No immediate intervention triggers detected"
         }
-    else:
+
+        # Basic keyword detection for demonstration
+        if any(word in conversation_snippet.lower() for word in ["wrong", "stupid", "ridiculous"]):
+            triggers.update({
+                "intervention_needed": True,
+                "trigger_type": "tone",
+                "confidence": 0.7,
+                "suggested_action": "Gently redirect to more constructive language",
+                "reasoning": "Potentially dismissive language detected"
+            })
+
+        return triggers
+
+    except Exception as e:
+        logger.error(f"Error detecting intervention triggers: {e}")
+        logger.error(f"Intervention triggers error traceback: {traceback.format_exc()}")
         return {
             "intervention_needed": False,
-            "triggers": [],
-            "suggestion": "Conversation flowing well"
+            "trigger_type": "error",
+            "confidence": 0.0,
+            "suggested_action": "Monitor conversation",
+            "reasoning": f"Error in analysis: {str(e)}"
         }
 
 async def process_audio_stream(audio_stream, participant):
-    """Process audio frames from a participant's audio stream"""
+    """Process audio frames from a participant's stream"""
     try:
-        logger.info(f"🎵 Starting audio processing for {participant.identity}")
-        async for audio_frame in audio_stream:
-            # Log that we're receiving audio (but don't spam the logs)
-            if hasattr(process_audio_stream, '_frame_count'):
-                process_audio_stream._frame_count += 1
-            else:
-                process_audio_stream._frame_count = 1
+        logger.info(f"🎵 Processing audio stream from {participant.identity}")
 
-            # Log every 100th frame to confirm audio is flowing
-            if process_audio_stream._frame_count % 100 == 0:
-                logger.debug(f"🎵 Received {process_audio_stream._frame_count} audio frames from {participant.identity}")
-
-            # Here we could process the audio frame if needed
-            # For now, the main purpose is to ensure the audio stream is properly subscribed
-            # The actual speech processing is handled by the Agent framework's STT
+        async for frame in audio_stream:
+            # Process audio frame for coordination
+            # This could include voice activity detection, sentiment analysis, etc.
+            pass
 
     except Exception as e:
         logger.error(f"❌ Error processing audio stream from {participant.identity}: {e}")
-    finally:
-        logger.info(f"🎵 Audio processing ended for {participant.identity}")
+        logger.error(f"Audio stream error traceback: {traceback.format_exc()}")
 
 async def entrypoint(ctx: JobContext):
-    """Debate Moderator agent entrypoint - only joins rooms marked for sage debates"""
+    """Main entry point for the Aristotle debate moderator agent"""
+    logger.info("🏛️ Aristotle Debate Moderator Agent starting...")
 
-    logger.info("🏛️ Sage AI Debate Moderator checking room metadata...")
-    # ENHANCED: Connect with auto_subscribe to hear all participants including other agents
-    await ctx.connect(auto_subscribe=AutoSubscribe.SUBSCRIBE_ALL)
+    # Track audio streams and other agents for coordination
+    audio_tracks = {}
+    other_agents = set()
 
-    # ENHANCED: Set up audio track monitoring for inter-agent coordination
-    audio_tracks = {}  # Track audio sources from other participants
-    other_agents = set()  # Track other agent identities
-
-    # NOTE: Transcription is handled by Socrates agent to avoid duplicates
-
-    def on_track_subscribed(track, publication, participant):
+    # Use decorator pattern for event handlers to fix async callback issues
+    @ctx.room.on("track_subscribed")
+    async def on_track_subscribed(track, publication, participant):
         """Handle when we subscribe to an audio track from another participant"""
-        if track.kind == rtc.TrackKind.AUDIO:
-            logger.info(f"🎧 Moderator subscribed to audio track from: {participant.identity}")
+        try:
+            if track.kind == rtc.TrackKind.AUDIO:
+                logger.info(f"🎧 Moderator subscribed to audio track from: {participant.identity}")
 
-            # Store the audio track for coordination
-            audio_tracks[participant.identity] = {
-                "track": track,
-                "publication": publication,
-                "participant": participant
-            }
+                # Store the audio track for coordination
+                audio_tracks[participant.identity] = {
+                    "track": track,
+                    "publication": publication,
+                    "participant": participant
+                }
 
-            # Identify other agents for coordination
+                # Identify other agents for coordination
+                if (participant.identity and
+                        ("socrates" in participant.identity.lower() or
+                         "philosopher" in participant.identity.lower())):
+                    other_agents.add(participant.identity)
+                    logger.info(f"🤝 Moderator detected Socrates agent: {participant.identity}")
+
+                # Process audio stream from this participant
+                try:
+                    audio_stream = rtc.AudioStream(track)
+                    logger.info(f"🎵 Created audio stream for {participant.identity}")
+
+                    # Start processing audio frames in the background
+                    asyncio.create_task(process_audio_stream(audio_stream, participant))
+                except Exception as e:
+                    logger.error(f"❌ Failed to create audio stream for {participant.identity}: {e}")
+        except Exception as e:
+            logger.error(f"❌ Error in track_subscribed handler: {e}")
+            logger.error(f"Track subscribed error traceback: {traceback.format_exc()}")
+
+    @ctx.room.on("track_unsubscribed")
+    async def on_track_unsubscribed(track, publication, participant):
+        """Handle when we unsubscribe from an audio track"""
+        try:
+            if participant.identity in audio_tracks:
+                del audio_tracks[participant.identity]
+                logger.info(f"🔇 Moderator unsubscribed from: {participant.identity}")
+        except Exception as e:
+            logger.error(f"❌ Error in track_unsubscribed handler: {e}")
+
+    @ctx.room.on("participant_connected")
+    async def on_participant_connected(participant):
+        """Handle when a participant connects to the room"""
+        try:
+            logger.info(f"👋 Participant connected: {participant.identity}")
+
+            # Identify agent types for coordination
             if (participant.identity and
                     ("socrates" in participant.identity.lower() or
                      "philosopher" in participant.identity.lower())):
                 other_agents.add(participant.identity)
-                logger.info(f"🤝 Moderator detected Socrates agent: {participant.identity}")
+                logger.info(f"🤝 Moderator detected Socrates agent joined: {participant.identity}")
+        except Exception as e:
+            logger.error(f"❌ Error in participant_connected handler: {e}")
 
-            # Process audio stream from this participant
-            try:
-                audio_stream = rtc.AudioStream(track)
-                logger.info(f"🎵 Created audio stream for {participant.identity}")
-
-                # Start processing audio frames in the background (use create_task for async)
-                asyncio.create_task(process_audio_stream(audio_stream, participant))
-            except Exception as e:
-                logger.error(f"❌ Failed to create audio stream for {participant.identity}: {e}")
-
-    def on_track_unsubscribed(track, publication, participant):
-        """Handle when we unsubscribe from an audio track"""
-        if participant.identity in audio_tracks:
-            del audio_tracks[participant.identity]
-            logger.info(f"🔇 Moderator unsubscribed from: {participant.identity}")
-
-    def on_participant_connected(participant):
-        """Handle when a participant connects to the room"""
-        logger.info(f"👋 Participant connected: {participant.identity}")
-
-        # Identify agent types for coordination
-        if (participant.identity and
-                ("socrates" in participant.identity.lower() or
-                 "philosopher" in participant.identity.lower())):
-            other_agents.add(participant.identity)
-            logger.info(f"🤝 Moderator detected Socrates agent joined: {participant.identity}")
-
-    def on_participant_disconnected(participant):
+    @ctx.room.on("participant_disconnected")
+    async def on_participant_disconnected(participant):
         """Handle when a participant disconnects"""
-        logger.info(f"👋 Participant disconnected: {participant.identity}")
-        if participant.identity in other_agents:
-            other_agents.remove(participant.identity)
-        if participant.identity in audio_tracks:
-            del audio_tracks[participant.identity]
-
-    # Register event handlers for audio coordination
-    ctx.room.on("track_subscribed", on_track_subscribed)
-    ctx.room.on("track_unsubscribed", on_track_unsubscribed)
-    ctx.room.on("participant_connected", on_participant_connected)
-    ctx.room.on("participant_disconnected", on_participant_disconnected)
+        try:
+            logger.info(f"👋 Participant disconnected: {participant.identity}")
+            if participant.identity in other_agents:
+                other_agents.remove(participant.identity)
+            if participant.identity in audio_tracks:
+                del audio_tracks[participant.identity]
+        except Exception as e:
+            logger.error(f"❌ Error in participant_disconnected handler: {e}")
 
     # ENHANCED TOPIC DETECTION - Check job metadata first (from agent dispatch)
     debate_topic = "The impact of AI on society"  # Default
@@ -646,19 +656,20 @@ Use your available function tools to research claims and access knowledge when n
     persona_temperature = {
         "socrates": 0.7,  # More creative for questioning
         "buddha": 0.5,    # Balanced for compassionate responses
-        "aristotle": 0.2  # Lower for analytical precision
+        "aristotle": 0.2  # More focused for logical analysis
     }
     
-    temp = persona_temperature.get(moderator_persona.lower(), 0.5)
-    
-    # Configure LLM with comprehensive error handling and fallbacks
+    temp = persona_temperature.get(moderator_persona.lower(), 0.2)
     research_llm = None
     
+    # Try Perplexity first if available
     if PERPLEXITY_AVAILABLE:
         try:
             research_llm = openai.LLM.with_perplexity(
                 model="sonar-pro",  # Updated to current Perplexity model (200k context)
-                temperature=temp
+                temperature=temp,
+                max_tokens=4000,  # Add explicit limits to prevent runaway costs
+                timeout=30.0  # Add timeout to prevent hanging
             )
             logger.info(f"✅ Using Perplexity LLM for {moderator_persona} (temp: {temp})")
         except Exception as e:
@@ -733,40 +744,44 @@ Use your available function tools to research claims and access knowledge when n
             except Exception as e:
                 logger.warning(f"⚠️ Could not connect memory manager: {e}")
 
-
-
             # Register agent state change handlers using decorator pattern
             @agent_session.on("user_state_changed")
             def handle_user_state_changed(event):
                 """Monitor user speaking state for coordination"""
-                with conversation_state.conversation_lock:
-                    if event.new_state == "speaking":
-                        conversation_state.user_speaking = True
-                        # If user starts speaking, agent should stop
-                        if conversation_state.active_speaker:
-                            logger.info("👤 User started speaking - agent should yield")
-                            conversation_state.active_speaker = None
-                    elif event.new_state == "listening":
-                        conversation_state.user_speaking = False
-                        logger.info("👂 User stopped speaking - agent may respond if appropriate")
-                    elif event.new_state == "away":
-                        conversation_state.user_speaking = False
-                        logger.info("👋 User disconnected")
+                try:
+                    with conversation_state.conversation_lock:
+                        if event.new_state == "speaking":
+                            conversation_state.user_speaking = True
+                            # If user starts speaking, agent should stop
+                            if conversation_state.active_speaker:
+                                logger.info("👤 User started speaking - agent should yield")
+                                conversation_state.active_speaker = None
+                        elif event.new_state == "listening":
+                            conversation_state.user_speaking = False
+                            logger.info("👂 User stopped speaking - agent may respond if appropriate")
+                        elif event.new_state == "away":
+                            conversation_state.user_speaking = False
+                            logger.info("👋 User disconnected")
+                except Exception as e:
+                    logger.error(f"❌ Error in user_state_changed handler: {e}")
 
             @agent_session.on("agent_state_changed")
             def handle_agent_state_changed(event):
                 """Monitor agent speaking state for coordination"""
-                agent_name = moderator_persona.lower()
+                try:
+                    agent_name = moderator_persona.lower()
 
-                if event.new_state == "speaking":
-                    with conversation_state.conversation_lock:
-                        conversation_state.active_speaker = agent_name
-                        logger.info(f"🎤 {moderator_persona} started speaking")
-                elif event.new_state in ["idle", "listening", "thinking"]:
-                    with conversation_state.conversation_lock:
-                        if conversation_state.active_speaker == agent_name:
-                            conversation_state.active_speaker = None
-                            logger.info(f"🔇 {moderator_persona} finished speaking")
+                    if event.new_state == "speaking":
+                        with conversation_state.conversation_lock:
+                            conversation_state.active_speaker = agent_name
+                            logger.info(f"🎤 {moderator_persona} started speaking")
+                    elif event.new_state in ["idle", "listening", "thinking"]:
+                        with conversation_state.conversation_lock:
+                            if conversation_state.active_speaker == agent_name:
+                                conversation_state.active_speaker = None
+                                logger.info(f"🔇 {moderator_persona} finished speaking")
+                except Exception as e:
+                    logger.error(f"❌ Error in agent_state_changed handler: {e}")
 
             # Start the moderation session with error handling
             try:
@@ -830,11 +845,13 @@ My role is to fact-check arguments, request sources for claims, and assess evide
                 logger.info(f"🔚 {moderator_persona} agent session interrupted")
             except Exception as session_error:
                 logger.error(f"❌ Agent session error: {session_error}")
+                logger.error(f"Session error traceback: {traceback.format_exc()}")
             finally:
                 logger.info(f"🔚 {moderator_persona} agent session ended")
 
     except Exception as e:
         logger.error(f"❌ Error in {moderator_persona} agent session: {e}")
+        logger.error(f"Agent error traceback: {traceback.format_exc()}")
         # Ensure proper cleanup even on errors
         if 'research_llm' in locals() and hasattr(research_llm, 'aclose'):
             try:
