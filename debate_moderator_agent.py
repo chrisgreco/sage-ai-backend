@@ -13,9 +13,11 @@ import json
 import time
 import threading
 import signal
+import aiohttp
+import weakref
 from dotenv import load_dotenv
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Set
 
 # Load environment variables first
 load_dotenv()
@@ -30,6 +32,37 @@ logger = logging.getLogger(__name__)
 # Add error handling for API connections
 import traceback
 from contextlib import asynccontextmanager
+
+# Global session management for proper cleanup
+_active_sessions: Set[aiohttp.ClientSession] = set()
+_session_registry = weakref.WeakSet()
+
+async def get_http_session() -> aiohttp.ClientSession:
+    """Get or create a properly managed HTTP session"""
+    session = aiohttp.ClientSession(
+        timeout=aiohttp.ClientTimeout(total=30),
+        connector=aiohttp.TCPConnector(limit=10, limit_per_host=5)
+    )
+    _active_sessions.add(session)
+    _session_registry.add(session)
+    return session
+
+async def cleanup_http_sessions():
+    """Clean up all active HTTP sessions"""
+    logger.info("🧹 Cleaning up HTTP sessions...")
+    sessions_to_close = list(_active_sessions)
+    _active_sessions.clear()
+    
+    for session in sessions_to_close:
+        try:
+            if not session.closed:
+                await session.close()
+                logger.debug("✅ HTTP session closed")
+        except Exception as e:
+            logger.warning(f"⚠️ Error closing HTTP session: {e}")
+    
+    # Wait for connections to close
+    await asyncio.sleep(0.1)
 
 # LiveKit Agents imports
 try:
@@ -318,6 +351,7 @@ async def research_live_data(context, query: str, research_type: str = "general"
         query: Research query
         research_type: Type of research (general, fact_check, policy, etc.)
     """
+    session = None
     try:
         logger.debug(f"Performing live research: {query} (type: {research_type})")
 
@@ -329,6 +363,9 @@ async def research_live_data(context, query: str, research_type: str = "general"
                 "confidence": "low"
             }
 
+        # Use properly managed HTTP session
+        session = await get_http_session()
+        
         # This would use Perplexity's live research capabilities
         # For now, return a structured response indicating research capability
         return {
@@ -348,6 +385,16 @@ async def research_live_data(context, query: str, research_type: str = "general"
             "research_type": research_type,
             "confidence": "error"
         }
+    finally:
+        # Clean up session
+        if session and session in _active_sessions:
+            try:
+                _active_sessions.remove(session)
+                if not session.closed:
+                    await session.close()
+                    logger.debug("✅ Research HTTP session closed")
+            except Exception as cleanup_error:
+                logger.warning(f"⚠️ Error cleaning up research session: {cleanup_error}")
 
 @function_tool
 async def analyze_argument_structure(context, argument: str):
@@ -439,11 +486,15 @@ async def process_audio_stream(audio_stream, participant):
 
 async def entrypoint(ctx: JobContext):
     """Main entry point for the Aristotle debate moderator agent"""
-    logger.info("🏛️ Aristotle Debate Moderator Agent starting...")
+    logger.info("🏛️ Debate Moderator Agent starting...")
 
     # Track audio streams and other agents for coordination
     audio_tracks = {}
     other_agents = set()
+    
+    # Set up connection timeouts and limits
+    connection_timeout = 30.0
+    max_retries = 3
 
     # Use decorator pattern for event handlers to fix async callback issues
     @ctx.room.on("track_subscribed")
@@ -871,14 +922,53 @@ My role is to fact-check arguments, request sources for claims, and assess evide
                 logger.error(f"❌ Agent session error: {session_error}")
                 logger.error(f"Session error traceback: {traceback.format_exc()}")
             finally:
+                logger.info(f"🔚 {moderator_persona} agent session cleanup starting...")
+                
+                # Comprehensive resource cleanup
+                cleanup_tasks = []
+                
+                # 1. Clean up agent session
+                if hasattr(agent_session, 'aclose'):
+                    async def cleanup_agent_session():
+                        try:
+                            await agent_session.aclose()
+                            logger.info(f"✅ Agent session closed successfully")
+                        except Exception as cleanup_error:
+                            logger.warning(f"⚠️ Error closing agent session: {cleanup_error}")
+                    cleanup_tasks.append(cleanup_agent_session())
+                
+                # 2. Clean up room connection
+                if hasattr(ctx.room, 'disconnect'):
+                    async def cleanup_room():
+                        try:
+                            await ctx.room.disconnect()
+                            logger.info(f"✅ Room disconnected successfully")
+                        except Exception as cleanup_error:
+                            logger.warning(f"⚠️ Error disconnecting from room: {cleanup_error}")
+                    cleanup_tasks.append(cleanup_room())
+                
+                # 3. Clean up HTTP sessions
+                cleanup_tasks.append(cleanup_http_sessions())
+                
+                # 4. Clean up LLM resources
+                if 'research_llm' in locals() and hasattr(research_llm, 'aclose'):
+                    async def cleanup_llm():
+                        try:
+                            await research_llm.aclose()
+                            logger.info(f"✅ LLM resources cleaned up")
+                        except Exception as cleanup_error:
+                            logger.warning(f"⚠️ Error cleaning up LLM: {cleanup_error}")
+                    cleanup_tasks.append(cleanup_llm())
+                
+                # Execute all cleanup tasks
+                if cleanup_tasks:
+                    try:
+                        await asyncio.gather(*cleanup_tasks, return_exceptions=True)
+                        logger.info(f"✅ All resources cleaned up for {moderator_persona}")
+                    except Exception as final_cleanup_error:
+                        logger.error(f"❌ Error in final cleanup: {final_cleanup_error}")
+                
                 logger.info(f"🔚 {moderator_persona} agent session ended")
-                # Cleanup agent session resources
-                try:
-                    if hasattr(agent_session, 'aclose'):
-                        await agent_session.aclose()
-                        logger.info(f"✅ Agent session closed successfully")
-                except Exception as cleanup_error:
-                    logger.warning(f"⚠️ Error closing agent session: {cleanup_error}")
                     
     except Exception as tts_error:
         logger.error(f"❌ Error in TTS context manager: {tts_error}")
@@ -893,27 +983,40 @@ My role is to fact-check arguments, request sources for claims, and assess evide
             except Exception as tts_cleanup_error:
                 logger.warning(f"⚠️ Error cleaning up TTS: {tts_cleanup_error}")
 
+async def global_cleanup():
+    """Global cleanup function to ensure all resources are properly closed"""
+    logger.info("🧹 Performing global cleanup...")
+    try:
+        await cleanup_http_sessions()
+        logger.info("✅ Global cleanup completed")
     except Exception as e:
-        logger.error(f"❌ Error in {moderator_persona} agent session: {e}")
-        logger.error(f"Agent error traceback: {traceback.format_exc()}")
-        # Ensure proper cleanup even on errors
+        logger.error(f"❌ Error in global cleanup: {e}")
+
+def setup_global_cleanup():
+    """Set up global cleanup handlers"""
+    import atexit
+    
+    def sync_cleanup():
+        """Synchronous cleanup wrapper for atexit"""
         try:
-            # Cleanup LLM resources
-            if 'research_llm' in locals() and hasattr(research_llm, 'aclose'):
-                await research_llm.aclose()
-                logger.info(f"✅ LLM resources cleaned up")
-            
-            # Cleanup agent session if it exists
-            if 'agent_session' in locals() and hasattr(agent_session, 'aclose'):
-                await agent_session.aclose()
-                logger.info(f"✅ Agent session cleaned up")
-                
-        except Exception as cleanup_error:
-            logger.error(f"❌ Error during cleanup: {cleanup_error}")
-        raise
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Create a new task for cleanup
+                loop.create_task(global_cleanup())
+            else:
+                # Run cleanup in new loop
+                asyncio.run(global_cleanup())
+        except Exception as e:
+            logger.error(f"❌ Error in sync cleanup: {e}")
+    
+    atexit.register(sync_cleanup)
+    logger.info("✅ Global cleanup handlers registered")
 
 def main():
     """Main entry point for the debate moderator agent"""
+    # Set up global cleanup
+    setup_global_cleanup()
+    
     cli.run_app(
         WorkerOptions(
             agent_name="moderator",  # Generic name since persona is determined at runtime
