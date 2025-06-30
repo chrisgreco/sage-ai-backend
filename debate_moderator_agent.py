@@ -196,7 +196,7 @@ class DebateModeratorAgent:
             conversation_state.active_speaker = None
 
 @function_tool
-async def get_debate_topic(context):
+async def get_debate_topic():
     """Get the current debate topic"""
     try:
         topic = os.getenv("DEBATE_TOPIC", "The impact of AI on society")
@@ -208,7 +208,7 @@ async def get_debate_topic(context):
         return "Error: Could not retrieve debate topic"
 
 @function_tool
-async def access_facilitation_knowledge(context, query: str):
+async def access_facilitation_knowledge(query: str):
     """Access specialized knowledge about facilitation and parliamentary procedure
 
     Args:
@@ -249,7 +249,7 @@ async def access_facilitation_knowledge(context, query: str):
         }
 
 @function_tool
-async def suggest_process_intervention(context, situation: str):
+async def suggest_process_intervention(situation: str):
     """Suggest appropriate process interventions for debate management
 
     Args:
@@ -285,7 +285,7 @@ async def suggest_process_intervention(context, situation: str):
         }
 
 @function_tool
-async def fact_check_claim(context, claim: str, source_requested: bool = False):
+async def fact_check_claim(claim: str, source_requested: bool = False):
     """Fact-check a claim made during the debate using live research
 
     Args:
@@ -298,7 +298,7 @@ async def fact_check_claim(context, claim: str, source_requested: bool = False):
         # Use live research to verify the claim
         if PERPLEXITY_AVAILABLE:
             research_query = f"fact check verify: {claim}"
-            research_results = await research_live_data(context, research_query, "fact_check")
+            research_results = await research_live_data(research_query, "fact_check")
 
             # Parse research results
             if isinstance(research_results, dict) and "research_findings" in research_results:
@@ -344,7 +344,7 @@ async def fact_check_claim(context, claim: str, source_requested: bool = False):
         }
 
 @function_tool
-async def research_live_data(context, query: str, research_type: str = "general"):
+async def research_live_data(query: str, research_type: str = "general"):
     """Perform live research using Perplexity to get current information
 
     Args:
@@ -397,7 +397,7 @@ async def research_live_data(context, query: str, research_type: str = "general"
                 logger.warning(f"⚠️ Error cleaning up research session: {cleanup_error}")
 
 @function_tool
-async def analyze_argument_structure(context, argument: str):
+async def analyze_argument_structure(argument: str):
     """Analyze the logical structure of an argument for fallacies or weak reasoning
 
     Args:
@@ -429,7 +429,7 @@ async def analyze_argument_structure(context, argument: str):
         }
 
 @function_tool
-async def detect_intervention_triggers(context, conversation_snippet: str):
+async def detect_intervention_triggers(conversation_snippet: str):
     """Detect if moderator intervention is needed based on conversation content
 
     Args:
@@ -736,9 +736,7 @@ Use your available function tools to research claims and access knowledge when n
             # Create Perplexity LLM with proper session management
             research_llm = openai.LLM.with_perplexity(
                 model="sonar-pro",  # Updated to current Perplexity model (200k context)
-                temperature=temp,
-                max_tokens=4000,  # Add explicit limits to prevent runaway costs
-                timeout=30.0  # Add timeout to prevent hanging
+                temperature=temp
             )
             logger.info(f"✅ Using Perplexity LLM for {moderator_persona} (temp: {temp})")
         except Exception as e:
@@ -751,9 +749,7 @@ Use your available function tools to research claims and access knowledge when n
         try:
             research_llm = openai.LLM(
                 model="gpt-4o-realtime-preview", 
-                temperature=temp,
-                max_tokens=4000,  # Add explicit limits to prevent runaway costs
-                timeout=30.0  # Add timeout to prevent hanging
+                temperature=temp
             )
             logger.info(f"✅ Using OpenAI GPT-4o for {moderator_persona} (temp: {temp})")
         except Exception as e:
@@ -761,7 +757,7 @@ Use your available function tools to research claims and access knowledge when n
             logger.error(f"OpenAI error traceback: {traceback.format_exc()}")
             # Try basic configuration as last resort
             try:
-                research_llm = openai.LLM(model="gpt-4o-realtime-preview", temperature=0.5)
+                research_llm = openai.LLM(model="gpt-4o-realtime-preview", temperature=temp)
                 logger.warning(f"⚠️ Using basic OpenAI configuration as fallback")
             except Exception as fallback_error:
                 logger.error(f"❌ Complete LLM configuration failure: {fallback_error}")
