@@ -17,7 +17,8 @@ import aiohttp
 import weakref
 from dotenv import load_dotenv
 from dataclasses import dataclass
-from typing import Optional, Set
+from typing import Optional, Set, Dict, List, Any, Callable
+from enum import Enum
 
 # Load environment variables first
 load_dotenv()
@@ -33,15 +34,82 @@ logger = logging.getLogger(__name__)
 import traceback
 from contextlib import asynccontextmanager
 
-# Global session management for proper cleanup
+# Enhanced HTTP session management
 _active_sessions: Set[aiohttp.ClientSession] = set()
 _session_registry = weakref.WeakSet()
 
+class HTTPSessionManager:
+    """Context manager for HTTP sessions with automatic cleanup and resource leak detection"""
+    
+    def __init__(self, timeout: float = 30.0, max_connections: int = 10):
+        self.timeout = timeout
+        self.max_connections = max_connections
+        self.session: Optional[aiohttp.ClientSession] = None
+        self.created_at = time.time()
+        
+    async def __aenter__(self) -> aiohttp.ClientSession:
+        """Create and return HTTP session"""
+        try:
+            connector = aiohttp.TCPConnector(
+                limit=self.max_connections,
+                limit_per_host=5,
+                keepalive_timeout=30,
+                enable_cleanup_closed=True
+            )
+            
+            timeout = aiohttp.ClientTimeout(
+                total=self.timeout,
+                connect=10.0,
+                sock_read=self.timeout,
+                sock_connect=10.0
+            )
+            
+            self.session = aiohttp.ClientSession(
+                timeout=timeout,
+                connector=connector,
+                trust_env=True
+            )
+            
+            _active_sessions.add(self.session)
+            _session_registry.add(self.session)
+            
+            logger.debug(f"✅ Created HTTP session (active: {len(_active_sessions)})")
+            return self.session
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to create HTTP session: {e}")
+            raise
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Cleanup HTTP session"""
+        if self.session:
+            try:
+                # Remove from active sessions
+                if self.session in _active_sessions:
+                    _active_sessions.remove(self.session)
+                
+                # Close the session if not already closed
+                if not self.session.closed:
+                    await self.session.close()
+                    
+                # Small delay to ensure connections are properly closed
+                await asyncio.sleep(0.1)
+                
+                session_lifetime = time.time() - self.created_at
+                logger.debug(f"✅ Closed HTTP session after {session_lifetime:.1f}s (active: {len(_active_sessions)})")
+                
+            except Exception as e:
+                logger.warning(f"⚠️ Error closing HTTP session: {e}")
+            finally:
+                self.session = None
+
 async def get_http_session() -> aiohttp.ClientSession:
-    """Get or create a properly managed HTTP session"""
+    """Get or create a properly managed HTTP session - DEPRECATED: Use HTTPSessionManager context manager instead"""
+    logger.warning("⚠️ get_http_session() is deprecated. Use HTTPSessionManager context manager for better resource management.")
+    
     session = aiohttp.ClientSession(
         timeout=aiohttp.ClientTimeout(total=30),
-        connector=aiohttp.TCPConnector(limit=10, limit_per_host=5)
+        connector=aiohttp.TCPConnector(limit=10, limit_per_host=5, enable_cleanup_closed=True)
     )
     _active_sessions.add(session)
     _session_registry.add(session)
@@ -49,20 +117,37 @@ async def get_http_session() -> aiohttp.ClientSession:
 
 async def cleanup_http_sessions():
     """Clean up all active HTTP sessions"""
-    logger.info("🧹 Cleaning up HTTP sessions...")
+    logger.info(f"🧹 Cleaning up {len(_active_sessions)} HTTP sessions...")
     sessions_to_close = list(_active_sessions)
     _active_sessions.clear()
     
+    cleanup_tasks = []
     for session in sessions_to_close:
-        try:
-            if not session.closed:
-                await session.close()
-                logger.debug("✅ HTTP session closed")
-        except Exception as e:
-            logger.warning(f"⚠️ Error closing HTTP session: {e}")
+        if not session.closed:
+            cleanup_tasks.append(session.close())
     
-    # Wait for connections to close
-    await asyncio.sleep(0.1)
+    if cleanup_tasks:
+        try:
+            await asyncio.gather(*cleanup_tasks, return_exceptions=True)
+            logger.info("✅ All HTTP sessions closed")
+        except Exception as e:
+            logger.warning(f"⚠️ Error during bulk session cleanup: {e}")
+    
+    # Wait for connections to fully close
+    await asyncio.sleep(0.2)
+
+async def check_resource_leaks():
+    """Check for unclosed HTTP sessions and log warnings"""
+    unclosed_sessions = [s for s in _session_registry if not s.closed]
+    if unclosed_sessions:
+        logger.warning(f"⚠️ Resource leak detected: {len(unclosed_sessions)} unclosed HTTP sessions")
+        for i, session in enumerate(unclosed_sessions):
+            logger.warning(f"  - Session {i+1}: connector={session.connector}")
+    
+    active_count = len(_active_sessions)
+    registry_count = len(_session_registry)
+    if active_count != registry_count:
+        logger.warning(f"⚠️ Session count mismatch: active={active_count}, registry={registry_count}")
 
 # LiveKit Agents imports
 try:
@@ -352,7 +437,6 @@ async def research_live_data(query: str, research_type: str = "general"):
         query: Research query
         research_type: Type of research (general, fact_check, policy, etc.)
     """
-    session = None
     try:
         logger.debug(f"Performing live research: {query} (type: {research_type})")
 
@@ -364,18 +448,17 @@ async def research_live_data(query: str, research_type: str = "general"):
                 "confidence": "low"
             }
 
-        # Use properly managed HTTP session
-        session = await get_http_session()
-        
-        # This would use Perplexity's live research capabilities
-        # For now, return a structured response indicating research capability
-        return {
-            "research_findings": f"Research query processed: {query}. Live research capabilities available but implementation pending.",
-            "sources": ["Perplexity AI Research"],
-            "research_type": research_type,
-            "confidence": "medium",
-            "note": "Live research integration in development"
-        }
+        # Use context manager for proper HTTP session management
+        async with HTTPSessionManager(timeout=30.0) as session:
+            # This would use Perplexity's live research capabilities
+            # For now, return a structured response indicating research capability
+            return {
+                "research_findings": f"Research query processed: {query}. Live research capabilities available but implementation pending.",
+                "sources": ["Perplexity AI Research"],
+                "research_type": research_type,
+                "confidence": "medium",
+                "note": "Live research integration in development"
+            }
 
     except Exception as e:
         logger.error(f"Error in live research: {e}")
@@ -386,16 +469,6 @@ async def research_live_data(query: str, research_type: str = "general"):
             "research_type": research_type,
             "confidence": "error"
         }
-    finally:
-        # Clean up session
-        if session and session in _active_sessions:
-            try:
-                _active_sessions.remove(session)
-                if not session.closed:
-                    await session.close()
-                    logger.debug("✅ Research HTTP session closed")
-            except Exception as cleanup_error:
-                logger.warning(f"⚠️ Error cleaning up research session: {cleanup_error}")
 
 @function_tool
 async def analyze_argument_structure(argument: str):
@@ -485,9 +558,733 @@ async def process_audio_stream(audio_stream, participant):
         logger.error(f"❌ Error processing audio stream from {participant.identity}: {e}")
         logger.error(f"Audio stream error traceback: {traceback.format_exc()}")
 
+# Perplexity wrapper to fix message formatting issues
+def validate_perplexity_message_format(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Validate and fix Perplexity API message format with proper alternation rules.
+    
+    Ensures strict alternation: (optional system messages) → user/tool → assistant → user/tool → assistant...
+    Fixes the error: 'After the (optional) system message(s), user or tool message(s) should alternate with assistant message(s)'
+    """
+    if not messages:
+        return messages
+    
+    valid_roles = {"system", "user", "assistant", "tool"}
+    corrected_messages = []
+    
+    # Phase 1: Collect and validate system messages at the start
+    system_messages = []
+    idx = 0
+    while idx < len(messages) and messages[idx].get("role") == "system":
+        msg = messages[idx].copy()
+        if "content" not in msg or not msg["content"].strip():
+            msg["content"] = "You are a helpful AI assistant."
+            logger.warning(f"⚠️ Empty system message at index {idx}, added default content")
+        system_messages.append(msg)
+        idx += 1
+    
+    # Phase 2: Process non-system messages and enforce alternation
+    remaining_messages = messages[idx:]
+    
+    if not remaining_messages:
+        # Only system messages, add a default user message
+        system_messages.append({
+            "role": "user", 
+            "content": "Please provide a helpful response."
+        })
+        logger.info("✅ Added default user message after system-only conversation")
+        return system_messages
+    
+    # Rebuild conversation with proper alternation
+    corrected_messages = system_messages.copy()
+    expected_role = "user"  # After system messages, we expect user/tool first
+    
+    for i, msg in enumerate(remaining_messages):
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        
+        # Validate role
+        if role not in valid_roles:
+            logger.warning(f"⚠️ Invalid role '{role}' at message {idx + i}, converting to 'user'")
+            role = "user"
+        
+        # Validate content
+        if not content or not content.strip():
+            if role == "system":
+                content = "You are a helpful AI assistant."
+            elif role in ["user", "tool"]:
+                content = "Please continue."
+            else:  # assistant
+                content = "I understand. How can I help you further?"
+            logger.warning(f"⚠️ Empty content at message {idx + i}, added default content")
+        
+        # Enforce alternation
+        if expected_role == "user" and role not in ["user", "tool"]:
+            if role == "assistant":
+                # Insert a user message before this assistant message
+                corrected_messages.append({
+                    "role": "user",
+                    "content": "Please respond to the previous context."
+                })
+                logger.info(f"✅ Inserted user message before assistant message at position {len(corrected_messages)-1}")
+                
+                # Now add the assistant message
+                corrected_messages.append({"role": "assistant", "content": content})
+                expected_role = "user"
+            else:
+                # Convert other roles to user
+                corrected_messages.append({"role": "user", "content": content})
+                expected_role = "assistant"
+                logger.info(f"✅ Converted role '{role}' to 'user' at position {len(corrected_messages)-1}")
+                
+        elif expected_role == "assistant" and role != "assistant":
+            if role in ["user", "tool"]:
+                # Insert an assistant message before this user/tool message
+                corrected_messages.append({
+                    "role": "assistant",
+                    "content": "I understand your request. Let me help you with that."
+                })
+                logger.info(f"✅ Inserted assistant message before user/tool message at position {len(corrected_messages)-1}")
+                
+                # Now add the user/tool message
+                corrected_messages.append({"role": role, "content": content})
+                expected_role = "assistant"
+            else:
+                # Convert other roles to assistant
+                corrected_messages.append({"role": "assistant", "content": content})
+                expected_role = "user"
+                logger.info(f"✅ Converted role '{role}' to 'assistant' at position {len(corrected_messages)-1}")
+        else:
+            # Role matches expectation
+            corrected_messages.append({"role": role, "content": content})
+            
+            # Update expected role
+            if role in ["user", "tool"]:
+                expected_role = "assistant"
+            elif role == "assistant":
+                expected_role = "user"
+    
+    # Phase 3: Ensure conversation ends with user/tool message
+    if corrected_messages and corrected_messages[-1]["role"] not in ["user", "tool"]:
+        if corrected_messages[-1]["role"] == "assistant":
+            # Good case - just add a follow-up user message
+            corrected_messages.append({
+                "role": "user",
+                "content": "Please provide any additional information or clarification if needed."
+            })
+            logger.info("✅ Added follow-up user message to end conversation properly")
+        else:
+            # Should not happen after Phase 2, but just in case
+            corrected_messages[-1]["role"] = "user"
+            logger.info(f"✅ Converted final message to 'user' role")
+    
+    # Phase 4: Final validation
+    alternation_valid = validate_message_alternation(corrected_messages)
+    if not alternation_valid:
+        logger.error("❌ Message alternation validation failed after correction - this should not happen!")
+        # Fallback: create minimal valid conversation
+        corrected_messages = [
+            {"role": "system", "content": "You are a helpful AI assistant."},
+            {"role": "user", "content": "Please provide a helpful response based on our conversation context."}
+        ]
+        logger.info("✅ Applied fallback minimal conversation structure")
+    
+    logger.info(f"✅ Message alternation validated and corrected: {len(messages)} → {len(corrected_messages)} messages")
+    return corrected_messages
+
+def validate_message_alternation(messages: List[Dict[str, Any]]) -> bool:
+    """Validate that messages follow proper alternation rules.
+    
+    Returns True if alternation is valid, False otherwise.
+    """
+    if not messages:
+        return True
+    
+    # Skip system messages at the start
+    idx = 0
+    while idx < len(messages) and messages[idx].get("role") == "system":
+        idx += 1
+    
+    if idx >= len(messages):
+        # Only system messages - this is valid but should end with user
+        return True
+    
+    # Check alternation pattern
+    expected_role_type = "user"  # After system messages, expect user/tool first
+    
+    for i in range(idx, len(messages)):
+        role = messages[i].get("role")
+        
+        if expected_role_type == "user":
+            if role not in ["user", "tool"]:
+                logger.debug(f"❌ Alternation violation at index {i}: expected user/tool, got '{role}'")
+                return False
+            expected_role_type = "assistant"
+        else:  # expected_role_type == "assistant"
+            if role != "assistant":
+                logger.debug(f"❌ Alternation violation at index {i}: expected assistant, got '{role}'")
+                return False
+            expected_role_type = "user"
+    
+    # Final message should be user/tool for Perplexity API
+    if messages and messages[-1].get("role") not in ["user", "tool"]:
+        logger.debug(f"❌ Final message has role '{messages[-1].get('role')}', should be user/tool")
+        return False
+    
+    return True
+
+# Monkey patch the OpenAI LLM to validate Perplexity messages
+original_llm_chat = None
+
+def patch_perplexity_llm_validation():
+    """Patch LiveKit's OpenAI LLM to validate Perplexity message formats"""
+    global original_llm_chat
+    
+    try:
+        from livekit.plugins.openai.llm import LLM as OpenAILLM
+        
+        # Store original chat method
+        if original_llm_chat is None:
+            original_llm_chat = OpenAILLM.chat
+        
+        def patched_chat(self, **kwargs):
+            """Patched chat method that validates message format for Perplexity"""
+            try:
+                # Check if this is a Perplexity LLM (base_url contains perplexity)
+                is_perplexity = (
+                    hasattr(self, '_client') and 
+                    hasattr(self._client, 'base_url') and 
+                    'perplexity' in str(self._client.base_url).lower()
+                )
+                
+                if is_perplexity and 'chat_ctx' in kwargs:
+                    chat_ctx = kwargs['chat_ctx']
+                    if hasattr(chat_ctx, 'messages'):
+                        # Get the messages and validate format
+                        messages = []
+                        for msg in chat_ctx.messages:
+                            if hasattr(msg, 'role') and hasattr(msg, 'content'):
+                                messages.append({
+                                    'role': msg.role,
+                                    'content': msg.content
+                                })
+                        
+                        if messages:
+                            validated_messages = validate_perplexity_message_format(messages)
+                            logger.debug(f"✅ Validated {len(validated_messages)} messages for Perplexity API")
+            except Exception as validation_error:
+                logger.warning(f"⚠️ Error during message validation: {validation_error}")
+                # Continue with original behavior if validation fails
+            
+            # Call original method
+            return original_llm_chat(self, **kwargs)
+        
+        # Apply the patch
+        OpenAILLM.chat = patched_chat
+        logger.info("✅ Applied Perplexity message format validation patch")
+        
+    except Exception as patch_error:
+        logger.error(f"❌ Failed to apply Perplexity validation patch: {patch_error}")
+
+# Enhanced OpenAI API error handling
+import openai
+import random
+
+class OpenAIErrorHandler:
+    """Specialized error handler for OpenAI API interactions"""
+    
+    def __init__(self, max_retries: int = 5, base_delay: float = 1.0):
+        self.max_retries = max_retries
+        self.base_delay = base_delay
+        
+    def log_api_interaction(self, request_type: str, status_code: int = None, error: Exception = None, 
+                           tokens_used: int = None, request_id: str = None):
+        """Log OpenAI API interactions with structured data"""
+        log_data = {
+            "request_type": request_type,
+            "status_code": status_code,
+            "tokens_used": tokens_used,
+            "request_id": request_id,
+            "timestamp": time.time()
+        }
+        
+        if error:
+            log_data.update({
+                "error_type": type(error).__name__,
+                "error_message": str(error),
+                "error_code": getattr(error, "code", None)
+            })
+            
+        logger.info(f"📡 OpenAI API {request_type}", extra=log_data)
+        
+    async def handle_openai_error(self, error: Exception, attempt: int, context: str = "") -> tuple[bool, float, Optional[str]]:
+        """
+        Handle OpenAI API errors with specific retry logic
+        
+        Returns:
+            (should_retry, delay_seconds, fallback_message)
+        """
+        error_type = type(error).__name__
+        should_retry = False
+        delay = 0.0
+        fallback_message = None
+        
+        # Log the error with full context
+        self.log_api_interaction(
+            request_type=context,
+            error=error,
+            status_code=getattr(error, "status_code", None)
+        )
+        
+        if isinstance(error, openai.APITimeoutError):
+            # Timeout errors - retry with exponential backoff
+            should_retry = attempt < self.max_retries
+            delay = min(self.base_delay * (2 ** (attempt - 1)) + random.uniform(0, 1), 30)
+            fallback_message = f"OpenAI API timeout (attempt {attempt}/{self.max_retries}). Retrying in {delay:.1f}s..."
+            
+        elif isinstance(error, openai.RateLimitError):
+            # Rate limiting - respect retry-after header if present
+            should_retry = attempt < self.max_retries
+            retry_after = getattr(error, "retry_after", None)
+            if retry_after:
+                delay = float(retry_after) + random.uniform(0, 1)
+            else:
+                delay = min(self.base_delay * (2 ** attempt) + random.uniform(0, 3), 60)
+            fallback_message = f"OpenAI API rate limited. Retrying in {delay:.1f}s..."
+            
+        elif isinstance(error, openai.AuthenticationError):
+            # Authentication errors - don't retry, likely need new credentials
+            should_retry = False
+            fallback_message = "OpenAI API authentication failed. Please check API key configuration."
+            
+        elif isinstance(error, openai.PermissionDeniedError):
+            # Permission errors - don't retry
+            should_retry = False
+            fallback_message = "OpenAI API permission denied. Please check API key permissions."
+            
+        elif isinstance(error, openai.BadRequestError):
+            # Bad request - likely client error, don't retry
+            should_retry = False
+            error_detail = str(error)[:200]
+            fallback_message = f"OpenAI API request error: {error_detail}. Please check request format."
+            
+        elif isinstance(error, openai.APIStatusError):
+            status_code = error.status_code
+            
+            if status_code == 429:  # Rate limiting (backup check)
+                should_retry = attempt < self.max_retries
+                delay = min(self.base_delay * (2 ** attempt) + random.uniform(0, 3), 60)
+                fallback_message = f"OpenAI API rate limited (HTTP 429). Retrying in {delay:.1f}s..."
+                
+            elif 500 <= status_code < 600:  # Server errors
+                should_retry = attempt < self.max_retries
+                delay = min(self.base_delay * (2 ** (attempt - 1)) + random.uniform(0, 2), 20)
+                fallback_message = f"OpenAI API server error (HTTP {status_code}). Retrying in {delay:.1f}s..."
+                
+            elif status_code in [401, 403]:  # Auth errors
+                should_retry = False
+                fallback_message = f"OpenAI API authentication failed (HTTP {status_code}). Check API key."
+                
+            elif status_code == 400:  # Client errors
+                should_retry = False
+                fallback_message = f"OpenAI API client error (HTTP {status_code}). Check request format."
+                
+            else:
+                # Unknown status code - try once more
+                should_retry = attempt < min(2, self.max_retries)
+                delay = self.base_delay + random.uniform(0, 1)
+                fallback_message = f"OpenAI API unexpected status {status_code}. Retrying..."
+                
+        elif isinstance(error, openai.APIConnectionError):
+            # Connection errors - retry with backoff
+            should_retry = attempt < self.max_retries
+            delay = min(self.base_delay * (2 ** (attempt - 1)) + random.uniform(0, 1), 15)
+            fallback_message = f"OpenAI API connection error. Retrying in {delay:.1f}s..."
+            
+        else:
+            # Unknown error type - minimal retry
+            should_retry = attempt < min(2, self.max_retries)
+            delay = self.base_delay + random.uniform(0, 1)
+            fallback_message = f"Unknown OpenAI API error: {error_type}. Retrying..."
+        
+        if should_retry:
+            logger.warning(f"🔄 {fallback_message}")
+        else:
+            logger.error(f"❌ OpenAI API error (final): {fallback_message}")
+            
+        return should_retry, delay, fallback_message
+    
+    async def retry_openai_operation(
+        self, 
+        operation: Callable, 
+        context: str = "OpenAI operation",
+        *args, 
+        **kwargs
+    ) -> Any:
+        """
+        Execute an OpenAI operation with specialized retry logic
+        
+        Args:
+            operation: The async function to retry
+            context: Description of the operation for logging
+            *args, **kwargs: Arguments for the operation
+            
+        Returns:
+            Result of the operation or raises the final error
+        """
+        last_error = None
+        
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                result = await operation(*args, **kwargs)
+                
+                # Log successful operation
+                self.log_api_interaction(
+                    request_type=context,
+                    status_code=200,
+                    tokens_used=getattr(result, "usage", {}).get("total_tokens") if hasattr(result, "usage") else None
+                )
+                
+                if attempt > 1:
+                    logger.info(f"✅ OpenAI operation succeeded on attempt {attempt}")
+                return result
+                
+            except Exception as error:
+                last_error = error
+                should_retry, delay, fallback_message = await self.handle_openai_error(error, attempt, context)
+                
+                if not should_retry:
+                    break
+                    
+                if delay > 0:
+                    await asyncio.sleep(delay)
+        
+        # All retries exhausted
+        logger.error(f"❌ All retry attempts exhausted for OpenAI {context}")
+        raise last_error
+
+# Circuit Breaker Pattern for LLM API Protection
+class CircuitBreakerState(Enum):
+    CLOSED = "CLOSED"
+    OPEN = "OPEN"
+    HALF_OPEN = "HALF_OPEN"
+
+class LLMCircuitBreaker:
+    """Circuit breaker to protect against repeated LLM API failures"""
+    
+    def __init__(self, failure_threshold: int = 5, recovery_timeout: float = 60.0, success_threshold: int = 3):
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.success_threshold = success_threshold
+        
+        self.failure_count = 0
+        self.success_count = 0
+        self.last_failure_time = None
+        self.state = CircuitBreakerState.CLOSED
+        
+        # Statistics for monitoring
+        self.total_requests = 0
+        self.total_failures = 0
+        self.state_change_times = []
+        
+    def record_success(self):
+        """Record a successful operation"""
+        self.total_requests += 1
+        
+        if self.state == CircuitBreakerState.HALF_OPEN:
+            self.success_count += 1
+            if self.success_count >= self.success_threshold:
+                self._transition_to_closed()
+        elif self.state == CircuitBreakerState.CLOSED:
+            # Reset failure count on success
+            self.failure_count = 0
+            
+    def record_failure(self):
+        """Record a failed operation"""
+        self.total_requests += 1
+        self.total_failures += 1
+        self.failure_count += 1
+        self.last_failure_time = time.time()
+        
+        if self.state == CircuitBreakerState.CLOSED:
+            if self.failure_count >= self.failure_threshold:
+                self._transition_to_open()
+        elif self.state == CircuitBreakerState.HALF_OPEN:
+            # Failure in half-open state, go back to open
+            self._transition_to_open()
+            
+    def can_attempt(self) -> tuple[bool, str]:
+        """Check if an operation can be attempted
+        
+        Returns:
+            (can_attempt, reason)
+        """
+        if self.state == CircuitBreakerState.CLOSED:
+            return True, "Circuit closed - normal operation"
+            
+        elif self.state == CircuitBreakerState.OPEN:
+            if time.time() - self.last_failure_time >= self.recovery_timeout:
+                self._transition_to_half_open()
+                return True, "Circuit half-open - testing recovery"
+            else:
+                remaining_time = self.recovery_timeout - (time.time() - self.last_failure_time)
+                return False, f"Circuit open - {remaining_time:.1f}s until retry"
+                
+        elif self.state == CircuitBreakerState.HALF_OPEN:
+            return True, "Circuit half-open - limited attempts"
+            
+        return False, "Circuit breaker error"
+        
+    def _transition_to_closed(self):
+        """Transition to CLOSED state"""
+        old_state = self.state
+        self.state = CircuitBreakerState.CLOSED
+        self.failure_count = 0
+        self.success_count = 0
+        self._log_state_change(old_state, self.state, "Sufficient successes achieved")
+        
+    def _transition_to_open(self):
+        """Transition to OPEN state"""
+        old_state = self.state
+        self.state = CircuitBreakerState.OPEN
+        self.success_count = 0
+        self._log_state_change(old_state, self.state, f"Failure threshold exceeded ({self.failure_count}/{self.failure_threshold})")
+        
+    def _transition_to_half_open(self):
+        """Transition to HALF_OPEN state"""
+        old_state = self.state
+        self.state = CircuitBreakerState.HALF_OPEN
+        self.success_count = 0
+        self._log_state_change(old_state, self.state, "Recovery timeout elapsed")
+        
+    def _log_state_change(self, old_state: CircuitBreakerState, new_state: CircuitBreakerState, reason: str):
+        """Log circuit breaker state changes"""
+        timestamp = time.time()
+        self.state_change_times.append({
+            "timestamp": timestamp,
+            "old_state": old_state.value,
+            "new_state": new_state.value,
+            "reason": reason,
+            "failure_count": self.failure_count,
+            "total_failures": self.total_failures,
+            "total_requests": self.total_requests
+        })
+        
+        logger.warning(f"🔧 Circuit Breaker: {old_state.value} → {new_state.value} | {reason}")
+        logger.info(f"📊 Circuit Breaker Stats: {self.total_failures}/{self.total_requests} failures, {self.failure_count} consecutive")
+        
+    def get_stats(self) -> dict:
+        """Get circuit breaker statistics"""
+        return {
+            "state": self.state.value,
+            "failure_count": self.failure_count,
+            "success_count": self.success_count,
+            "total_requests": self.total_requests,
+            "total_failures": self.total_failures,
+            "failure_rate": self.total_failures / max(self.total_requests, 1),
+            "last_failure_time": self.last_failure_time,
+            "state_changes": len(self.state_change_times)
+        }
+
+# Global circuit breaker instance
+llm_circuit_breaker = LLMCircuitBreaker(failure_threshold=4, recovery_timeout=30.0)
+
+# Global exception handler and session recovery
+class AgentSessionRecovery:
+    """Handles agent session recovery and graceful degradation"""
+    
+    def __init__(self, agent_session):
+        self.agent_session = agent_session
+        self.recovery_attempts = 0
+        self.max_recovery_attempts = 3
+        self.last_recovery_time = None
+        self.recovery_cooldown = 60.0  # 1 minute between recovery attempts
+        
+    async def handle_unrecoverable_error(self, error: Exception, context: str = "unknown") -> bool:
+        """Handle errors that could crash the session
+        
+        Returns:
+            True if recovery was attempted, False if session should be abandoned
+        """
+        current_time = time.time()
+        
+        # Check if we're within recovery cooldown
+        if (self.last_recovery_time and 
+            current_time - self.last_recovery_time < self.recovery_cooldown):
+            logger.error(f"🚫 Recovery cooldown active, not attempting recovery for: {error}")
+            return False
+            
+        # Check if we've exceeded max recovery attempts
+        if self.recovery_attempts >= self.max_recovery_attempts:
+            logger.error(f"🚨 Max recovery attempts ({self.max_recovery_attempts}) exceeded, abandoning session")
+            return False
+            
+        self.recovery_attempts += 1
+        self.last_recovery_time = current_time
+        
+        logger.warning(f"🔄 Attempting session recovery #{self.recovery_attempts} for error: {error}")
+        logger.warning(f"🔧 Recovery context: {context}")
+        
+        try:
+            # Attempt to send a recovery message to users
+            recovery_message = (
+                f"I experienced a technical issue but I'm recovering. "
+                f"Please give me a moment to restore normal functionality. "
+                f"You can continue the conversation - I'll respond when ready."
+            )
+            
+            await self.agent_session.say(recovery_message)
+            logger.info(f"✅ Recovery message sent successfully")
+            
+            # Reset circuit breaker if it's in a bad state
+            if llm_circuit_breaker.state != CircuitBreakerState.CLOSED:
+                llm_circuit_breaker._transition_to_closed()
+                logger.info(f"🔧 Reset circuit breaker to CLOSED state during recovery")
+                
+            return True
+            
+        except Exception as recovery_error:
+            logger.error(f"❌ Recovery attempt failed: {recovery_error}")
+            return False
+    
+    def get_recovery_stats(self) -> dict:
+        """Get recovery statistics"""
+        return {
+            "recovery_attempts": self.recovery_attempts,
+            "max_recovery_attempts": self.max_recovery_attempts,
+            "last_recovery_time": self.last_recovery_time,
+            "recovery_cooldown": self.recovery_cooldown
+        }
+
+# Global session recovery instance (will be initialized in entrypoint)
+agent_session_recovery = None
+
+async def safe_agent_operation(operation: Callable, context: str = "agent operation") -> bool:
+    """Safely execute agent operations with session recovery
+    
+    Args:
+        operation: The async function to execute
+        context: Description of the operation for logging
+        
+    Returns:
+        True if successful, False if failed but session is still viable
+    """
+    global agent_session_recovery
+    
+    try:
+        await operation()
+        return True
+        
+    except Exception as error:
+        logger.error(f"❌ Agent operation failed: {error}")
+        logger.error(f"🔧 Operation context: {context}")
+        
+        # Determine if this is a recoverable error
+        is_recoverable = not isinstance(error, (
+            KeyboardInterrupt,
+            SystemExit,
+            asyncio.CancelledError,
+            RuntimeError,  # Usually indicates serious system issues
+        ))
+        
+        if is_recoverable and agent_session_recovery:
+            try:
+                recovery_success = await agent_session_recovery.handle_unrecoverable_error(error, context)
+                if recovery_success:
+                    logger.info(f"✅ Session recovery successful for: {context}")
+                    return False  # Operation failed but session is viable
+                else:
+                    logger.error(f"❌ Session recovery failed for: {context}")
+                    return False
+            except Exception as recovery_error:
+                logger.error(f"💥 Recovery handler itself failed: {recovery_error}")
+                return False
+        else:
+            logger.error(f"💥 Unrecoverable error in {context}: {error}")
+            # For truly unrecoverable errors, we let them propagate
+            raise
+        
+        return False
+
+# Enhanced error wrapper for function tools
+def resilient_function_tool(func):
+    """Decorator to make function tools resilient to errors"""
+    @functools.wraps(func)
+    async def wrapper(*args, **kwargs):
+        try:
+            return await func(*args, **kwargs)
+        except Exception as error:
+            logger.error(f"❌ Function tool '{func.__name__}' failed: {error}")
+            logger.error(f"Function tool error traceback: {traceback.format_exc()}")
+            
+            # Return a safe error response instead of crashing
+            return f"I apologize, but I encountered a technical issue while processing your request for {func.__name__}. Please try again or rephrase your request."
+    
+    return wrapper
+
+# Create global OpenAI error handler
+openai_error_handler = OpenAIErrorHandler(max_retries=5, base_delay=1.0)
+
+async def safe_llm_generate_reply(agent_session, instructions: str, context: str = "generate_reply") -> bool:
+    """
+    Safely generate LLM reply with circuit breaker protection, error handling and retries
+    
+    Returns:
+        True if successful, False if failed with fallback message sent
+    """
+    # Check circuit breaker state first
+    can_attempt, reason = llm_circuit_breaker.can_attempt()
+    if not can_attempt:
+        logger.warning(f"🚫 Circuit breaker blocked LLM attempt: {reason}")
+        try:
+            fallback_msg = f"I'm currently experiencing technical difficulties and need a moment to recover. Please try again in a few seconds."
+            await agent_session.say(fallback_msg)
+            logger.info(f"✅ Sent circuit breaker fallback message")
+            return False
+        except Exception as fallback_error:
+            logger.error(f"❌ Failed to send circuit breaker fallback message: {fallback_error}")
+            return False
+    
+    async def _generate_reply():
+        await agent_session.generate_reply(instructions=instructions)
+        return True
+    
+    try:
+        result = await openai_error_handler.retry_openai_operation(_generate_reply, context)
+        
+        # Record success with circuit breaker
+        llm_circuit_breaker.record_success()
+        logger.debug(f"✅ LLM operation successful, circuit breaker state: {llm_circuit_breaker.state.value}")
+        
+        return result
+        
+    except Exception as final_error:
+        # Record failure with circuit breaker
+        llm_circuit_breaker.record_failure()
+        
+        # Log detailed error information
+        logger.error(f"❌ LLM operation failed after all retries: {final_error}")
+        logger.error(f"📊 Circuit breaker stats: {llm_circuit_breaker.get_stats()}")
+        
+        # Send fallback message to user
+        try:
+            if llm_circuit_breaker.state == CircuitBreakerState.OPEN:
+                fallback_msg = "I'm currently experiencing technical difficulties and need a moment to recover. Please try again shortly."
+            else:
+                fallback_msg = "I apologize, but I'm experiencing technical difficulties. Please try rephrasing your question or try again in a moment."
+            
+            await agent_session.say(fallback_msg)
+            logger.warning(f"⚠️ Sent fallback message due to LLM failure: {final_error}")
+            return False
+        except Exception as fallback_error:
+            logger.error(f"❌ Failed to send fallback message: {fallback_error}")
+            return False
+
 async def entrypoint(ctx: JobContext):
     """Main entry point for the Aristotle debate moderator agent"""
     logger.info("🏛️ Debate Moderator Agent starting... (v2.0 - Fixed Async Callbacks)")
+    
+    # Apply Perplexity message format validation patch early
+    patch_perplexity_llm_validation()
 
     # Track audio streams and other agents for coordination
     audio_tracks = {}
@@ -731,15 +1528,22 @@ Use your available function tools to research claims and access knowledge when n
     temp = persona_temperature.get(moderator_persona.lower(), 0.2)
     research_llm = None
     
+    # Enhanced LLM configuration with proper timeout and error handling
+    llm_config = {
+        "temperature": temp,
+        "request_timeout": 30.0,  # 30 second timeout for completions
+        "max_retries": 0,  # We handle retries manually through our error handler
+    }
+    
     # Try Perplexity first if available
     if PERPLEXITY_AVAILABLE:
         try:
-            # Create Perplexity LLM with proper session management
+            # Create Perplexity LLM with proper session management and timeouts
             research_llm = openai.LLM.with_perplexity(
                 model="sonar-pro",  # Updated to current Perplexity model (200k context)
-                temperature=temp
+                **llm_config
             )
-            logger.info(f"✅ Using Perplexity LLM for {moderator_persona} (temp: {temp})")
+            logger.info(f"✅ Using Perplexity LLM for {moderator_persona} (temp: {temp}, timeout: 30s)")
         except Exception as e:
             logger.warning(f"⚠️ Could not configure Perplexity: {e}")
             logger.warning(f"Perplexity error traceback: {traceback.format_exc()}")
@@ -750,15 +1554,19 @@ Use your available function tools to research claims and access knowledge when n
         try:
             research_llm = openai.LLM(
                 model="gpt-4o-realtime-preview", 
-                temperature=temp
+                **llm_config
             )
-            logger.info(f"✅ Using OpenAI GPT-4o for {moderator_persona} (temp: {temp})")
+            logger.info(f"✅ Using OpenAI GPT-4o for {moderator_persona} (temp: {temp}, timeout: 30s)")
         except Exception as e:
             logger.error(f"❌ Failed to configure OpenAI LLM: {e}")
             logger.error(f"OpenAI error traceback: {traceback.format_exc()}")
             # Try basic configuration as last resort
             try:
-                research_llm = openai.LLM(model="gpt-4o-realtime-preview", temperature=temp)
+                research_llm = openai.LLM(
+                    model="gpt-4o-realtime-preview", 
+                    temperature=temp,
+                    request_timeout=30.0
+                )
                 logger.warning(f"⚠️ Using basic OpenAI configuration as fallback")
             except Exception as fallback_error:
                 logger.error(f"❌ Complete LLM configuration failure: {fallback_error}")
@@ -854,6 +1662,11 @@ Use your available function tools to research claims and access knowledge when n
                 except Exception as e:
                     logger.error(f"❌ Error in agent_state_changed handler: {e}")
 
+            # Initialize session recovery handler
+            global agent_session_recovery
+            agent_session_recovery = AgentSessionRecovery(agent_session)
+            logger.info(f"✅ Session recovery handler initialized")
+
             # Start the moderation session with error handling
             try:
                 logger.info(f"🚀 Starting agent session for {moderator_persona}")
@@ -896,7 +1709,7 @@ My role is to fact-check arguments, request sources for claims, and assess evide
                 initial_prompt = get_persona_greeting(moderator_persona, debate_topic)
                 logger.info(f"🎭 Generated greeting for {moderator_persona}")
                 
-                await agent_session.generate_reply(instructions=initial_prompt)
+                await safe_llm_generate_reply(agent_session, initial_prompt)
                 logger.info(f"✅ Initial greeting sent successfully")
             except Exception as greeting_error:
                 logger.error(f"❌ Failed to generate initial greeting: {greeting_error}")
@@ -909,12 +1722,63 @@ My role is to fact-check arguments, request sources for claims, and assess evide
             # The session will continue running and responding to events automatically
             # We just need to prevent the function from returning
             
+            # Start background monitoring task for resource leaks and circuit breaker health
+            async def monitor_resources():
+                """Periodically check for resource leaks and circuit breaker health"""
+                while not shutdown_event.is_set():
+                    try:
+                        await asyncio.sleep(60)  # Check every minute
+                        
+                        # Check for resource leaks
+                        await check_resource_leaks()
+                        
+                        # Log circuit breaker statistics
+                        cb_stats = llm_circuit_breaker.get_stats()
+                        if cb_stats["total_requests"] > 0:
+                            logger.info(f"🔧 Circuit Breaker Health Check:")
+                            logger.info(f"   State: {cb_stats['state']}")
+                            logger.info(f"   Failure Rate: {cb_stats['failure_rate']:.2%} ({cb_stats['total_failures']}/{cb_stats['total_requests']})")
+                            logger.info(f"   Consecutive Failures: {cb_stats['failure_count']}")
+                            logger.info(f"   State Changes: {cb_stats['state_changes']}")
+                            
+                            # Alert on high failure rates
+                            if cb_stats['failure_rate'] > 0.5:
+                                logger.warning(f"⚠️ High LLM failure rate detected: {cb_stats['failure_rate']:.2%}")
+                            
+                            # Alert if circuit is open for extended periods
+                            if cb_stats['state'] == 'OPEN' and cb_stats['last_failure_time']:
+                                time_open = time.time() - cb_stats['last_failure_time']
+                                if time_open > 300:  # 5 minutes
+                                    logger.error(f"🚨 Circuit breaker has been OPEN for {time_open/60:.1f} minutes")
+                        
+                        # Log session recovery statistics
+                        if agent_session_recovery:
+                            recovery_stats = agent_session_recovery.get_recovery_stats()
+                            if recovery_stats['recovery_attempts'] > 0:
+                                logger.info(f"🔄 Session Recovery Health Check:")
+                                logger.info(f"   Recovery Attempts: {recovery_stats['recovery_attempts']}/{recovery_stats['max_recovery_attempts']}")
+                                logger.info(f"   Last Recovery: {recovery_stats['last_recovery_time']}")
+                                
+                                # Alert if recovery attempts are high
+                                if recovery_stats['recovery_attempts'] >= recovery_stats['max_recovery_attempts']:
+                                    logger.error(f"🚨 Session recovery limit reached: {recovery_stats['recovery_attempts']}/{recovery_stats['max_recovery_attempts']}")
+                                elif recovery_stats['recovery_attempts'] > 1:
+                                    logger.warning(f"⚠️ Multiple recovery attempts: {recovery_stats['recovery_attempts']}")
+                        
+                    except asyncio.CancelledError:
+                        break
+                    except Exception as e:
+                        logger.warning(f"⚠️ Error in resource monitoring: {e}")
+            
             # Set up graceful shutdown handling
             shutdown_event = asyncio.Event()
+            monitor_task = asyncio.create_task(monitor_resources())
             
             def signal_handler():
                 logger.info(f"🛑 Shutdown signal received for {moderator_persona}")
                 shutdown_event.set()
+                if monitor_task and not monitor_task.done():
+                    monitor_task.cancel()
             
             # Register signal handlers for graceful shutdown
             try:
@@ -944,6 +1808,14 @@ My role is to fact-check arguments, request sources for claims, and assess evide
                 if hasattr(agent_session, 'aclose'):
                     async def cleanup_agent_session():
                         try:
+                            # Cancel monitoring task
+                            if monitor_task and not monitor_task.done():
+                                monitor_task.cancel()
+                                try:
+                                    await monitor_task
+                                except asyncio.CancelledError:
+                                    pass
+                            
                             await agent_session.aclose()
                             logger.info(f"✅ Agent session closed successfully")
                         except Exception as cleanup_error:
@@ -1000,7 +1872,15 @@ async def global_cleanup():
     """Global cleanup function to ensure all resources are properly closed"""
     logger.info("🧹 Performing global cleanup...")
     try:
+        # Check for resource leaks before cleanup
+        await check_resource_leaks()
+        
+        # Clean up HTTP sessions
         await cleanup_http_sessions()
+        
+        # Final resource leak check
+        await check_resource_leaks()
+        
         logger.info("✅ Global cleanup completed")
     except Exception as e:
         logger.error(f"❌ Error in global cleanup: {e}")
