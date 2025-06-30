@@ -70,6 +70,7 @@ try:
     from livekit.plugins import openai, silero
     from livekit.agents import UserStateChangedEvent, AgentStateChangedEvent
     from livekit import rtc  # For audio track handling
+    from livekit.rtc import TrackKind
     # NOTE: Transcription handled by Socrates agent to avoid duplicates
     logger.info("✅ LiveKit Agents successfully imported")
 except ImportError as e:
@@ -502,7 +503,7 @@ async def entrypoint(ctx: JobContext):
         """Handle when we subscribe to an audio track from another participant"""
         async def handle_track_subscribed():
             try:
-                if track.kind == rtc.TrackKind.AUDIO:
+                if track.kind == TrackKind.AUDIO:
                     logger.info(f"🎧 Moderator subscribed to audio track from: {participant.identity}")
 
                     # Store the audio track for coordination
