@@ -12,6 +12,7 @@ import logging
 import json
 import time
 import threading
+import signal
 from dotenv import load_dotenv
 from dataclasses import dataclass
 from typing import Optional
@@ -665,6 +666,7 @@ Use your available function tools to research claims and access knowledge when n
     # Try Perplexity first if available
     if PERPLEXITY_AVAILABLE:
         try:
+            # Create Perplexity LLM with proper session management
             research_llm = openai.LLM.with_perplexity(
                 model="sonar-pro",  # Updated to current Perplexity model (200k context)
                 temperature=temp,
@@ -709,13 +711,18 @@ Use your available function tools to research claims and access knowledge when n
     logger.info(f"🎤 Using voice '{selected_voice}' for {moderator_persona}")
 
     # Use async context manager for TTS to ensure proper cleanup
+    tts = None
     try:
         logger.info(f"🎤 Initializing TTS with voice: {selected_voice}")
-        async with openai.TTS(
+        tts = openai.TTS(
             model="tts-1",
             voice=selected_voice
-        ) as tts:
+        )
+        
+        # Use async context manager for proper resource management
+        async with tts as tts_context:
             logger.info(f"✅ TTS initialized successfully")
+            tts = tts_context  # Use the context manager version
 
             # Create agent session with comprehensive error handling
             try:
@@ -837,10 +844,27 @@ My role is to fact-check arguments, request sources for claims, and assess evide
             # Keep the agent session alive - this is critical for LiveKit agents
             # The session will continue running and responding to events automatically
             # We just need to prevent the function from returning
+            
+            # Set up graceful shutdown handling
+            shutdown_event = asyncio.Event()
+            
+            def signal_handler():
+                logger.info(f"🛑 Shutdown signal received for {moderator_persona}")
+                shutdown_event.set()
+            
+            # Register signal handlers for graceful shutdown
             try:
-                # Wait indefinitely - the agent will handle events and responses
-                while True:
-                    await asyncio.sleep(1.0)
+                loop = asyncio.get_running_loop()
+                for sig in [signal.SIGTERM, signal.SIGINT]:
+                    loop.add_signal_handler(sig, signal_handler)
+            except (NotImplementedError, RuntimeError):
+                # Signal handling not available (e.g., on Windows or in some environments)
+                logger.debug("Signal handling not available in this environment")
+            
+            try:
+                # Wait for shutdown signal or indefinitely
+                await shutdown_event.wait()
+                logger.info(f"🔚 {moderator_persona} agent shutting down gracefully")
             except (KeyboardInterrupt, asyncio.CancelledError):
                 logger.info(f"🔚 {moderator_persona} agent session interrupted")
             except Exception as session_error:
@@ -848,16 +872,44 @@ My role is to fact-check arguments, request sources for claims, and assess evide
                 logger.error(f"Session error traceback: {traceback.format_exc()}")
             finally:
                 logger.info(f"🔚 {moderator_persona} agent session ended")
+                # Cleanup agent session resources
+                try:
+                    if hasattr(agent_session, 'aclose'):
+                        await agent_session.aclose()
+                        logger.info(f"✅ Agent session closed successfully")
+                except Exception as cleanup_error:
+                    logger.warning(f"⚠️ Error closing agent session: {cleanup_error}")
+                    
+    except Exception as tts_error:
+        logger.error(f"❌ Error in TTS context manager: {tts_error}")
+        logger.error(f"TTS error traceback: {traceback.format_exc()}")
+        raise
+    finally:
+        # Ensure TTS resources are cleaned up
+        if tts and hasattr(tts, 'aclose'):
+            try:
+                await tts.aclose()
+                logger.info(f"✅ TTS resources cleaned up")
+            except Exception as tts_cleanup_error:
+                logger.warning(f"⚠️ Error cleaning up TTS: {tts_cleanup_error}")
 
     except Exception as e:
         logger.error(f"❌ Error in {moderator_persona} agent session: {e}")
         logger.error(f"Agent error traceback: {traceback.format_exc()}")
         # Ensure proper cleanup even on errors
-        if 'research_llm' in locals() and hasattr(research_llm, 'aclose'):
-            try:
+        try:
+            # Cleanup LLM resources
+            if 'research_llm' in locals() and hasattr(research_llm, 'aclose'):
                 await research_llm.aclose()
-            except Exception as cleanup_error:
-                logger.error(f"Error during LLM cleanup: {cleanup_error}")
+                logger.info(f"✅ LLM resources cleaned up")
+            
+            # Cleanup agent session if it exists
+            if 'agent_session' in locals() and hasattr(agent_session, 'aclose'):
+                await agent_session.aclose()
+                logger.info(f"✅ Agent session cleaned up")
+                
+        except Exception as cleanup_error:
+            logger.error(f"❌ Error during cleanup: {cleanup_error}")
         raise
 
 def main():
