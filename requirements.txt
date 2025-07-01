@@ -1,16 +1,12 @@
 # Core dependencies
 fastapi>=0.104.1
 uvicorn[standard]>=0.24.0
-python-dotenv>=1.0.0
+python-dotenv>=1.0
 python-multipart>=0.0.6
 PyPDF2>=3.0.1
 
 # LiveKit dependencies
-livekit-api==0.17.5
-livekit==0.17.5
-livekit-agents==1.0.11
-livekit-plugins-openai==1.0.5
-livekit-plugins-silero==1.0.0
+livekit-agents[openai,silero]>=1.0
 
 # AI and ML dependencies  
 openai==1.47.1
