@@ -16,7 +16,19 @@ import threading
 import signal
 from dotenv import load_dotenv
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Annotated
+
+from livekit import rtc
+from livekit.agents import (
+    Agent,
+    AgentSession,
+    JobContext,
+    WorkerOptions,
+    cli,
+    function_tool,
+    RunContext,
+)
+from livekit.plugins import openai, deepgram, silero
 
 # Load environment variables first
 load_dotenv()
@@ -155,16 +167,58 @@ async def summarize_discussion():
     logger.info("📝 Summarizing discussion")
     return "Let me summarize the main arguments and perspectives we've heard so far in this debate."
 
-def get_persona_greeting(persona: str, topic: str) -> str:
-    """Generate a greeting based on the persona and topic"""
+def get_persona_instructions(persona: str) -> str:
+    """Get persona-specific instructions for the agent."""
     persona_lower = persona.lower()
     
     if persona_lower == "socrates":
-        return f"Greetings, friends. I am Socrates. We gather to explore: {topic}. I know that I know nothing, so let us discover truth together through questions. What do you think you know about this topic?"
+        return """You are Socrates, the ancient Greek philosopher, moderating a debate.
+
+Your approach:
+- Ask probing questions to help participants examine their assumptions
+- Use the Socratic method - guide people to discover truth through questioning
+- Say "I know that I know nothing" - maintain intellectual humility
+- Help participants clarify their thinking through gentle inquiry
+- When someone makes a claim, ask: "How do you know this?" or "What do you mean by...?"
+
+Keep responses concise and focused on asking the right questions."""
+        
     elif persona_lower == "buddha":
-        return f"Welcome, friends, to this discussion on: {topic}. I am Buddha. Let us approach this topic with compassion, mindfulness, and understanding for all perspectives."
+        return """You are Buddha, the enlightened teacher, moderating a discussion.
+
+Your approach:
+- Promote compassion, understanding, and mindful dialogue
+- Help de-escalate conflicts with wisdom and patience
+- Guide participants toward deeper understanding and empathy
+- When tensions arise, redirect to common ground and shared humanity
+- Speak with gentle authority and profound insight
+
+Keep responses calm, wise, and focused on harmony."""
+        
     else:  # Aristotle (default)
-        return f"Welcome to this debate on: {topic}. I am Aristotle. I will help ensure our discussion is grounded in evidence, logic, and sound reasoning. Let us begin with clear premises."
+        return """You are Aristotle, the systematic philosopher, moderating a debate.
+
+Your approach:
+- Ensure logical reasoning and evidence-based arguments
+- Ask for sources and factual support when claims are made
+- Help structure the debate with clear premises and conclusions
+- Point out logical fallacies when they occur
+- Guide toward rational, well-reasoned discourse
+
+Keep responses logical, structured, and focused on evidence."""
+
+def get_persona_greeting(persona: str) -> str:
+    """Get persona-specific greeting for the agent."""
+    persona_lower = persona.lower()
+    
+    if persona_lower == "socrates":
+        return "Greet the participants as Socrates. Welcome them to the discussion and ask them what they hope to discover through dialogue today."
+        
+    elif persona_lower == "buddha":
+        return "Greet the participants as Buddha. Welcome them with compassion and invite them to share their thoughts mindfully."
+        
+    else:  # Aristotle (default)
+        return "Greet the participants as Aristotle. Welcome them to the debate and ask them to present their arguments with logic and evidence."
 
 async def entrypoint(ctx: JobContext):
     """Main entry point for the LiveKit agent"""
@@ -175,84 +229,32 @@ async def entrypoint(ctx: JobContext):
         await ctx.connect()
         logger.info(f"✅ Connected to room: {ctx.room.name}")
         
-        # Get moderator persona from room metadata
-        moderator_persona = "Aristotle"  # Default
-        topic = "General Discussion"  # Default
+        # Get persona from room metadata
+        persona = ctx.room.metadata.get("persona", "socrates")
+        logger.info("Using persona: %s", persona)
         
-        if ctx.room.metadata:
-            try:
-                metadata = json.loads(ctx.room.metadata)
-                moderator_persona = metadata.get("moderator", "Aristotle")
-                topic = metadata.get("topic", "General Discussion")
-                logger.info(f"📋 Room metadata - Persona: {moderator_persona}, Topic: {topic}")
-            except json.JSONDecodeError:
-                logger.warning("⚠️ Invalid room metadata JSON, using defaults")
-        
-        # Create persona-specific system prompt
-        def get_persona_system_prompt(persona: str, topic: str) -> str:
-            persona_lower = persona.lower()
-            
-            if persona_lower == "socrates":
-                return f"""You are Socrates, the ancient Greek philosopher. You are moderating a debate on: {topic}.
-
-Your approach:
-- Ask probing questions to help participants examine their assumptions
-- Use the Socratic method - guide people to discover truth through questioning
-- Say "I know that I know nothing" - maintain intellectual humility
-- Help participants clarify their thinking through gentle inquiry
-- When someone makes a claim, ask: "How do you know this?" or "What do you mean by...?"
-
-Keep responses concise and focused on asking the right questions."""
-                
-            elif persona_lower == "buddha":
-                return f"""You are Buddha, the enlightened teacher. You are moderating a discussion on: {topic}.
-
-Your approach:
-- Promote compassion, understanding, and mindful dialogue
-- Help de-escalate conflicts with wisdom and patience
-- Guide participants toward deeper understanding and empathy
-- When tensions arise, redirect to common ground and shared humanity
-- Speak with gentle authority and profound insight
-
-Keep responses calm, wise, and focused on harmony."""
-                
-            else:  # Aristotle (default)
-                return f"""You are Aristotle, the systematic philosopher. You are moderating a debate on: {topic}.
-
-Your approach:
-- Ensure logical reasoning and evidence-based arguments
-- Ask for sources and factual support when claims are made
-- Help structure the debate with clear premises and conclusions
-- Point out logical fallacies when they occur
-- Guide toward rational, well-reasoned discourse
-
-Keep responses logical, structured, and focused on evidence."""
-        
-        # Get system prompt for the selected persona
-        system_prompt = get_persona_system_prompt(moderator_persona, topic)
-        
-        # Create the agent with persona-specific instructions
+        # Create agent with persona-specific instructions
         agent = Agent(
-            instructions=system_prompt,
-            tools=[end_debate, summarize_discussion, fact_check_claim]
+            instructions=get_persona_instructions(persona),
+            tools=[end_debate, summarize_discussion],
         )
         
-        # Create agent session with reliable components
+        # Create session with proper plugin configuration
         session = AgentSession(
             vad=silero.VAD.load(),
-            stt=deepgram.STT(),  # Use Deepgram STT instead of OpenAI
+            stt=deepgram.STT(model="nova-2"),  # Use nova-2 model
             llm=openai.LLM(model="gpt-4o-mini"),
-            tts=openai.TTS(voice="alloy")
+            tts=openai.TTS(voice="echo"),
         )
         
         # Start the session
         await session.start(agent=agent, room=ctx.room)
         
         # Generate initial greeting
-        greeting = get_persona_greeting(moderator_persona, topic)
-        await session.generate_reply(instructions=f"Say this greeting: {greeting}")
+        greeting = get_persona_greeting(persona)
+        await session.generate_reply(instructions=greeting)
         
-        logger.info(f"✅ {moderator_persona} agent started successfully for topic: {topic}")
+        logger.info(f"✅ {persona} agent started successfully for topic: {topic}")
         
         # No need for wait_for_completion() - LiveKit handles session lifecycle automatically
         
