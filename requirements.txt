@@ -6,7 +6,7 @@ python-multipart>=0.0.6
 PyPDF2>=3.0.1
 
 # LiveKit dependencies - Complete plugin specification as per official docs
-livekit-agents[openai,silero,deepgram,cartesia,turn-detector]~=1.0
+livekit-agents[openai,silero,deepgram,cartesia,turn-detector]>=1.0.2
 
 # AI and ML dependencies  
 openai==1.47.1
