@@ -3,6 +3,7 @@
 """
 Sage AI Debate Moderator Agent - Simple LiveKit Implementation
 Handles debate moderation with basic error handling
+Updated: Fixed imports for LiveKit Agents 1.0 API compatibility
 """
 
 import os
@@ -29,8 +30,7 @@ logger = logging.getLogger(__name__)
 
 # LiveKit Agents imports
 try:
-    from livekit.agents import JobContext, WorkerOptions, cli, llm
-    from livekit.agents.voice_assistant import AgentSession
+    from livekit.agents import JobContext, WorkerOptions, cli, llm, AgentSession
     from livekit.plugins import openai, silero
     from livekit.agents.llm import function_tool
     logger.info("✅ LiveKit Agents successfully imported")
