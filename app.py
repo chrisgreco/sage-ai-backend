@@ -10,6 +10,7 @@ from dotenv import load_dotenv
 # OpenAI API calls are handled by the LiveKit agent subprocess
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
 import subprocess
 import sys
 import time
@@ -19,9 +20,46 @@ import threading
 # Load environment variables
 load_dotenv()
 
-# Configure logging FIRST
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Import enhanced logging configuration
+try:
+    from app.logging_config import setup_global_logging, agent_logger, performance_logger
+    from app.routers.log_webhook import router as log_router
+    setup_global_logging(os.getenv("LOG_LEVEL", "INFO"))
+    logger = agent_logger.logger
+    ENHANCED_LOGGING = True
+except ImportError as e:
+    # Fallback to basic logging if enhanced logging is not available
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+    ENHANCED_LOGGING = False
+    logger.warning(f"Enhanced logging not available: {e}")
+
+# Logging middleware for request/response monitoring
+class LoggingMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        start_time = time.time()
+        
+        # Log request
+        if ENHANCED_LOGGING:
+            agent_logger.info("Incoming request", 
+                            method=request.method,
+                            url=str(request.url),
+                            client_ip=request.client.host if request.client else None)
+        
+        response = await call_next(request)
+        
+        # Log response
+        process_time = time.time() - start_time
+        if ENHANCED_LOGGING:
+            performance_logger.log_api_call(
+                api_name=f"{request.method} {request.url.path}",
+                duration=process_time,
+                status_code=response.status_code
+            )
+        else:
+            logger.info(f"{request.method} {request.url.path} - {response.status_code} - {process_time:.3f}s")
+        
+        return response
 
 # LiveKit imports - conditional import with error handling
 try:
@@ -80,25 +118,66 @@ SERVICE_MODE = os.getenv("SERVICE_MODE", "web").lower()  # Default to web servic
 # The main backend app only handles LiveKit tokens and agent launching
 
 # Create FastAPI instance
-app = FastAPI()
+app = FastAPI(
+    title="Sage AI Backend - LiveKit Agent System",
+    description="Dual Agent Debate System with Enhanced Logging and Monitoring",
+    version="1.0.0"
+)
+
+# Add logging middleware
+app.add_middleware(LoggingMiddleware)
+
+# Include log webhook router if enhanced logging is available
+if ENHANCED_LOGGING:
+    app.include_router(log_router)
+    logger.info("Enhanced logging and webhook endpoints enabled")
 
 # Add global exception handler for validation errors
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    logger.error(f"Validation error on {request.method} {request.url}: {exc.errors()}")
     try:
         body = await request.body()
-        logger.error(f"Request body: {body}")
         body_str = body.decode('utf-8') if body else "Empty body"
     except Exception as e:
-        logger.error(f"Could not read request body: {e}")
         body_str = "Could not read body"
+    
+    if ENHANCED_LOGGING:
+        agent_logger.error("Request validation error",
+                         method=request.method,
+                         url=str(request.url),
+                         errors=exc.errors(),
+                         request_body=body_str[:500])  # Limit body size in logs
+    else:
+        logger.error(f"Validation error on {request.method} {request.url}: {exc.errors()}")
     
     return JSONResponse(
         status_code=422,
         content={
             "detail": exc.errors(),
             "body": body_str,
+            "url": str(request.url),
+            "method": request.method
+        }
+    )
+
+# Add global exception handler for unhandled exceptions
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    if ENHANCED_LOGGING:
+        agent_logger.error("Unhandled exception",
+                         method=request.method,
+                         url=str(request.url),
+                         error_type=type(exc).__name__,
+                         error_message=str(exc),
+                         exc_info=True)
+    else:
+        logger.error(f"Unhandled exception in {request.method} {request.url}: {exc}", exc_info=True)
+    
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "Internal server error",
+            "error_type": type(exc).__name__,
             "url": str(request.url),
             "method": request.method
         }
