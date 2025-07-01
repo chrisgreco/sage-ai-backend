@@ -5,8 +5,9 @@ python-dotenv>=1.0
 python-multipart>=0.0.6
 PyPDF2>=3.0.1
 
-# LiveKit dependencies - Complete plugin specification as per official docs
-livekit-agents[openai,silero,deepgram,cartesia,turn-detector]>=1.1.5
+# LiveKit dependencies - Using exact Context7 pattern with ~= constraint
+# This ensures compatible versions within the 1.x series
+livekit-agents[openai,silero,deepgram,cartesia,turn-detector]~=1.0
 
 # AI and ML dependencies  
 openai==1.47.1
