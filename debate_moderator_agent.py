@@ -254,9 +254,7 @@ Keep responses logical, structured, and focused on evidence."""
         
         logger.info(f"✅ {moderator_persona} agent started successfully for topic: {topic}")
         
-        # Keep the session alive until the room is disconnected
-        # LiveKit handles all cleanup automatically when the room ends
-        await session.wait_for_completion()
+        # No need for wait_for_completion() - LiveKit handles session lifecycle automatically
         
     except Exception as e:
         logger.error(f"❌ Failed to start agent: {e}")
