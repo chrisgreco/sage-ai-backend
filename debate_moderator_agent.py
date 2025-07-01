@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 # LiveKit Agents imports
 try:
-    from livekit.agents import JobContext, WorkerOptions, cli, llm, AgentSession
+    from livekit.agents import JobContext, WorkerOptions, cli, llm, AgentSession, Agent
     from livekit.plugins import openai, silero
     from livekit.agents.llm import function_tool
     logger.info("✅ LiveKit Agents successfully imported")
@@ -143,66 +143,50 @@ async def fact_check_claim(claim: str, source_requested: bool = False):
     
     return f"This claim requires verification: '{claim}'. Let's examine the evidence supporting this statement. What sources inform this position?"
 
-async def entrypoint(ctx: JobContext):
-    """Main entrypoint for the debate moderator agent"""
-    logger.info(f"🏛️ Starting Debate Moderator Agent")
+@function_tool
+async def end_debate():
+    """End the current debate session"""
+    logger.info("🏁 Ending debate session")
+    return "Thank you all for this engaging discussion. Let me provide a brief summary of the key points raised and conclude our session."
+
+@function_tool
+async def summarize_discussion():
+    """Summarize the key points of the discussion"""
+    logger.info("📝 Summarizing discussion")
+    return "Let me summarize the main arguments and perspectives we've heard so far in this debate."
+
+def get_persona_greeting(persona: str, topic: str) -> str:
+    """Generate a greeting based on the persona and topic"""
+    persona_lower = persona.lower()
     
-    # Get debate topic and moderator persona from job metadata
-    debate_topic = "The impact of AI on society"  # Default
-    moderator_persona = "Aristotle"  # Default persona
+    if persona_lower == "socrates":
+        return f"Greetings, friends. I am Socrates. We gather to explore: {topic}. I know that I know nothing, so let us discover truth together through questions. What do you think you know about this topic?"
+    elif persona_lower == "buddha":
+        return f"Welcome, friends, to this discussion on: {topic}. I am Buddha. Let us approach this topic with compassion, mindfulness, and understanding for all perspectives."
+    else:  # Aristotle (default)
+        return f"Welcome to this debate on: {topic}. I am Aristotle. I will help ensure our discussion is grounded in evidence, logic, and sound reasoning. Let us begin with clear premises."
 
-    # Check job metadata
-    if hasattr(ctx, 'job') and ctx.job and hasattr(ctx.job, 'metadata'):
-        try:
-            metadata = json.loads(ctx.job.metadata) if isinstance(ctx.job.metadata, str) else ctx.job.metadata
-            debate_topic = metadata.get("debate_topic", debate_topic)
-            moderator_persona = metadata.get("moderator", moderator_persona)
-            logger.info(f"📋 Job metadata - Topic: {debate_topic}, Moderator: {moderator_persona}")
-        except Exception as e:
-            logger.warning(f"⚠️ Could not parse job metadata: {e}")
-
-    # Also check room metadata
-    if ctx.room.metadata:
-        try:
-            room_metadata = json.loads(ctx.room.metadata)
-            debate_topic = room_metadata.get("topic", debate_topic)
-            moderator_persona = room_metadata.get("moderator", moderator_persona)
-            logger.info(f"📋 Room metadata - Topic: {debate_topic}, Moderator: {moderator_persona}")
-        except Exception as e:
-            logger.warning(f"⚠️ Could not parse room metadata: {e}")
-
-    # Set environment variables
-    os.environ["DEBATE_TOPIC"] = debate_topic
-    os.environ["MODERATOR_PERSONA"] = moderator_persona
-
-    # Create moderator agent
-    moderator = DebateModeratorAgent()
-
-    # Initialize LLM
+async def entrypoint(ctx: JobContext):
+    """Main entry point for the LiveKit agent"""
     try:
-        if PERPLEXITY_AVAILABLE:
-            research_llm = openai.LLM.with_perplexity(
-                model="llama-3.1-sonar-large-128k-online"
-            )
-            logger.info("✅ Perplexity LLM initialized")
-        else:
-            research_llm = openai.LLM(model="gpt-4o-mini")
-            logger.info("✅ OpenAI LLM initialized")
-    except Exception as llm_error:
-        logger.error(f"❌ Failed to initialize LLM: {llm_error}")
-        raise
-
-    # Initialize TTS
-    try:
-        tts = openai.TTS(voice="nova")
-        logger.info("✅ TTS initialized")
-    except Exception as tts_error:
-        logger.error(f"❌ Failed to initialize TTS: {tts_error}")
-        raise
-
-    # Create agent session
-    try:
-        logger.info(f"🤖 Creating AgentSession for {moderator_persona}")
+        logger.info("🚀 Starting Sage AI Debate Moderator Agent")
+        
+        # Connect to the room
+        await ctx.connect()
+        logger.info(f"✅ Connected to room: {ctx.room.name}")
+        
+        # Get moderator persona from room metadata
+        moderator_persona = "Aristotle"  # Default
+        topic = "General Discussion"  # Default
+        
+        if ctx.room.metadata:
+            try:
+                metadata = json.loads(ctx.room.metadata)
+                moderator_persona = metadata.get("moderator", "Aristotle")
+                topic = metadata.get("topic", "General Discussion")
+                logger.info(f"📋 Room metadata - Persona: {moderator_persona}, Topic: {topic}")
+            except json.JSONDecodeError:
+                logger.warning("⚠️ Invalid room metadata JSON, using defaults")
         
         # Create persona-specific system prompt
         def get_persona_system_prompt(persona: str, topic: str) -> str:
@@ -218,149 +202,61 @@ Your approach:
 - Help participants clarify their thinking through gentle inquiry
 - When someone makes a claim, ask: "How do you know this?" or "What do you mean by...?"
 
-Keep responses brief and focused on questions that promote deeper thinking."""
-
+Keep responses concise and focused on asking the right questions."""
+                
             elif persona_lower == "buddha":
-                return f"""You are Buddha, the enlightened teacher. You are moderating a debate on: {topic}.
+                return f"""You are Buddha, the enlightened teacher. You are moderating a discussion on: {topic}.
 
 Your approach:
-- Promote compassion and understanding between participants
-- De-escalate conflicts with gentle wisdom
-- Help participants see different perspectives
-- Encourage mindful listening and speaking
-- When tensions rise, guide toward common ground and shared humanity
+- Promote compassion, understanding, and mindful dialogue
+- Help de-escalate conflicts with wisdom and patience
+- Guide participants toward deeper understanding and empathy
+- When tensions arise, redirect to common ground and shared humanity
+- Speak with gentle authority and profound insight
 
-Keep responses brief and focused on promoting harmony and understanding."""
-
+Keep responses calm, wise, and focused on harmony."""
+                
             else:  # Aristotle (default)
-                return f"""You are Aristotle, the ancient Greek philosopher. You are moderating a debate on: {topic}.
+                return f"""You are Aristotle, the systematic philosopher. You are moderating a debate on: {topic}.
 
 Your approach:
-- Focus on logic, evidence, and sound reasoning
-- Ask for sources and verification of factual claims
-- Help identify logical fallacies and weak arguments
-- Encourage structured, evidence-based discussion
-- Say things like "What evidence supports this?" or "Let's examine the logic here"
+- Ensure logical reasoning and evidence-based arguments
+- Ask for sources and factual support when claims are made
+- Help structure the debate with clear premises and conclusions
+- Point out logical fallacies when they occur
+- Guide toward rational, well-reasoned discourse
 
-Keep responses brief and focused on promoting rational, evidence-based discourse."""
-
-        system_prompt = get_persona_system_prompt(moderator_persona, debate_topic)
+Keep responses logical, structured, and focused on evidence."""
         
-        agent_session = AgentSession(
-            stt=openai.STT(),
-            llm=research_llm,
-            tts=tts,
-            vad=silero.VAD.load(),
-            chat_ctx=llm.ChatContext(
-                system=system_prompt
-            )
+        # Get system prompt for the selected persona
+        system_prompt = get_persona_system_prompt(moderator_persona, topic)
+        
+        # Create the agent with persona-specific instructions
+        agent = Agent(
+            instructions=system_prompt,
+            tools=[end_debate, summarize_discussion, fact_check_claim]
         )
-        logger.info(f"✅ AgentSession created successfully with {moderator_persona} persona")
-    except Exception as session_error:
-        logger.error(f"❌ Failed to create AgentSession: {session_error}")
+        
+        # Create agent session with OpenAI components
+        session = AgentSession(
+            vad=silero.VAD.load(),
+            stt=openai.STT(model="whisper-1"),
+            llm=openai.LLM(model="gpt-4o-mini"),
+            tts=openai.TTS(voice="alloy")
+        )
+        
+        # Start the session
+        await session.start(agent=agent, room=ctx.room)
+        
+        # Generate initial greeting
+        greeting = get_persona_greeting(moderator_persona, topic)
+        await session.generate_reply(instructions=f"Say this greeting: {greeting}")
+        
+        logger.info(f"✅ {moderator_persona} agent started successfully for topic: {topic}")
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to start agent: {e}")
         raise
-
-    # Register event handlers
-    @agent_session.on("user_state_changed")
-    def handle_user_state_changed(event):
-        """Monitor user speaking state"""
-        try:
-            with conversation_state.conversation_lock:
-                if event.new_state == "speaking":
-                    conversation_state.user_speaking = True
-                    if conversation_state.active_speaker:
-                        logger.info("👤 User started speaking - agent should yield")
-                        conversation_state.active_speaker = None
-                elif event.new_state == "listening":
-                    conversation_state.user_speaking = False
-                    logger.info("👂 User stopped speaking")
-        except Exception as e:
-            logger.error(f"❌ Error in user_state_changed handler: {e}")
-
-    @agent_session.on("agent_state_changed")
-    def handle_agent_state_changed(event):
-        """Monitor agent speaking state"""
-        try:
-            agent_name = moderator_persona.lower()
-            if event.new_state == "speaking":
-                with conversation_state.conversation_lock:
-                    conversation_state.active_speaker = agent_name
-                    logger.info(f"🎤 {moderator_persona} started speaking")
-            elif event.new_state in ["idle", "listening", "thinking"]:
-                with conversation_state.conversation_lock:
-                    if conversation_state.active_speaker == agent_name:
-                        conversation_state.active_speaker = None
-                        logger.info(f"🔇 {moderator_persona} finished speaking")
-        except Exception as e:
-            logger.error(f"❌ Error in agent_state_changed handler: {e}")
-
-    # Start the agent session
-    try:
-        logger.info(f"🚀 Starting agent session for {moderator_persona}")
-        await agent_session.start(agent=moderator, room=ctx.room)
-        logger.info(f"✅ Agent session started successfully")
-    except Exception as start_error:
-        logger.error(f"❌ Failed to start agent session: {start_error}")
-        raise
-
-    # Generate initial greeting
-    def get_persona_greeting(persona: str, topic: str) -> str:
-        persona_lower = persona.lower()
-        
-        if persona_lower == "socrates":
-            return f"Greetings, friends. I am Socrates. We gather to explore: {topic}. I know that I know nothing, so let us discover truth together through questions. What do you think you know about this topic?"
-        elif persona_lower == "buddha":
-            return f"Welcome, friends, to this discussion on: {topic}. I am Buddha. Let us approach this topic with compassion, mindfulness, and understanding for all perspectives."
-        else:  # Aristotle (default)
-            return f"Welcome to this debate on: {topic}. I am Aristotle. I will help ensure our discussion is grounded in evidence, sound reasoning, and logical analysis."
-
-    try:
-        initial_prompt = get_persona_greeting(moderator_persona, debate_topic)
-        logger.info(f"🎭 Generated greeting for {moderator_persona}")
-        await agent_session.say(initial_prompt)
-        logger.info(f"✅ Initial greeting sent successfully")
-    except Exception as greeting_error:
-        logger.error(f"❌ Failed to generate initial greeting: {greeting_error}")
-
-    logger.info(f"🏛️ {moderator_persona} agent is now active and listening...")
-
-    # Keep the agent session alive
-    try:
-        # Create a shutdown event
-        shutdown_event = asyncio.Event()
-        
-        def signal_handler():
-            logger.info(f"🛑 Shutdown signal received for {moderator_persona}")
-            shutdown_event.set()
-        
-        # Register signal handlers
-        try:
-            loop = asyncio.get_running_loop()
-            for sig in [signal.SIGTERM, signal.SIGINT]:
-                loop.add_signal_handler(sig, signal_handler)
-        except (NotImplementedError, RuntimeError):
-            logger.debug("Signal handling not available in this environment")
-        
-        # Wait for shutdown
-        await shutdown_event.wait()
-        logger.info(f"🔚 {moderator_persona} agent shutting down gracefully")
-        
-    except (KeyboardInterrupt, asyncio.CancelledError):
-        logger.info(f"🔚 {moderator_persona} agent session interrupted")
-    except Exception as session_error:
-        logger.error(f"❌ Agent session error: {session_error}")
-    finally:
-        logger.info(f"🔚 {moderator_persona} agent session cleanup starting...")
-        
-        # Clean up agent session
-        if hasattr(agent_session, 'aclose'):
-            try:
-                await agent_session.aclose()
-                logger.info(f"✅ Agent session closed successfully")
-            except Exception as cleanup_error:
-                logger.warning(f"⚠️ Error closing agent session: {cleanup_error}")
-        
-        logger.info(f"🔚 {moderator_persona} agent session ended")
 
 def main():
     """Main entry point for the debate moderator agent"""
