@@ -12,9 +12,9 @@ livekit-agents[openai,silero]>=1.0
 openai==1.47.1
 anthropic>=0.3.0
 
-# Database and storage
+# Database dependencies
 supabase==2.8.0
-storage3==0.12.0
+psycopg2-binary==2.9.9
 
 # HTTP and networking
 httpx>=0.25.0
@@ -23,7 +23,6 @@ requests>=2.31.0
 
 # System and utilities
 psutil>=5.9.0
-psycopg2-binary==2.9.9
 
 # Testing dependencies
 pytest>=7.4.0

@@ -43,7 +43,7 @@ logger = logging.getLogger(__name__)
 # LiveKit Agents imports
 try:
     from livekit.agents import JobContext, WorkerOptions, cli, llm, AgentSession, Agent
-    from livekit.plugins import openai, silero, deepgram
+    from livekit.plugins import openai, silero
     from livekit.agents.llm import function_tool
     logger.info("✅ LiveKit Agents successfully imported")
 except ImportError as e:
