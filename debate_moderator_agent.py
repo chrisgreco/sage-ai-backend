@@ -28,7 +28,7 @@ from livekit.agents import (
     function_tool,
     RunContext,
 )
-from livekit.plugins import openai, deepgram, silero
+from livekit.plugins import openai, silero
 
 # Load environment variables first
 load_dotenv()
@@ -227,7 +227,7 @@ async def entrypoint(ctx: JobContext):
         
         # Connect to the room
         await ctx.connect()
-        logger.info(f"✅ Connected to room: {ctx.room.name}")
+        logger.info("Connected to room %s", ctx.room.name)
         
         # Get persona from room metadata
         persona = ctx.room.metadata.get("persona", "socrates")
@@ -239,10 +239,10 @@ async def entrypoint(ctx: JobContext):
             tools=[end_debate, summarize_discussion],
         )
         
-        # Create session with proper plugin configuration
+        # Create session with built-in OpenAI STT (no model parameter needed)
         session = AgentSession(
             vad=silero.VAD.load(),
-            stt=deepgram.STT(model="nova-2"),  # Use nova-2 model
+            stt=openai.STT(),  # Use built-in OpenAI STT without model parameter
             llm=openai.LLM(model="gpt-4o-mini"),
             tts=openai.TTS(voice="echo"),
         )

@@ -10,7 +10,6 @@ livekit-api==0.17.5
 livekit==0.17.5
 livekit-agents==1.0.11
 livekit-plugins-openai==1.0.5
-livekit-plugins-deepgram==1.0.0
 livekit-plugins-silero==1.0.0
 
 # AI and ML dependencies  
