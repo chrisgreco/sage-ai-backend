@@ -254,6 +254,8 @@ async def entrypoint(ctx: JobContext):
         greeting = get_persona_greeting(persona)
         await session.generate_reply(instructions=greeting)
         
+        # Get topic for logging
+        topic = os.environ.get("DEBATE_TOPIC", "The impact of AI on society")
         logger.info(f"✅ {persona} agent started successfully for topic: {topic}")
         
         # No need for wait_for_completion() - LiveKit handles session lifecycle automatically
