@@ -15,8 +15,7 @@ import threading
 import signal
 from dotenv import load_dotenv
 from dataclasses import dataclass
-from typing import Optional, Set, Dict, List, Any
-from enum import Enum
+from typing import Optional
 
 # Load environment variables first
 load_dotenv()
@@ -30,9 +29,8 @@ logger = logging.getLogger(__name__)
 
 # LiveKit Agents imports
 try:
-    from livekit import api, rtc
-    from livekit.agents import AutoSubscribe, JobContext, WorkerOptions, cli, llm
-    from livekit.agents.voice_assistant import VoiceAssistant, AgentSession
+    from livekit.agents import JobContext, WorkerOptions, cli, llm
+    from livekit.agents.voice_assistant import AgentSession
     from livekit.plugins import openai, silero
     from livekit.agents.llm import function_tool
     logger.info("✅ LiveKit Agents successfully imported")
@@ -43,13 +41,12 @@ except ImportError as e:
 # Check for Perplexity availability
 PERPLEXITY_AVAILABLE = False
 try:
-    import openai as openai_client
     if os.getenv("PERPLEXITY_API_KEY"):
         PERPLEXITY_AVAILABLE = True
         logger.info("✅ Perplexity API available")
     else:
         logger.info("ℹ️ Perplexity API key not found - using OpenAI only")
-except ImportError:
+except Exception:
     logger.info("ℹ️ Perplexity not available - using OpenAI only")
 
 @dataclass
