@@ -240,7 +240,7 @@ Keep responses logical, structured, and focused on evidence."""
         # Create agent session with OpenAI components
         session = AgentSession(
             vad=silero.VAD.load(),
-            stt=openai.STT(model="whisper-1"),
+            stt=openai.STT(),
             llm=openai.LLM(model="gpt-4o-mini"),
             tts=openai.TTS(voice="alloy")
         )
