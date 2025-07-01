@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # LiveKit Agents imports
 try:
     from livekit.agents import JobContext, WorkerOptions, cli, llm, AgentSession, Agent
-    from livekit.plugins import openai, silero
+    from livekit.plugins import openai, silero, deepgram
     from livekit.agents.llm import function_tool
     logger.info("✅ LiveKit Agents successfully imported")
 except ImportError as e:
@@ -237,10 +237,10 @@ Keep responses logical, structured, and focused on evidence."""
             tools=[end_debate, summarize_discussion, fact_check_claim]
         )
         
-        # Create agent session with OpenAI components
+        # Create agent session with reliable components
         session = AgentSession(
             vad=silero.VAD.load(),
-            stt=openai.STT(),
+            stt=deepgram.STT(),  # Use Deepgram STT instead of OpenAI
             llm=openai.LLM(model="gpt-4o-mini"),
             tts=openai.TTS(voice="alloy")
         )
