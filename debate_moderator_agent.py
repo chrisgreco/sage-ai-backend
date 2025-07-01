@@ -168,6 +168,7 @@ def get_persona_greeting(persona: str, topic: str) -> str:
 
 async def entrypoint(ctx: JobContext):
     """Main entry point for the LiveKit agent"""
+    session = None
     try:
         logger.info("🚀 Starting Sage AI Debate Moderator Agent")
         
@@ -254,9 +255,20 @@ Keep responses logical, structured, and focused on evidence."""
         
         logger.info(f"✅ {moderator_persona} agent started successfully for topic: {topic}")
         
+        # Keep the session alive until the room is disconnected
+        await session.wait_for_completion()
+        
     except Exception as e:
         logger.error(f"❌ Failed to start agent: {e}")
         raise
+    finally:
+        # Ensure proper cleanup
+        if session:
+            try:
+                await session.aclose()
+                logger.info("✅ Agent session cleaned up successfully")
+            except Exception as cleanup_error:
+                logger.warning(f"⚠️ Error during session cleanup: {cleanup_error}")
 
 def main():
     """Main entry point for the debate moderator agent"""
