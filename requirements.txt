@@ -5,12 +5,12 @@ python-dotenv>=1.0
 python-multipart>=0.0.6
 PyPDF2>=3.0.1
 
-# LiveKit dependencies - Individual plugin installation to avoid bracket notation conflicts
-# Install core agents first, then individual plugins
-livekit-agents>=1.0
-livekit-plugins-openai>=1.0
-livekit-plugins-silero>=1.0
-livekit-plugins-deepgram>=1.0
+# LiveKit dependencies - Remove ALL version constraints to allow pip to resolve automatically
+# This approach worked successfully in previous deployment - let pip choose compatible versions
+livekit-agents
+livekit-plugins-openai
+livekit-plugins-silero
+livekit-plugins-deepgram
 
 # Audio/Video processing dependencies required by LiveKit
 av>=10.0.0
