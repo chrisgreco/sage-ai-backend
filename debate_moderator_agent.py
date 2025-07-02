@@ -355,15 +355,23 @@ async def entrypoint(ctx: JobContext):
         # Create enhanced session for Perplexity API calls
         enhanced_session = EnhancedAgentSession(session_id=f"debate_{ctx.room.name}_{int(time.time())}")
         
-        # Create a custom LLM wrapper that uses Perplexity API
+        # Create a custom LLM wrapper that uses Perplexity API with safe logging
         class PerplexityLLMWrapper:
             def __init__(self, enhanced_session, model="sonar-deep-research"):
                 self.enhanced_session = enhanced_session
                 self.model = model
                 
             async def agenerate(self, messages, **kwargs):
-                """Generate response using Perplexity API with newest model"""
+                """Generate response using Perplexity API with newest model and safe logging"""
                 try:
+                    # Safe logging of input messages (avoid logging large content)
+                    message_info = {
+                        "message_count": len(messages),
+                        "model": self.model,
+                        "total_input_length": sum(len(str(msg.get("content", ""))) for msg in messages)
+                    }
+                    logger.debug(f"🤖 Generating response with Perplexity: {safe_binary_repr(message_info)}")
+                    
                     # Convert messages to Perplexity format
                     perplexity_payload = {
                         "model": self.model,  # Use newest Sonar Deep Research model
@@ -374,16 +382,17 @@ async def entrypoint(ctx: JobContext):
                     
                     response = await self.enhanced_session.call_perplexity_api(perplexity_payload)
                     
-                    # Extract content from response
+                    # Extract content from response with safe logging
                     if response and "choices" in response and len(response["choices"]) > 0:
                         content = response["choices"][0].get("message", {}).get("content", "")
+                        logger.debug(f"✅ Perplexity response generated: {len(content)} chars")
                         return content
                     else:
                         logger.warning("Invalid Perplexity API response format")
                         return "I apologize, but I'm having trouble processing that request right now."
                         
                 except Exception as e:
-                    logger.error(f"Perplexity API call failed: {e}")
+                    logger.error(f"Perplexity API call failed: {safe_binary_repr(str(e))}")
                     return "I apologize, but I'm experiencing technical difficulties. Please try again."
         
         # Create the custom Perplexity LLM
@@ -463,6 +472,82 @@ def main():
             entrypoint_fnc=entrypoint,
         )
     )
+
+# Binary data logging safeguards
+def safe_binary_repr(data) -> str:
+    """Return a safe representation of potentially binary data for logging."""
+    if isinstance(data, (bytes, bytearray)):
+        return f"<binary data: {len(data)} bytes>"
+    elif isinstance(data, str) and len(data) > 1000:
+        # Truncate very long strings that might be binary data encoded as strings
+        return f"<large string: {len(data)} chars, preview: {data[:100]}...>"
+    elif isinstance(data, dict):
+        # Handle large JSON responses
+        if len(str(data)) > 2000:
+            return f"<large dict: {len(data)} keys, {len(str(data))} chars>"
+        return data
+    return data
+
+def setup_logging_filters():
+    """Setup logging filters to prevent binary data and large HTTP responses from being logged."""
+    
+    class BinaryDataFilter(logging.Filter):
+        """Filter to prevent binary data and large HTTP responses from being logged."""
+        
+        def filter(self, record):
+            # Convert the log message to string safely
+            try:
+                msg = str(record.getMessage())
+                
+                # Filter out very long messages that might contain binary data
+                if len(msg) > 5000:
+                    record.msg = f"<filtered large log message: {len(msg)} chars>"
+                    record.args = ()
+                    return True
+                
+                # Filter out potential binary data patterns
+                if any(pattern in msg.lower() for pattern in [
+                    'x00', 'x01', 'x02', 'x03', 'x04', 'x05',  # Common binary patterns
+                    'riff', 'wav', 'mp3', 'ogg',  # Audio format headers
+                    'content-encoding', 'gzip', 'deflate',  # Compressed content
+                    'multipart/form-data'  # Form data that might contain binary
+                ]):
+                    record.msg = f"<filtered binary/media content: {len(msg)} chars>"
+                    record.args = ()
+                    return True
+                    
+                return True
+                
+            except Exception:
+                # If we can't process the message, allow it through
+                return True
+    
+    # Apply filter to all relevant loggers
+    binary_filter = BinaryDataFilter()
+    
+    # Add filter to root logger
+    logging.getLogger().addFilter(binary_filter)
+    
+    # Add filter to common HTTP libraries that might log large responses
+    for logger_name in [
+        'aiohttp',
+        'aiohttp.client',
+        'aiohttp.access',
+        'httpx',
+        'urllib3',
+        'openai',
+        'livekit'
+    ]:
+        try:
+            logger = logging.getLogger(logger_name)
+            logger.addFilter(binary_filter)
+            # Also set level to INFO to reduce debug output
+            logger.setLevel(logging.INFO)
+        except Exception:
+            pass  # Logger might not exist
+
+# Configure logging with binary data protection
+setup_logging_filters()
 
 if __name__ == "__main__":
     main() 

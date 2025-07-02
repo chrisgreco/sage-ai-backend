@@ -198,13 +198,31 @@ class EnhancedAgentSession:
         task.add_done_callback(self.background_tasks.discard)
     
     async def call_perplexity_api(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """Call Perplexity API with enhanced error handling."""
+        """Call Perplexity API with enhanced error handling and safe logging."""
         # Validate message format before sending
         if not self._validate_perplexity_payload(payload):
             raise ValueError("Invalid Perplexity API payload format")
         
+        # Safe logging of request payload (avoid logging large content)
+        safe_payload_info = {
+            "model": payload.get("model", "unknown"),
+            "message_count": len(payload.get("messages", [])),
+            "temperature": payload.get("temperature"),
+            "max_tokens": payload.get("max_tokens")
+        }
+        agent_logger.debug("Making Perplexity API call", **safe_payload_info)
+        
         async def _api_call():
-            async with aiohttp.ClientSession() as session:
+            # Configure aiohttp session with minimal logging
+            connector = aiohttp.TCPConnector(limit=100, limit_per_host=30)
+            timeout = aiohttp.ClientTimeout(total=30)
+            
+            async with aiohttp.ClientSession(
+                connector=connector,
+                timeout=timeout,
+                # Disable detailed logging to prevent binary data issues
+                trace_request_ctx={}
+            ) as session:
                 async with session.post(
                     "https://api.perplexity.ai/chat/completions",
                     json=payload,
@@ -214,7 +232,17 @@ class EnhancedAgentSession:
                     }
                 ) as response:
                     response.raise_for_status()
-                    return await response.json()
+                    result = await response.json()
+                    
+                    # Safe logging of response (avoid logging large content)
+                    if result and "choices" in result:
+                        content_length = len(result["choices"][0].get("message", {}).get("content", "")) if result["choices"] else 0
+                        agent_logger.debug("Perplexity API response received", 
+                                         status=response.status,
+                                         choices_count=len(result["choices"]),
+                                         content_length=content_length)
+                    
+                    return result
         
         return await self.error_handler.handle_api_call(
             _api_call,
