@@ -412,7 +412,7 @@ async def get_enhanced_session(session_id: str):
 
 
 class PerplexityLLM:
-    """Perplexity LLM wrapper that integrates with LiveKit Agent Session"""
+    """Perplexity LLM wrapper following Context7 best practices for async session management"""
     
     def __init__(self, 
                  model: str = "llama-3.1-sonar-small-128k-chat",  # Regular sonar model as requested
@@ -428,39 +428,77 @@ class PerplexityLLM:
     async def agenerate(self, prompt: str) -> Any:
         """Generate response using Perplexity API - compatible with LiveKit LLM interface"""
         
-        # Create a temporary enhanced session for the API call
-        session_id = f"perplexity_temp_{int(time.time())}"
-        async with get_enhanced_session(session_id) as session:
-            
-            payload = {
-                "model": self.model,
-                "messages": [
-                    {"role": "user", "content": prompt}
-                ],
-                "temperature": self.temperature,
-                "max_tokens": 1000  # Reasonable limit for fact-checking
-            }
-            
-            result = await session.call_perplexity_api(payload)
-            
-            # Return in a format compatible with OpenAI LLM interface
-            class MockResponse:
-                def __init__(self, content):
-                    self.choices = [MockChoice(content)]
-            
-            class MockChoice:
-                def __init__(self, content):
-                    self.message = MockMessage(content)
-            
-            class MockMessage:
-                def __init__(self, content):
-                    self.content = content
-            
-            if result and "choices" in result and result["choices"]:
-                content = result["choices"][0]["message"]["content"]
-                return MockResponse(content)
-            else:
-                return MockResponse("No response generated from Perplexity API")
+        payload = {
+            "model": self.model,
+            "messages": [
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": self.temperature,
+            "max_tokens": 1000  # Reasonable limit for fact-checking
+        }
+        
+        # Use proper async context manager for aiohttp session (Context7 pattern)
+        connector = aiohttp.TCPConnector(
+            limit=100,
+            limit_per_host=30,
+            enable_cleanup_closed=True  # Prevents unclosed connection warnings
+        )
+        timeout = aiohttp.ClientTimeout(total=30, connect=10)
+        
+        try:
+            # Follow Context7 async session management pattern
+            async with aiohttp.ClientSession(
+                connector=connector,
+                timeout=timeout,
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "LiveKit-Agent/1.0"
+                }
+            ) as session:
+                
+                async with session.post(
+                    "https://api.perplexity.ai/chat/completions",
+                    json=payload
+                ) as response:
+                    
+                    if response.status == 200:
+                        result = await response.json()
+                        
+                        # Return in a format compatible with OpenAI LLM interface
+                        class MockResponse:
+                            def __init__(self, content):
+                                self.choices = [MockChoice(content)]
+                        
+                        class MockChoice:
+                            def __init__(self, content):
+                                self.message = MockMessage(content)
+                        
+                        class MockMessage:
+                            def __init__(self, content):
+                                self.content = content
+                        
+                        if result and "choices" in result and result["choices"]:
+                            content = result["choices"][0]["message"]["content"]
+                            return MockResponse(content)
+                        else:
+                            return MockResponse("No response generated from Perplexity API")
+                    else:
+                        error_text = await response.text()
+                        agent_logger.error("Perplexity API error", 
+                                         status=response.status, 
+                                         error=error_text)
+                        return MockResponse(f"Perplexity API error (status {response.status})")
+                        
+        except aiohttp.ClientError as e:
+            agent_logger.error("Perplexity API client error", error=str(e))
+            return MockResponse("Fact-checking service temporarily unavailable")
+        except asyncio.TimeoutError:
+            agent_logger.error("Perplexity API timeout")
+            return MockResponse("Fact-checking service timed out")
+        finally:
+            # Ensure connector is properly closed
+            await connector.close()
 
 
 def with_perplexity(
