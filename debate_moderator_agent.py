@@ -429,16 +429,6 @@ async def end_debate():
         logger.error(f"Error ending debate: {e}")
         return "Thank you for this discussion. This concludes our debate session."
 
-@function_tool
-async def summarize_discussion():
-    """Summarize the key points of the discussion"""
-    try:
-        logger.info("📝 Summarizing discussion")
-        return "Let me summarize the main arguments and perspectives we've heard so far in this debate."
-    except Exception as e:
-        logger.error(f"Error summarizing discussion: {e}")
-        return "Let me provide a summary of the key points discussed."
-
 def get_persona_instructions(persona: str) -> str:
     """Get persona-specific instructions for the agent."""
     persona_lower = persona.lower()
@@ -494,77 +484,231 @@ def get_persona_greeting(persona: str) -> str:
 
 async def entrypoint(ctx: JobContext):
     """Main entrypoint with enhanced error handling and simplified LiveKit integration"""
+    room_name = "unknown"
+    persona = "Aristotle"
+    debate_topic = "General Discussion"
+    
     try:
-        logger.info("Starting AI Debate Moderator Agent")
+        logger.info("🚀 AGENT STARTUP - Debate Moderator Agent Starting")
         
-        await ctx.connect()
+        # Get room name for error tracking
+        try:
+            room_name = ctx.room.name if hasattr(ctx, 'room') and hasattr(ctx.room, 'name') else "unknown"
+            logger.info(f"📍 Room: {room_name}")
+        except Exception as e:
+            logger.warning(f"Could not get room name: {e}")
+        
+        # Connect to LiveKit room
+        try:
+            logger.info("🔌 Connecting to LiveKit room...")
+            await ctx.connect()
+            logger.info("✅ Successfully connected to LiveKit room")
+        except Exception as connect_error:
+            logger.error(f"❌ ROOM CONNECTION FAILED: {type(connect_error).__name__}: {str(connect_error)}")
+            import traceback
+            logger.error(f"🔍 Connection error traceback:\n{traceback.format_exc()}")
+            raise connect_error
         
         # Get persona and topic from job metadata (Context7 compliant approach)
-        persona = "Aristotle"  # Default fallback
-        debate_topic = "General Discussion"  # Default fallback
-        
         try:
+            logger.info("📋 Reading configuration from job metadata...")
             # Read from job metadata if available
             if hasattr(ctx, 'job') and hasattr(ctx.job, 'metadata') and ctx.job.metadata:
-                persona = ctx.job.metadata.get("moderator_persona", "Aristotle")
-                debate_topic = ctx.job.metadata.get("debate_topic", "General Discussion")
-                logger.info(f"🎭 Using job metadata - Persona: {persona}, Topic: {debate_topic}")
+                # Parse JSON metadata (Context7 requirement)
+                import json
+                try:
+                    if isinstance(ctx.job.metadata, str):
+                        # Metadata is JSON string - parse it
+                        metadata_dict = json.loads(ctx.job.metadata)
+                        logger.info(f"📋 Parsed JSON metadata: {metadata_dict}")
+                    else:
+                        # Metadata is already a dict
+                        metadata_dict = ctx.job.metadata
+                        logger.info(f"📋 Direct metadata dict: {metadata_dict}")
+                    
+                    persona = metadata_dict.get("moderator_persona", "Aristotle")
+                    debate_topic = metadata_dict.get("debate_topic", "General Discussion")
+                    logger.info(f"✅ Job metadata found - Persona: {persona}, Topic: {debate_topic}")
+                    
+                except json.JSONDecodeError as json_error:
+                    logger.error(f"❌ Error parsing metadata JSON: {json_error}")
+                    logger.error(f"Raw metadata: {ctx.job.metadata}")
+                    # Fall back to defaults
+                    persona = "Aristotle"
+                    debate_topic = "General Discussion"
+                    logger.info(f"🎭 JSON parse failed, using defaults - Persona: {persona}, Topic: {debate_topic}")
             else:
                 # Fallback to environment variables
                 persona = os.getenv("MODERATOR_PERSONA", "Aristotle")
                 debate_topic = os.getenv("DEBATE_TOPIC", "General Discussion")
-                logger.info(f"🎭 Using environment variables fallback - Persona: {persona}, Topic: {debate_topic}")
-        except Exception as e:
-            logger.warning(f"Could not read job metadata: {e}, using defaults")
+                logger.info(f"⚠️  No job metadata, using environment variables - Persona: {persona}, Topic: {debate_topic}")
+        except Exception as metadata_error:
+            logger.warning(f"⚠️  Could not read job metadata: {type(metadata_error).__name__}: {str(metadata_error)}")
+            persona = "Aristotle"
+            debate_topic = "General Discussion"
             logger.info(f"🎭 Using defaults - Persona: {persona}, Topic: {debate_topic}")
         
+        # Validate persona
+        valid_personas = ["Socrates", "Aristotle", "Buddha"]
+        if persona not in valid_personas:
+            logger.warning(f"⚠️  Invalid persona '{persona}', defaulting to 'Aristotle'")
+            persona = "Aristotle"
+        
         # Create moderator instance with persona
-        moderator = DebateModerator()
-        moderator.current_persona = persona
+        try:
+            logger.info("🤖 Creating moderator instance...")
+            moderator = DebateModerator()
+            moderator.current_persona = persona
+            logger.info(f"✅ Moderator created with persona: {persona}")
+        except Exception as moderator_error:
+            logger.error(f"❌ MODERATOR CREATION FAILED: {type(moderator_error).__name__}: {str(moderator_error)}")
+            raise moderator_error
         
         logger.info(f"🎭 Agent configured as: {persona}")
         logger.info(f"📋 Debate topic: {debate_topic}")
         
         # Get persona-specific instructions and greeting following LiveKit patterns
-        persona_instructions = get_persona_instructions(persona)
-        persona_greeting = get_persona_greeting(persona)
+        try:
+            logger.info("📝 Generating persona-specific instructions...")
+            persona_instructions = get_persona_instructions(persona)
+            persona_greeting = get_persona_greeting(persona)
+            logger.info("✅ Persona instructions and greeting prepared")
+        except Exception as persona_error:
+            logger.error(f"❌ PERSONA SETUP FAILED: {type(persona_error).__name__}: {str(persona_error)}")
+            raise persona_error
+        
+        # Check API key availability
+        perplexity_key = os.getenv("PERPLEXITY_API_KEY")
+        if not perplexity_key:
+            logger.error("❌ CRITICAL: PERPLEXITY_API_KEY not found in environment")
+            raise ValueError("PERPLEXITY_API_KEY is required for agent operation")
+        else:
+            logger.info("✅ Perplexity API key found")
         
         # Create LiveKit agent session with built-in Perplexity support
-        # This uses LiveKit's native Perplexity integration - no direct API calls!
-        session = AgentSession(
-            vad=silero.VAD.load(),
-            stt=deepgram.STT(model="nova-3"),
+        try:
+            logger.info("🎧 Creating LiveKit agent session components...")
             
-            # Use LiveKit's built-in Perplexity support instead of OpenAI
-            llm=openai.LLM.with_perplexity(
-                model="llama-3.1-sonar-small-128k-online",  # Real-time search model
-                api_key=os.getenv("PERPLEXITY_API_KEY"),
-                temperature=0.7,
-            ),
+            # Load VAD
+            try:
+                vad = silero.VAD.load()
+                logger.info("✅ VAD (Voice Activity Detection) loaded")
+            except Exception as vad_error:
+                logger.error(f"❌ VAD loading failed: {vad_error}")
+                raise vad_error
             
-            tts=openai.TTS(voice="alloy"),
-        )
+            # Setup STT
+            try:
+                stt = deepgram.STT(model="nova-3")
+                logger.info("✅ STT (Speech-to-Text) configured")
+            except Exception as stt_error:
+                logger.error(f"❌ STT setup failed: {stt_error}")
+                raise stt_error
+            
+            # Setup LLM with Perplexity
+            try:
+                logger.info("🧠 Setting up LLM with Perplexity integration...")
+                llm = openai.LLM.with_perplexity(
+                    model="llama-3.1-sonar-small-128k-online",  # Real-time search model
+                    api_key=perplexity_key,
+                    temperature=0.7,
+                )
+                logger.info("✅ LLM with Perplexity integration configured")
+            except Exception as llm_error:
+                logger.error(f"❌ LLM setup failed: {type(llm_error).__name__}: {str(llm_error)}")
+                raise llm_error
+            
+            # Setup TTS
+            try:
+                tts = openai.TTS(voice="alloy")
+                logger.info("✅ TTS (Text-to-Speech) configured")
+            except Exception as tts_error:
+                logger.error(f"❌ TTS setup failed: {tts_error}")
+                raise tts_error
+            
+            # Create session
+            logger.info("🎬 Creating AgentSession...")
+            session = AgentSession(
+                vad=vad,
+                stt=stt,
+                llm=llm,
+                tts=tts,
+            )
+            logger.info("✅ AgentSession created successfully")
+            
+        except Exception as session_error:
+            logger.error(f"❌ SESSION CREATION FAILED: {type(session_error).__name__}: {str(session_error)}")
+            import traceback
+            logger.error(f"🔍 Session error traceback:\n{traceback.format_exc()}")
+            raise session_error
 
-        # Create agent with persona-specific instructions
-        agent = Agent(
-            instructions=persona_instructions,
-            tools=[
+        # Create agent with persona-specific instructions and tools
+        try:
+            logger.info("🛠️  Setting up agent tools...")
+            tools = [
                 moderator.fact_check_statement,
                 moderator.manage_speaking_time,
                 moderator.summarize_discussion,
                 moderator.suggest_topic_transition,
-                moderator.switch_persona,  # Add persona switching tool
-            ],
-        )
+                moderator.switch_persona,
+            ]
+            logger.info(f"✅ {len(tools)} tools prepared")
+            
+            logger.info("🤖 Creating Agent instance...")
+            agent = Agent(
+                instructions=persona_instructions,
+                tools=tools,
+            )
+            logger.info("✅ Agent created successfully")
+        except Exception as agent_error:
+            logger.error(f"❌ AGENT CREATION FAILED: {type(agent_error).__name__}: {str(agent_error)}")
+            raise agent_error
 
-        await session.start(agent=agent, room=ctx.room)
+        # Start the session
+        try:
+            logger.info("🚀 Starting agent session...")
+            await session.start(agent=agent, room=ctx.room)
+            logger.info("✅ Agent session started successfully")
+        except Exception as start_error:
+            logger.error(f"❌ SESSION START FAILED: {type(start_error).__name__}: {str(start_error)}")
+            import traceback
+            logger.error(f"🔍 Session start error traceback:\n{traceback.format_exc()}")
+            raise start_error
         
         # Generate persona-specific greeting
-        await session.generate_reply(instructions=persona_greeting)
+        try:
+            logger.info("👋 Generating persona greeting...")
+            await session.generate_reply(instructions=persona_greeting)
+            logger.info("✅ Greeting sent successfully")
+        except Exception as greeting_error:
+            logger.error(f"❌ GREETING FAILED: {type(greeting_error).__name__}: {str(greeting_error)}")
+            # Don't fail the entire agent for greeting errors
+            logger.warning("⚠️  Continuing without greeting")
+        
+        logger.info(f"🎉 SUCCESS: {persona} moderator is ready in room {room_name}!")
 
-    except Exception as e:
-        logger.error(f"❌ Agent failed to start: {e}")
-        raise
+    except Exception as general_error:
+        logger.error(f"❌ CRITICAL AGENT FAILURE: {type(general_error).__name__}: {str(general_error)}")
+        logger.error(f"📍 Room: {room_name}, Persona: {persona}, Topic: {debate_topic}")
+        
+        # Log full traceback for debugging
+        import traceback
+        error_details = traceback.format_exc()
+        logger.error(f"🔍 Full error traceback:\n{error_details}")
+        
+        # Check specific error types for better debugging
+        if "api" in str(general_error).lower():
+            logger.error("🔑 API ERROR: Check API keys and network connectivity")
+        elif "timeout" in str(general_error).lower():
+            logger.error("⏱️  TIMEOUT ERROR: Service took too long to respond")
+        elif "connection" in str(general_error).lower():
+            logger.error("🔌 CONNECTION ERROR: Network or service connectivity issue")
+        elif "permission" in str(general_error).lower() or "unauthorized" in str(general_error).lower():
+            logger.error("🔐 PERMISSION ERROR: Check API keys and access permissions")
+        else:
+            logger.error(f"🔍 UNKNOWN ERROR TYPE: {type(general_error).__name__}")
+        
+        raise general_error
 
 def main():
     """Main entry point for the debate moderator agent"""
