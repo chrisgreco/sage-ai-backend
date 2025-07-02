@@ -219,6 +219,7 @@ def get_persona_greeting(persona: str) -> str:
 
 async def entrypoint(ctx: JobContext):
     """Main entry point for the LiveKit agent"""
+    session = None
     try:
         logger.info("🚀 Starting Sage AI Debate Moderator Agent")
         
@@ -262,11 +263,20 @@ async def entrypoint(ctx: JobContext):
         topic = os.environ.get("DEBATE_TOPIC", "The impact of AI on society")
         logger.info(f"✅ {persona} agent started successfully for topic: {topic}")
         
-        # No need for wait_for_completion() - LiveKit handles session lifecycle automatically
+        # Wait for session completion to ensure proper cleanup
+        await session.wait_for_completion()
         
     except Exception as e:
         logger.error(f"❌ Failed to start agent: {e}")
         raise
+    finally:
+        # Ensure proper cleanup of session resources
+        if session:
+            try:
+                await session.aclose()
+                logger.info("🧹 Session cleanup completed")
+            except Exception as cleanup_error:
+                logger.warning(f"⚠️ Session cleanup warning: {cleanup_error}")
 
 def main():
     """Main entry point for the debate moderator agent"""
