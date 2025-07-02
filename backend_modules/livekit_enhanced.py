@@ -213,36 +213,58 @@ class EnhancedAgentSession:
         agent_logger.debug("Making Perplexity API call", **safe_payload_info)
         
         async def _api_call():
-            # Configure aiohttp session with minimal logging
-            connector = aiohttp.TCPConnector(limit=100, limit_per_host=30)
-            timeout = aiohttp.ClientTimeout(total=30)
+            # Configure aiohttp session with proper cleanup to prevent unclosed session errors
+            timeout = aiohttp.ClientTimeout(total=30, connect=10)
+            connector = aiohttp.TCPConnector(
+                limit=100, 
+                limit_per_host=30,
+                ttl_dns_cache=300,
+                use_dns_cache=True,
+                enable_cleanup_closed=True  # Critical: enables cleanup of closed connections
+            )
             
-            async with aiohttp.ClientSession(
-                connector=connector,
-                timeout=timeout,
-                # Disable detailed logging to prevent binary data issues
-                trace_request_ctx={}
-            ) as session:
-                async with session.post(
-                    "https://api.perplexity.ai/chat/completions",
-                    json=payload,
+            try:
+                # Use proper async context manager - this prevents unclosed session errors
+                async with aiohttp.ClientSession(
+                    connector=connector,
+                    timeout=timeout,
                     headers={
-                        "Authorization": f"Bearer {os.getenv('PERPLEXITY_API_KEY')}",
-                        "Content-Type": "application/json"
-                    }
-                ) as response:
-                    response.raise_for_status()
-                    result = await response.json()
-                    
-                    # Safe logging of response (avoid logging large content)
-                    if result and "choices" in result:
-                        content_length = len(result["choices"][0].get("message", {}).get("content", "")) if result["choices"] else 0
-                        agent_logger.debug("Perplexity API response received", 
-                                         status=response.status,
-                                         choices_count=len(result["choices"]),
-                                         content_length=content_length)
-                    
-                    return result
+                        "User-Agent": "LiveKit-Agent/1.0"
+                    },
+                    # Disable detailed logging to prevent binary data issues
+                    trace_request_ctx={}
+                ) as session:
+                    async with session.post(
+                        "https://api.perplexity.ai/chat/completions",
+                        json=payload,
+                        headers={
+                            "Authorization": f"Bearer {os.getenv('PERPLEXITY_API_KEY')}",
+                            "Content-Type": "application/json"
+                        }
+                    ) as response:
+                        response.raise_for_status()
+                        result = await response.json()
+                        
+                        # Safe logging of response (avoid logging large content)
+                        if result and "choices" in result:
+                            content_length = len(result["choices"][0].get("message", {}).get("content", "")) if result["choices"] else 0
+                            agent_logger.debug("Perplexity API response received", 
+                                             status=response.status,
+                                             choices_count=len(result["choices"]),
+                                             content_length=content_length)
+                        
+                        return result
+                        
+            except aiohttp.ClientError as e:
+                agent_logger.error(f"Perplexity API client error: {e}")
+                raise
+            except asyncio.TimeoutError as e:
+                agent_logger.error(f"Perplexity API timeout: {e}")
+                raise
+            finally:
+                # Ensure connector is properly closed to prevent unclosed connector warnings
+                if not connector.closed:
+                    await connector.close()
         
         return await self.error_handler.handle_api_call(
             _api_call,

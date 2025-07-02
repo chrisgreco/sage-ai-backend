@@ -352,96 +352,115 @@ async def entrypoint(ctx: JobContext):
         # Create enhanced session with Perplexity integration using newest model
         from backend_modules.livekit_enhanced import EnhancedAgentSession
         
-        # Create enhanced session for Perplexity API calls
-        enhanced_session = EnhancedAgentSession(session_id=f"debate_{ctx.room.name}_{int(time.time())}")
+        # Create enhanced session for Perplexity API calls with proper lifecycle management
+        session_id = f"debate_{ctx.room.name}_{int(time.time())}"
         
-        # Create a custom LLM wrapper that uses Perplexity API with safe logging
-        class PerplexityLLMWrapper:
-            def __init__(self, enhanced_session, model="sonar-deep-research"):
-                self.enhanced_session = enhanced_session
-                self.model = model
-                
-            async def agenerate(self, messages, **kwargs):
-                """Generate response using Perplexity API with newest model and safe logging"""
-                try:
-                    # Safe logging of input messages (avoid logging large content)
-                    message_info = {
-                        "message_count": len(messages),
-                        "model": self.model,
-                        "total_input_length": sum(len(str(msg.get("content", ""))) for msg in messages)
-                    }
-                    logger.debug(f"🤖 Generating response with Perplexity: {safe_binary_repr(message_info)}")
+        # Use the enhanced session context manager for proper cleanup
+        from backend_modules.livekit_enhanced import get_enhanced_session
+        
+        async with get_enhanced_session(session_id) as enhanced_session:
+            # Create a custom LLM wrapper that uses Perplexity API with safe logging and proper session management
+            class PerplexityLLMWrapper:
+                def __init__(self, enhanced_session, model="sonar-deep-research"):
+                    self.enhanced_session = enhanced_session
+                    self.model = model
+                    self._session = None
                     
-                    # Convert messages to Perplexity format
-                    perplexity_payload = {
-                        "model": self.model,  # Use newest Sonar Deep Research model
-                        "messages": [{"role": msg.get("role", "user"), "content": msg.get("content", "")} for msg in messages],
-                        "temperature": kwargs.get("temperature", 0.7),
-                        "max_tokens": kwargs.get("max_tokens", 1000)
-                    }
+                async def __aenter__(self):
+                    """Async context manager entry"""
+                    return self
                     
-                    response = await self.enhanced_session.call_perplexity_api(perplexity_payload)
+                async def __aexit__(self, exc_type, exc_val, exc_tb):
+                    """Async context manager exit with proper cleanup"""
+                    await self.aclose()
                     
-                    # Extract content from response with safe logging
-                    if response and "choices" in response and len(response["choices"]) > 0:
-                        content = response["choices"][0].get("message", {}).get("content", "")
-                        logger.debug(f"✅ Perplexity response generated: {len(content)} chars")
-                        return content
-                    else:
-                        logger.warning("Invalid Perplexity API response format")
-                        return "I apologize, but I'm having trouble processing that request right now."
+                async def aclose(self):
+                    """Properly close any resources"""
+                    if self._session and not self._session.closed:
+                        await self._session.close()
+                        self._session = None
+                    
+                async def agenerate(self, messages, **kwargs):
+                    """Generate response using Perplexity API with newest model and safe logging"""
+                    try:
+                        # Safe logging of input messages (avoid logging large content)
+                        message_info = {
+                            "message_count": len(messages),
+                            "model": self.model,
+                            "total_input_length": sum(len(str(msg.get("content", ""))) for msg in messages)
+                        }
+                        logger.debug(f"🤖 Generating response with Perplexity: {safe_binary_repr(message_info)}")
                         
-                except Exception as e:
-                    logger.error(f"Perplexity API call failed: {safe_binary_repr(str(e))}")
-                    return "I apologize, but I'm experiencing technical difficulties. Please try again."
-        
-        # Create the custom Perplexity LLM
-        perplexity_llm = PerplexityLLMWrapper(enhanced_session, "sonar-deep-research")
-        
-        # Create agent with persona-specific instructions and tools
-        agent = Agent(
-            instructions=get_persona_instructions(persona),
-            tools=[
-                get_debate_topic,
-                access_facilitation_knowledge,
-                suggest_process_intervention,
-                fact_check_claim,
-                end_debate,
-                summarize_discussion,
-            ],
-        )
-        
-        # Create standard LiveKit session with our custom LLM
-        session = AgentSession(
-            vad=silero.VAD.load(),
-            stt=openai.STT() if openai_api_key else None,
-            llm=perplexity_llm,  # Use our custom Perplexity wrapper
-            tts=openai.TTS(voice="echo") if openai_api_key else None,
-        )
-        
-        # Start the session with error handling
-        try:
-            await session.start(agent=agent, room=ctx.room)
-            logger.info("✅ Agent session started successfully")
-        except Exception as e:
-            logger.error(f"Failed to start agent session: {e}")
-            raise SessionError(f"Session start failed: {e}", "SESSION_START_ERROR")
-        
-        # Generate initial greeting with error handling
-        try:
-            greeting = get_persona_greeting(persona)
-            await session.generate_reply(instructions=greeting)
-            logger.info("✅ Initial greeting generated successfully")
-        except Exception as e:
-            logger.warning(f"Failed to generate initial greeting: {e}")
-            # Continue without greeting rather than failing
-        
-        # Get topic for logging
-        topic = os.environ.get("DEBATE_TOPIC", "The impact of AI on society")
-        logger.info(f"✅ {persona} agent started successfully for topic: {topic}")
-        
-        # Session will run until the room is disconnected
-        # No need to wait for completion - session.start() handles the lifecycle
+                        # Convert messages to Perplexity format
+                        perplexity_payload = {
+                            "model": self.model,  # Use newest Sonar Deep Research model
+                            "messages": [{"role": msg.get("role", "user"), "content": msg.get("content", "")} for msg in messages],
+                            "temperature": kwargs.get("temperature", 0.7),
+                            "max_tokens": kwargs.get("max_tokens", 1000)
+                        }
+                        
+                        response = await self.enhanced_session.call_perplexity_api(perplexity_payload)
+                        
+                        # Extract content from response with safe logging
+                        if response and "choices" in response and len(response["choices"]) > 0:
+                            content = response["choices"][0].get("message", {}).get("content", "")
+                            logger.debug(f"✅ Perplexity response generated: {len(content)} chars")
+                            return content
+                        else:
+                            logger.warning("Invalid Perplexity API response format")
+                            return "I apologize, but I'm having trouble processing that request right now."
+                            
+                    except Exception as e:
+                        logger.error(f"Perplexity API call failed: {safe_binary_repr(str(e))}")
+                        return "I apologize, but I'm experiencing technical difficulties. Please try again."
+            
+            # Create the custom Perplexity LLM
+            perplexity_llm = PerplexityLLMWrapper(enhanced_session, "sonar-deep-research")
+            
+            # Create agent with persona-specific instructions and tools
+            agent = Agent(
+                instructions=get_persona_instructions(persona),
+                tools=[
+                    get_debate_topic,
+                    access_facilitation_knowledge,
+                    suggest_process_intervention,
+                    fact_check_claim,
+                    end_debate,
+                    summarize_discussion,
+                ],
+            )
+            
+            # Create standard LiveKit session with our custom LLM
+            session = AgentSession(
+                vad=silero.VAD.load(),
+                stt=openai.STT() if openai_api_key else None,
+                llm=perplexity_llm,  # Use our custom Perplexity wrapper
+                tts=openai.TTS(voice="echo") if openai_api_key else None,
+            )
+            
+            # Start the session with error handling
+            try:
+                await session.start(agent=agent, room=ctx.room)
+                logger.info("✅ Agent session started successfully")
+            except Exception as e:
+                logger.error(f"Failed to start agent session: {e}")
+                raise SessionError(f"Session start failed: {e}", "SESSION_START_ERROR")
+            
+            # Generate initial greeting with error handling
+            try:
+                greeting = get_persona_greeting(persona)
+                await session.generate_reply(instructions=greeting)
+                logger.info("✅ Initial greeting generated successfully")
+            except Exception as e:
+                logger.warning(f"Failed to generate initial greeting: {e}")
+                # Continue without greeting rather than failing
+            
+            # Get topic for logging
+            topic = os.environ.get("DEBATE_TOPIC", "The impact of AI on society")
+            logger.info(f"✅ {persona} agent started successfully for topic: {topic}")
+            
+            # Session will run until the room is disconnected
+            # No need to wait for completion - session.start() handles the lifecycle
         
     except ConfigurationError as e:
         logger.error(f"❌ Configuration error: {e}")
