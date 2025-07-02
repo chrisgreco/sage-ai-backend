@@ -28,8 +28,6 @@ from livekit.agents import (
     function_tool,
     RunContext,
 )
-from livekit.plugins import openai, silero
-
 # Load environment variables first
 load_dotenv()
 
@@ -42,9 +40,8 @@ logger = logging.getLogger(__name__)
 
 # LiveKit Agents imports
 try:
-    from livekit.agents import JobContext, WorkerOptions, cli, llm, AgentSession, Agent
+    from livekit.agents import JobContext, WorkerOptions, cli, AgentSession, Agent, function_tool
     from livekit.plugins import openai, silero
-    from livekit.agents.llm import function_tool
     logger.info("✅ LiveKit Agents successfully imported")
 except ImportError as e:
     logger.error(f"❌ Failed to import LiveKit Agents: {e}")
