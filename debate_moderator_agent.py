@@ -612,7 +612,7 @@ async def entrypoint(ctx: JobContext):
                 logger.info("🧠 Setting up LLM with Perplexity integration...")
                 llm = openai.LLM.with_perplexity(
                     model="llama-3.1-sonar-small-128k-online",  # Current Perplexity model
-                    api_key=openai_key,
+                    api_key=openai_key,  # FIXED: Context7 requires OpenAI API key for with_perplexity()
                     temperature=0.7,
                 )
                 logger.info("✅ LLM with Perplexity integration configured")
