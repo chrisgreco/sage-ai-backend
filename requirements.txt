@@ -5,9 +5,9 @@ python-dotenv>=1.0
 python-multipart>=0.0.6
 PyPDF2>=3.0.1
 
-# LiveKit dependencies - No version constraints to allow pip to resolve conflicts
-# Let pip automatically find compatible versions for all plugins
-livekit-agents[openai,silero,deepgram,cartesia,turn-detector]
+# LiveKit dependencies - Force modern version with Agent class support
+# Based on Context7 docs showing Agent class is available in 1.0+ versions
+livekit-agents[openai,silero,deepgram,cartesia,turn-detector]>=1.0
 
 # Audio/Video processing dependencies required by LiveKit
 av>=10.0.0
