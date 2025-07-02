@@ -233,13 +233,20 @@ async def entrypoint(ctx: JobContext):
         persona = ctx.room.metadata.get("persona", "socrates")
         logger.info("Using persona: %s", persona)
         
-        # Create agent with persona-specific instructions
+        # Create agent with persona-specific instructions and tools
         agent = Agent(
             instructions=get_persona_instructions(persona),
-            tools=[end_debate, summarize_discussion],
+            tools=[
+                get_debate_topic,
+                access_facilitation_knowledge,
+                suggest_process_intervention,
+                fact_check_claim,
+                end_debate,
+                summarize_discussion,
+            ],
         )
         
-        # Create session with built-in OpenAI STT (no model parameter needed)
+        # Create session with built-in OpenAI STT
         session = AgentSession(
             vad=silero.VAD.load(),
             stt=openai.STT(),  # Use built-in OpenAI STT without model parameter
