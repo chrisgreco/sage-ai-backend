@@ -34,15 +34,6 @@ from livekit.agents.utils import http_context
 from livekit.plugins import openai, silero, deepgram
 
 from backend_modules.livekit_enhanced import (
-    get_enhanced_session,
-    EnhancedAgentSession,
-    AgentError,
-    OpenAIAgentError,
-    SessionError,
-    ConfigurationError,
-    agent_error_handler,
-    BinaryDataFilter,
-    safe_binary_repr,
     with_perplexity
 )
 
@@ -67,66 +58,16 @@ except ImportError as e:
     logger.error(f"❌ Failed to import LiveKit Agents: {e}")
     sys.exit(1)
 
-# Custom Error Classes for structured error handling
-class AgentError(Exception):
-    """Base exception for agent errors"""
-    def __init__(self, message: str, error_code: str = None, context: dict = None):
-        super().__init__(message)
-        self.error_code = error_code
-        self.context = context or {}
-        self.timestamp = time.time()
-
-class OpenAIAgentError(AgentError):
-    """OpenAI-specific agent errors"""
-    pass
-
-class SessionError(AgentError):
-    """LiveKit session errors"""
-    pass
-
-class ConfigurationError(AgentError):
-    """Configuration and environment errors"""
-    pass
-
-# Global Error Handler Decorator
-def agent_error_handler(func):
-    """Decorator for comprehensive agent error handling based on Context7 patterns"""
-    @functools.wraps(func)
-    async def wrapper(*args, **kwargs):
-        try:
-            return await func(*args, **kwargs)
-        except Exception as e:
-            # Check if it's an OpenAI-related error
-            if hasattr(e, 'status_code'):
-                if e.status_code == 404:
-                    logger.error(f"OpenAI 404 in {func.__name__}: {e}")
-                    raise OpenAIAgentError(
-                        f"OpenAI endpoint not found: {e}", 
-                        "OPENAI_404", 
-                        {"function": func.__name__, "url": getattr(e, 'url', 'unknown')}
-                    )
-                elif e.status_code == 429:
-                    logger.warning(f"OpenAI rate limit in {func.__name__}")
-                    await asyncio.sleep(2)  # Exponential backoff
-                    raise OpenAIAgentError(f"Rate limit exceeded: {e}", "RATE_LIMIT")
-                elif e.status_code == 401:
-                    logger.error(f"OpenAI authentication error in {func.__name__}")
-                    raise OpenAIAgentError(f"Invalid API key: {e}", "AUTH_ERROR")
-            
-            # Handle general HTTP errors
-            if "HTTPStatusError" in str(type(e).__name__):
-                logger.error(f"HTTP Status error in {func.__name__}: {e}")
-                raise OpenAIAgentError(f"HTTP error: {e}", "HTTP_ERROR")
-            
-            # Handle session-related errors
-            if "session" in str(e).lower() or "AgentSession" in str(type(e).__name__):
-                logger.error(f"Session error in {func.__name__}: {e}")
-                raise SessionError(f"Session error: {e}", "SESSION_ERROR")
-            
-            # General error handling
-            logger.error(f"Unexpected error in {func.__name__}: {e}")
-            raise AgentError(f"Agent error: {e}", "GENERAL_ERROR", {"function": func.__name__})
-    return wrapper
+# Simple error handling following LiveKit patterns
+def safe_binary_repr(data) -> str:
+    """Safely represent data for logging without binary content"""
+    if data is None:
+        return "None"
+    
+    data_str = str(data)
+    if len(data_str) > 500:  # Truncate very long strings
+        return data_str[:500] + "... (truncated)"
+    return data_str
 
 # Check for Perplexity availability
 PERPLEXITY_AVAILABLE = False
@@ -165,9 +106,8 @@ class DebateModerator:
         self.fact_checker_llm = None  # Will be set in entrypoint
         self.enhanced_session = None  # Enhanced session for Perplexity API calls
         
-    @agent_error_handler
-    async def initialize_session(self, session: EnhancedAgentSession, room_name: str):
-        """Initialize debate session with enhanced error handling"""
+    async def initialize_session(self, room_name: str):
+        """Initialize debate session with simple error handling"""
         try:
             logger.info(f"Initializing debate session for room: {safe_binary_repr(room_name)}")
             
@@ -187,7 +127,7 @@ class DebateModerator:
             
         except Exception as e:
             logger.error(f"Failed to initialize session: {safe_binary_repr(str(e))}")
-            raise SessionError(f"Session initialization failed: {e}")
+            raise
 
     @function_tool
     async def set_debate_topic(
@@ -357,7 +297,6 @@ class DebateModerator:
             return "I'm having trouble generating a summary right now."
 
 @function_tool
-@agent_error_handler
 async def get_debate_topic():
     """Get the current debate topic"""
     try:
@@ -369,7 +308,6 @@ async def get_debate_topic():
         return "Unable to retrieve the current debate topic. Please try again."
 
 @function_tool
-@agent_error_handler
 async def access_facilitation_knowledge(query: str):
     """Access debate facilitation knowledge"""
     try:
@@ -393,7 +331,6 @@ async def access_facilitation_knowledge(query: str):
         return "I'm temporarily unable to access that knowledge. Please rephrase your question."
 
 @function_tool
-@agent_error_handler
 async def suggest_process_intervention(situation: str):
     """Suggest process interventions for debate management"""
     try:
@@ -418,7 +355,6 @@ async def suggest_process_intervention(situation: str):
         return "Let me help guide this discussion back to a productive path."
 
 @function_tool
-@agent_error_handler
 async def fact_check_claim(claim: str, source_requested: bool = False):
     """Fact-check a claim made during the debate"""
     try:
@@ -434,7 +370,6 @@ async def fact_check_claim(claim: str, source_requested: bool = False):
         return "Let's examine the evidence for this claim. What sources support this position?"
 
 @function_tool
-@agent_error_handler
 async def end_debate():
     """End the current debate session"""
     try:
@@ -445,7 +380,6 @@ async def end_debate():
         return "Thank you for this discussion. This concludes our debate session."
 
 @function_tool
-@agent_error_handler
 async def summarize_discussion():
     """Summarize the key points of the discussion"""
     try:
@@ -508,7 +442,6 @@ def get_persona_greeting(persona: str) -> str:
     else:  # Aristotle (default)
         return "Greet the participants as Aristotle. Welcome them to the debate and ask them to present their arguments with logic and evidence."
 
-@agent_error_handler
 async def entrypoint(ctx: JobContext):
     """Main entrypoint with enhanced error handling and simplified OpenAI integration"""
     try:
@@ -516,7 +449,8 @@ async def entrypoint(ctx: JobContext):
         
         # Validate environment
         if not os.getenv("PERPLEXITY_API_KEY"):
-            raise ConfigurationError("PERPLEXITY_API_KEY environment variable is required")
+            logger.error("PERPLEXITY_API_KEY environment variable is required")
+            return
         
         await ctx.connect()
         
@@ -569,28 +503,22 @@ Remember: You're here to elevate the quality of discourse, not to take sides."""
         # Initialize the moderator session
         room_name = ctx.room.name or "default_debate_room"
         
-        # Create enhanced session for Perplexity API calls
-        enhanced_session_id = f"debate_moderator_{int(time.time())}"
-        async with get_enhanced_session(enhanced_session_id) as enhanced_session:
-            # Store enhanced session for Perplexity API calls
-            moderator.enhanced_session = enhanced_session
+        # Initialize the moderator session
+        await moderator.initialize_session(room_name)
+        
+        # Start the agent
+        await session.start(agent=agent, room=ctx.room)
+        
+        # Generate initial greeting
+        await session.generate_reply(
+            instructions="Greet the participants and explain your role as Aristotle, the debate moderator. Ask what topic they'd like to discuss."
+        )
+        
+        logger.info("Aristotle agent started successfully")
             
-            # Start the agent
-            await session.start(agent=agent, room=ctx.room)
-            
-            # Generate initial greeting
-            await session.generate_reply(
-                instructions="Greet the participants and explain your role as Aristotle, the debate moderator. Ask what topic they'd like to discuss."
-            )
-            
-            logger.info("Aristotle agent started successfully")
-            
-    except ConfigurationError as e:
-        logger.error(f"Configuration error: {safe_binary_repr(str(e))}")
-        raise
     except Exception as e:
         logger.error(f"Failed to start agent: {safe_binary_repr(str(e))}")
-        raise OpenAIAgentError(f"Agent startup failed: {e}")
+        raise
 
 def main():
     """Main entry point for the debate moderator agent"""
@@ -601,20 +529,7 @@ def main():
         )
     )
 
-# Binary data logging safeguards
-def safe_binary_repr(data) -> str:
-    """Return a safe representation of potentially binary data for logging."""
-    if isinstance(data, (bytes, bytearray)):
-        return f"<binary data: {len(data)} bytes>"
-    elif isinstance(data, str) and len(data) > 1000:
-        # Truncate very long strings that might be binary data encoded as strings
-        return f"<large string: {len(data)} chars, preview: {data[:100]}...>"
-    elif isinstance(data, dict):
-        # Handle large JSON responses
-        if len(str(data)) > 2000:
-            return f"<large dict: {len(data)} keys, {len(str(data))} chars>"
-        return data
-    return data
+# Binary data logging safeguards already defined above
 
 def setup_logging_filters():
     """Setup logging filters to prevent binary data and large HTTP responses from being logged."""
