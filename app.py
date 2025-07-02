@@ -461,7 +461,7 @@ async def get_participant_token(request: DebateRequest):
 active_agents = {}
 agent_status_cache = {}
 
-# Enhanced Launch AI Agents endpoint using room metadata for background workers
+# Enhanced Launch AI Agents endpoint with room cleanup to prevent 409 conflicts
 @app.post("/launch-ai-agents")
 async def launch_ai_agents(request: DebateRequest):
     room_name = None
@@ -499,27 +499,17 @@ async def launch_ai_agents(request: DebateRequest):
         
         logger.info(f"🎭 Selected moderator: {moderator}")
         
-        # Check if room already has agents
+        # CRITICAL FIX: Remove existing room from cache to prevent 409 conflicts
         if room_name in active_agents:
-            logger.warning(f"⚠️  Room {room_name} already has active agents")
-            existing_agent = active_agents[room_name]
-            return JSONResponse(
-                content={
-                    "status": "already_exists",
-                    "message": f"Agents already active in room: {room_name}",
-                    "room_name": room_name,
-                    "existing_moderator": existing_agent.get("moderator"),
-                    "existing_topic": existing_agent.get("topic"),
-                    "started_at": existing_agent.get("created_at")
-                },
-                status_code=409
-            )
+            logger.warning(f"⚠️  Room {room_name} already in cache - removing to allow fresh dispatch")
+            del active_agents[room_name]
+            logger.info(f"🗑️  Removed {room_name} from active_agents cache")
         
         # Create LiveKit room and dispatch single agent with moderator persona
         try:
             logger.info("🔌 Initializing LiveKit API client...")
             
-            # Initialize LiveKit API client
+            # Initialize LiveKit API client with async context manager for proper cleanup
             livekit_api = api.LiveKitAPI(
                 url=LIVEKIT_URL,
                 api_key=LIVEKIT_API_KEY,

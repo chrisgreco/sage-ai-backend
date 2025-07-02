@@ -666,20 +666,23 @@ async def entrypoint(ctx: JobContext):
             logger.error(f"❌ AGENT CREATION FAILED: {type(agent_error).__name__}: {str(agent_error)}")
             raise agent_error
 
-        # Start the session
+        # Start the session with proper resource management (Context7 pattern)
         try:
-            logger.info("🚀 Starting agent session...")
-            await session.start(agent=agent, room=ctx.room)
-            logger.info("✅ Agent session started successfully")
+            logger.info("🚀 Starting agent session with proper resource management...")
             
-            # Note: Greeting will be handled when user first speaks
-            # This avoids the OpenAI "Last message must have role 'user' or 'tool'" error
-            logger.info(f"👋 {persona} is ready and will greet users when they speak")
-            
+            # Use async context manager for proper cleanup (Context7 compliant)
+            async with session:
+                await session.start(agent=agent, room=ctx.room)
+                logger.info("✅ Agent session started successfully")
+                
+                # Keep the session running - it will be cleaned up automatically
+                # when the context manager exits or the room is disconnected
+                logger.info("🎉 Agent is now active and ready for participants")
+                
         except Exception as start_error:
-            logger.error(f"❌ SESSION START FAILED: {type(start_error).__name__}: {str(start_error)}")
+            logger.error(f"❌ SESSION START FAILED: {type(start_error).__name__}: {str(start_error)}\"")
             import traceback
-            logger.error(f"🔍 Session start error traceback:\n{traceback.format_exc()}")
+            logger.error(f"🔍 Session start error traceback:\\n{traceback.format_exc()}\"")
             raise start_error
         
         logger.info(f"🎉 SUCCESS: {persona} moderator is ready in room {room_name}!")
