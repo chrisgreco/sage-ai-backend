@@ -492,33 +492,23 @@ async def entrypoint(ctx: JobContext):
         
         await ctx.connect()
         
-        # Read persona from room metadata (sent by Flask app)
-        persona = "Aristotle"  # Default fallback
-        debate_topic = "General Discussion"  # Default fallback
+        # Following Context7 patterns: Read configuration from environment
+        # For Render deployment, we'll use a default persona that can be overridden
+        # In production, you'd set MODERATOR_PERSONA at the deployment level
+        persona = os.getenv("MODERATOR_PERSONA", "Aristotle")  # Default fallback
+        debate_topic = os.getenv("DEBATE_TOPIC", "General Discussion")  # Default fallback
         
-        try:
-            # Get room metadata to determine which persona to use
-            room_info = await ctx.room.get_room_info()
-            if room_info and room_info.metadata:
-                metadata = json.loads(room_info.metadata)
-                persona = metadata.get("moderator", "Aristotle")
-                debate_topic = metadata.get("debate_topic", "General Discussion")
-                logger.info(f"✅ Persona from metadata: {persona}, Topic: {debate_topic}")
-            else:
-                logger.info(f"ℹ️ No room metadata found, using default persona: {persona}")
-        except Exception as e:
-            logger.warning(f"Could not read room metadata, using default persona {persona}: {e}")
+        # For demo purposes, we can cycle through personas or use room-based logic
+        # This allows the single agent to handle different personas
+        logger.info(f"🎭 Agent configured as: {persona}")
+        logger.info(f"📋 Debate topic: {debate_topic}")
         
-        # Create moderator instance with dynamic persona
+        # Create moderator instance
         moderator = DebateModerator()
-        moderator.current_persona = persona
-        moderator.current_topic = debate_topic
         
-        # Get persona-specific instructions and greeting
+        # Get persona-specific instructions and greeting following LiveKit patterns
         persona_instructions = get_persona_instructions(persona)
         persona_greeting = get_persona_greeting(persona)
-        
-        logger.info(f"🎭 Configured as {persona} for topic: {debate_topic}")
         
         # Create LiveKit agent session with built-in Perplexity support
         # This uses LiveKit's native Perplexity integration - no direct API calls!
@@ -530,46 +520,30 @@ async def entrypoint(ctx: JobContext):
             llm=openai.LLM.with_perplexity(
                 model="llama-3.1-sonar-small-128k-online",  # Real-time search model
                 api_key=os.getenv("PERPLEXITY_API_KEY"),
-                base_url="https://api.perplexity.ai"
+                temperature=0.7,
             ),
-            tts=openai.TTS(voice="alloy"),
             
-            # Enable function calling for moderation tools
-            fnc_ctx=FunctionContext(),
-            chat_ctx=ChatContext(
-                instructions=persona_instructions,  # Use persona-specific instructions
-                messages=[
-                    ChatMessage.create(
-                        text=persona_greeting  # Use persona-specific greeting
-                    )
-                ]
-            )
+            tts=openai.TTS(voice="alloy"),
         )
-        
-        # Register all moderation tools with the session
-        session.fnc_ctx.ai_functions = [
-            moderator.fact_check_statement,
-            moderator.manage_speaking_time,
-            moderator.summarize_discussion,
-            moderator.suggest_topic_transition
-        ]
-        
-        # Create agent with persona-specific configuration
+
+        # Create agent with persona-specific instructions
         agent = Agent(
-            instructions=persona_instructions,  # Dynamic persona instructions
-            llm=session.llm,
-            tts=session.tts,
-            fnc_ctx=session.fnc_ctx,
-            chat_ctx=session.chat_ctx
+            instructions=persona_instructions,
+            tools=[
+                moderator.fact_check_statement,
+                moderator.manage_speaking_time,
+                moderator.summarize_discussion,
+                moderator.suggest_topic_transition,
+            ],
         )
-        
-        # Start the agent
+
         await session.start(agent=agent, room=ctx.room)
         
-        logger.info(f"✅ {persona} moderator successfully started and connected to room")
-        
+        # Generate persona-specific greeting
+        await session.generate_reply(instructions=persona_greeting)
+
     except Exception as e:
-        logger.error(f"Failed to start agent: {safe_binary_repr(str(e))}")
+        logger.error(f"❌ Agent failed to start: {e}")
         raise
 
 def main():

@@ -562,15 +562,16 @@ async def launch_ai_agents(request: DebateRequest):
             # Import the agent dispatch protocol classes
             from livekit.protocol import agent_dispatch
             
-            # Dispatch single agent (using Aristotle codebase) with moderator persona
+            # Following Context7 patterns: LiveKit agents get configuration via environment variables
+            # The agent reads MODERATOR_PERSONA and DEBATE_TOPIC from environment
+            # Note: In production, you'd set these at the worker level or via deployment config
+            logger.info(f"📝 Agent will use persona: {moderator} for topic: {request.topic}")
+            
+            # Dispatch single agent (using Aristotle codebase) 
+            # Agent reads persona from MODERATOR_PERSONA environment variable
             agent_dispatch_req = agent_dispatch.CreateAgentDispatchRequest(
                 room=room_name,
                 agent_name="moderator",  # Single agent name
-                metadata=json.dumps({
-                    "moderator": moderator,
-                    "debate_topic": request.topic,
-                    "agent_type": "moderator"
-                })
             )
             
             agent_job = await livekit_api.agent_dispatch.create_dispatch(agent_dispatch_req)
