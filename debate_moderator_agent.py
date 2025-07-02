@@ -31,7 +31,6 @@ from livekit.agents import (
 )
 from livekit.agents.utils import http_context
 from livekit.plugins import openai, silero
-from livekit.plugins.openai import with_perplexity
 
 # Load environment variables first
 load_dotenv()
@@ -47,7 +46,6 @@ logger = logging.getLogger(__name__)
 try:
     from livekit.agents import JobContext, WorkerOptions, cli, AgentSession, Agent, function_tool
     from livekit.plugins import openai, silero
-    from livekit.plugins.openai import with_perplexity
     logger.info("✅ LiveKit Agents successfully imported")
 except ImportError as e:
     logger.error(f"❌ Failed to import LiveKit Agents: {e}")
@@ -333,7 +331,9 @@ async def entrypoint(ctx: JobContext):
         # Fallback to OpenAI if needed (for STT/TTS)
         openai_api_key = os.getenv("OPENAI_API_KEY")
         if not openai_api_key:
-            logger.warning("⚠️ OpenAI API key not found - STT/TTS may be limited")
+            logger.warning("⚠️ OpenAI API key not found - using Perplexity for all operations")
+            # Use Perplexity for everything if no OpenAI key
+            openai_api_key = None
         
         # Connect to the room
         await ctx.connect()
@@ -343,13 +343,51 @@ async def entrypoint(ctx: JobContext):
         persona = "socrates"  # default
         try:
             if ctx.room.metadata:
-                # Try to parse metadata as JSON
                 metadata_dict = json.loads(ctx.room.metadata)
                 persona = metadata_dict.get("persona", "socrates")
-            logger.info("✅ Using persona: %s", persona)
+            logger.info("Using persona: %s", persona)
         except (json.JSONDecodeError, AttributeError, TypeError) as e:
             logger.warning(f"Could not parse room metadata, using default persona 'socrates': {e}")
-            persona = "socrates"
+            
+        # Create enhanced session with Perplexity integration using newest model
+        from backend_modules.livekit_enhanced import EnhancedAgentSession
+        
+        # Create enhanced session for Perplexity API calls
+        enhanced_session = EnhancedAgentSession(session_id=f"debate_{ctx.room.name}_{int(time.time())}")
+        
+        # Create a custom LLM wrapper that uses Perplexity API
+        class PerplexityLLMWrapper:
+            def __init__(self, enhanced_session, model="sonar-deep-research"):
+                self.enhanced_session = enhanced_session
+                self.model = model
+                
+            async def agenerate(self, messages, **kwargs):
+                """Generate response using Perplexity API with newest model"""
+                try:
+                    # Convert messages to Perplexity format
+                    perplexity_payload = {
+                        "model": self.model,  # Use newest Sonar Deep Research model
+                        "messages": [{"role": msg.get("role", "user"), "content": msg.get("content", "")} for msg in messages],
+                        "temperature": kwargs.get("temperature", 0.7),
+                        "max_tokens": kwargs.get("max_tokens", 1000)
+                    }
+                    
+                    response = await self.enhanced_session.call_perplexity_api(perplexity_payload)
+                    
+                    # Extract content from response
+                    if response and "choices" in response and len(response["choices"]) > 0:
+                        content = response["choices"][0].get("message", {}).get("content", "")
+                        return content
+                    else:
+                        logger.warning("Invalid Perplexity API response format")
+                        return "I apologize, but I'm having trouble processing that request right now."
+                        
+                except Exception as e:
+                    logger.error(f"Perplexity API call failed: {e}")
+                    return "I apologize, but I'm experiencing technical difficulties. Please try again."
+        
+        # Create the custom Perplexity LLM
+        perplexity_llm = PerplexityLLMWrapper(enhanced_session, "sonar-deep-research")
         
         # Create agent with persona-specific instructions and tools
         agent = Agent(
@@ -364,27 +402,13 @@ async def entrypoint(ctx: JobContext):
             ],
         )
         
-        # Create session with Perplexity integration instead of direct OpenAI
-        try:
-            # Use Perplexity for LLM with the llama-3.1-sonar model
-            perplexity_llm = with_perplexity(
-                model="llama-3.1-sonar-small-128k-chat",
-                api_key=perplexity_api_key,
-                base_url="https://api.perplexity.ai",
-                temperature=0.7,
-                tool_choice="auto"
-            )
-            
-            session = AgentSession(
-                vad=silero.VAD.load(),
-                stt=openai.STT() if openai_api_key else None,  # Use OpenAI STT if available
-                llm=perplexity_llm,  # Use Perplexity instead of OpenAI
-                tts=openai.TTS(voice="echo", api_key=openai_api_key) if openai_api_key else None,  # Use OpenAI TTS if available
-            )
-            logger.info("✅ Agent session created successfully with Perplexity LLM")
-        except Exception as e:
-            logger.error(f"Failed to create agent session: {e}")
-            raise SessionError(f"Session creation failed: {e}", "SESSION_CREATE_ERROR")
+        # Create standard LiveKit session with our custom LLM
+        session = AgentSession(
+            vad=silero.VAD.load(),
+            stt=openai.STT() if openai_api_key else None,
+            llm=perplexity_llm,  # Use our custom Perplexity wrapper
+            tts=openai.TTS(voice="echo") if openai_api_key else None,
+        )
         
         # Start the session with error handling
         try:
