@@ -231,9 +231,7 @@ class EnhancedAgentSession:
                     timeout=timeout,
                     headers={
                         "User-Agent": "LiveKit-Agent/1.0"
-                    },
-                    # Disable detailed logging to prevent binary data issues
-                    trace_request_ctx={}
+                    }
                 ) as session:
                     async with session.post(
                         "https://api.perplexity.ai/chat/completions",
@@ -257,10 +255,10 @@ class EnhancedAgentSession:
                         return result
                         
             except aiohttp.ClientError as e:
-                agent_logger.error(f"Perplexity API client error: {e}")
+                agent_logger.error("Perplexity API client error", error=str(e))
                 raise
             except asyncio.TimeoutError as e:
-                agent_logger.error(f"Perplexity API timeout: {e}")
+                agent_logger.error("Perplexity API timeout", error=str(e))
                 raise
             finally:
                 # Ensure connector is properly closed to prevent unclosed connector warnings
