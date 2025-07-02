@@ -543,7 +543,6 @@ async def launch_ai_agents(request: DebateRequest):
             logger.info(f"🚀 Creating agent dispatch request for room: {room_name}")
             
             # Convert metadata to proper format for LiveKit (Context7 requirement)
-            import json
             metadata_json = json.dumps(job_metadata) if job_metadata else "{}"
             logger.info(f"📋 Serialized metadata: {metadata_json}")
             

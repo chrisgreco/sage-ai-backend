@@ -515,7 +515,6 @@ async def entrypoint(ctx: JobContext):
             # Read from job metadata if available
             if hasattr(ctx, 'job') and hasattr(ctx.job, 'metadata') and ctx.job.metadata:
                 # Parse JSON metadata (Context7 requirement)
-                import json
                 try:
                     if isinstance(ctx.job.metadata, str):
                         # Metadata is JSON string - parse it
@@ -669,21 +668,16 @@ async def entrypoint(ctx: JobContext):
             logger.info("🚀 Starting agent session...")
             await session.start(agent=agent, room=ctx.room)
             logger.info("✅ Agent session started successfully")
+            
+            # Note: Greeting will be handled when user first speaks
+            # This avoids the OpenAI "Last message must have role 'user' or 'tool'" error
+            logger.info(f"👋 {persona} is ready and will greet users when they speak")
+            
         except Exception as start_error:
             logger.error(f"❌ SESSION START FAILED: {type(start_error).__name__}: {str(start_error)}")
             import traceback
             logger.error(f"🔍 Session start error traceback:\n{traceback.format_exc()}")
             raise start_error
-        
-        # Generate persona-specific greeting
-        try:
-            logger.info("👋 Generating persona greeting...")
-            await session.generate_reply(instructions=persona_greeting)
-            logger.info("✅ Greeting sent successfully")
-        except Exception as greeting_error:
-            logger.error(f"❌ GREETING FAILED: {type(greeting_error).__name__}: {str(greeting_error)}")
-            # Don't fail the entire agent for greeting errors
-            logger.warning("⚠️  Continuing without greeting")
         
         logger.info(f"🎉 SUCCESS: {persona} moderator is ready in room {room_name}!")
 
