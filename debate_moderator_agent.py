@@ -576,14 +576,6 @@ async def entrypoint(ctx: JobContext):
         # Get environment variables
         logger.info("🔍 Checking environment variables...")
         
-        # Only OpenAI API key is required now (no Perplexity needed)
-        openai_key = os.getenv("OPENAI_API_KEY")
-        if not openai_key:
-            logger.error("❌ CRITICAL: OPENAI_API_KEY not found in environment")
-            raise ValueError("OPENAI_API_KEY is required for agent operation")
-        else:
-            logger.info("✅ OpenAI API key found")
-        
         # Create LiveKit agent session with built-in Perplexity support
         try:
             logger.info("🎧 Creating LiveKit agent session components...")
@@ -614,8 +606,9 @@ async def entrypoint(ctx: JobContext):
                     logger.error("❌ CRITICAL: PERPLEXITY_API_KEY not found in environment")
                     raise ValueError("PERPLEXITY_API_KEY is required for Perplexity integration")
                 
+                # Initialize Perplexity LLM using the official LiveKit integration
                 llm = openai.LLM.with_perplexity(
-                    model="llama-3.1-sonar-small-128k-online",  # Updated to current model name
+                    model="llama-3.1-sonar-small-128k-chat",  # Updated to current model name
                     api_key=perplexity_key,  # Use Perplexity API key
                     temperature=0.7,
                     base_url="https://api.perplexity.ai/v1",  # Add correct Perplexity API endpoint with version
@@ -627,7 +620,10 @@ async def entrypoint(ctx: JobContext):
             
             # Setup TTS
             try:
-                tts = openai.TTS(voice="alloy")
+                tts = openai.TTS.with_perplexity(
+                    voice="alloy",
+                    api_key=perplexity_key,  # Use Perplexity API key
+                )
                 logger.info("✅ TTS (Text-to-Speech) configured")
             except Exception as tts_error:
                 logger.error(f"❌ TTS setup failed: {tts_error}")
@@ -784,7 +780,6 @@ def setup_logging_filters():
         'aiohttp.access',
         'httpx',
         'urllib3',
-        'openai',
         'livekit'
     ]:
         try:
