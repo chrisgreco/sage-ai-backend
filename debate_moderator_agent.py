@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
 """
-Sage AI Debate Moderator Agent - Simple LiveKit Implementation
-Handles debate moderation with basic error handling
-Updated: Fixed imports for LiveKit Agents 1.0 API compatibility
+Sage AI Debate Moderator Agent - Enhanced LiveKit Implementation with Error Handling
+Handles debate moderation with comprehensive error handling based on Context7 LiveKit patterns
+Updated: Added robust error handling framework
 """
 
 import os
@@ -14,6 +14,7 @@ import json
 import time
 import threading
 import signal
+import functools
 from dotenv import load_dotenv
 from dataclasses import dataclass
 from typing import Optional, Annotated
@@ -29,6 +30,7 @@ from livekit.agents import (
     RunContext,
 )
 from livekit.agents.utils import http_context
+
 # Load environment variables first
 load_dotenv()
 
@@ -39,7 +41,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# LiveKit Agents imports
+# LiveKit Agents imports with error handling
 try:
     from livekit.agents import JobContext, WorkerOptions, cli, AgentSession, Agent, function_tool
     from livekit.plugins import openai, silero
@@ -47,6 +49,67 @@ try:
 except ImportError as e:
     logger.error(f"❌ Failed to import LiveKit Agents: {e}")
     sys.exit(1)
+
+# Custom Error Classes for structured error handling
+class AgentError(Exception):
+    """Base exception for agent errors"""
+    def __init__(self, message: str, error_code: str = None, context: dict = None):
+        super().__init__(message)
+        self.error_code = error_code
+        self.context = context or {}
+        self.timestamp = time.time()
+
+class OpenAIAgentError(AgentError):
+    """OpenAI-specific agent errors"""
+    pass
+
+class SessionError(AgentError):
+    """LiveKit session errors"""
+    pass
+
+class ConfigurationError(AgentError):
+    """Configuration and environment errors"""
+    pass
+
+# Global Error Handler Decorator
+def agent_error_handler(func):
+    """Decorator for comprehensive agent error handling based on Context7 patterns"""
+    @functools.wraps(func)
+    async def wrapper(*args, **kwargs):
+        try:
+            return await func(*args, **kwargs)
+        except Exception as e:
+            # Check if it's an OpenAI-related error
+            if hasattr(e, 'status_code'):
+                if e.status_code == 404:
+                    logger.error(f"OpenAI 404 in {func.__name__}: {e}")
+                    raise OpenAIAgentError(
+                        f"OpenAI endpoint not found: {e}", 
+                        "OPENAI_404", 
+                        {"function": func.__name__, "url": getattr(e, 'url', 'unknown')}
+                    )
+                elif e.status_code == 429:
+                    logger.warning(f"OpenAI rate limit in {func.__name__}")
+                    await asyncio.sleep(2)  # Exponential backoff
+                    raise OpenAIAgentError(f"Rate limit exceeded: {e}", "RATE_LIMIT")
+                elif e.status_code == 401:
+                    logger.error(f"OpenAI authentication error in {func.__name__}")
+                    raise OpenAIAgentError(f"Invalid API key: {e}", "AUTH_ERROR")
+            
+            # Handle general HTTP errors
+            if "HTTPStatusError" in str(type(e).__name__):
+                logger.error(f"HTTP Status error in {func.__name__}: {e}")
+                raise OpenAIAgentError(f"HTTP error: {e}", "HTTP_ERROR")
+            
+            # Handle session-related errors
+            if "session" in str(e).lower() or "AgentSession" in str(type(e).__name__):
+                logger.error(f"Session error in {func.__name__}: {e}")
+                raise SessionError(f"Session error: {e}", "SESSION_ERROR")
+            
+            # General error handling
+            logger.error(f"Unexpected error in {func.__name__}: {e}")
+            raise AgentError(f"Agent error: {e}", "GENERAL_ERROR", {"function": func.__name__})
+    return wrapper
 
 # Check for Perplexity availability
 PERPLEXITY_AVAILABLE = False
@@ -72,11 +135,12 @@ class ConversationState:
 conversation_state = ConversationState()
 
 class DebateModeratorAgent:
-    """Simple debate moderator agent"""
+    """Simple debate moderator agent with enhanced error handling"""
     
     def __init__(self):
         self.name = "moderator"
 
+    @agent_error_handler
     async def check_speaking_permission(self, session) -> bool:
         """Check if agent can speak"""
         with conversation_state.conversation_lock:
@@ -86,84 +150,116 @@ class DebateModeratorAgent:
                 return False
             return True
 
+    @agent_error_handler
     async def claim_speaking_turn(self):
         """Claim speaking turn"""
         with conversation_state.conversation_lock:
             conversation_state.active_speaker = self.name
 
+    @agent_error_handler
     async def release_speaking_turn(self):
         """Release speaking turn"""
         with conversation_state.conversation_lock:
             conversation_state.active_speaker = None
 
 @function_tool
+@agent_error_handler
 async def get_debate_topic():
     """Get the current debate topic"""
-    topic = os.environ.get("DEBATE_TOPIC", "The impact of AI on society")
-    logger.info(f"📋 Current debate topic: {topic}")
-    return f"The current debate topic is: {topic}"
+    try:
+        topic = os.environ.get("DEBATE_TOPIC", "The impact of AI on society")
+        logger.info(f"📋 Current debate topic: {topic}")
+        return f"The current debate topic is: {topic}"
+    except Exception as e:
+        logger.error(f"Error getting debate topic: {e}")
+        return "Unable to retrieve the current debate topic. Please try again."
 
 @function_tool
+@agent_error_handler
 async def access_facilitation_knowledge(query: str):
     """Access debate facilitation knowledge"""
-    logger.info(f"🧠 Accessing facilitation knowledge for: {query}")
-    
-    # Simple knowledge responses
-    knowledge_responses = {
-        "logical fallacy": "Common logical fallacies include ad hominem, straw man, false dichotomy, and appeal to authority. When you notice these, gently redirect the conversation to address the actual argument.",
-        "debate structure": "A good debate follows: opening statements, main arguments with evidence, rebuttals, and closing summaries. Ensure each participant has equal time.",
-        "moderation": "As a moderator, remain neutral, ensure fair participation, fact-check claims, and guide the conversation toward productive discourse.",
-        "evidence": "Strong arguments require credible evidence. Ask for sources, verify claims, and distinguish between opinion and fact."
-    }
-    
-    for key, response in knowledge_responses.items():
-        if key in query.lower():
-            return response
-    
-    return "I can help with debate structure, logical fallacies, moderation techniques, and evidence evaluation. What specific aspect would you like guidance on?"
+    try:
+        logger.info(f"🧠 Accessing facilitation knowledge for: {query}")
+        
+        # Simple knowledge responses
+        knowledge_responses = {
+            "logical fallacy": "Common logical fallacies include ad hominem, straw man, false dichotomy, and appeal to authority. When you notice these, gently redirect the conversation to address the actual argument.",
+            "debate structure": "A good debate follows: opening statements, main arguments with evidence, rebuttals, and closing summaries. Ensure each participant has equal time.",
+            "moderation": "As a moderator, remain neutral, ensure fair participation, fact-check claims, and guide the conversation toward productive discourse.",
+            "evidence": "Strong arguments require credible evidence. Ask for sources, verify claims, and distinguish between opinion and fact."
+        }
+        
+        for key, response in knowledge_responses.items():
+            if key in query.lower():
+                return response
+        
+        return "I can help with debate structure, logical fallacies, moderation techniques, and evidence evaluation. What specific aspect would you like guidance on?"
+    except Exception as e:
+        logger.error(f"Error accessing facilitation knowledge: {e}")
+        return "I'm temporarily unable to access that knowledge. Please rephrase your question."
 
 @function_tool
+@agent_error_handler
 async def suggest_process_intervention(situation: str):
     """Suggest process interventions for debate management"""
-    logger.info(f"🔧 Suggesting intervention for: {situation}")
-    
-    interventions = {
-        "interruption": "Let's ensure everyone has a chance to complete their thoughts. Please hold questions until the speaker finishes.",
-        "off-topic": "This is an interesting point, but let's return to our main topic. How does this relate to our current discussion?",
-        "personal attack": "Let's focus on the ideas and arguments rather than personal characteristics. Can you rephrase that to address the position itself?",
-        "repetition": "I notice we're revisiting this point. Let's either explore a new angle or move to the next aspect of the debate.",
-        "dominance": "Thank you for your passion. Let's hear from others who haven't had a chance to contribute recently.",
-        "confusion": "Let me help clarify the current state of our discussion and the key points raised so far."
-    }
-    
-    for key, intervention in interventions.items():
-        if key in situation.lower():
-            return intervention
-    
-    return "Consider: pausing for clarification, summarizing key points, ensuring balanced participation, or refocusing on the topic."
+    try:
+        logger.info(f"🔧 Suggesting intervention for: {situation}")
+        
+        interventions = {
+            "interruption": "Let's ensure everyone has a chance to complete their thoughts. Please hold questions until the speaker finishes.",
+            "off-topic": "This is an interesting point, but let's return to our main topic. How does this relate to our current discussion?",
+            "personal attack": "Let's focus on the ideas and arguments rather than personal characteristics. Can you rephrase that to address the position itself?",
+            "repetition": "I notice we're revisiting this point. Let's either explore a new angle or move to the next aspect of the debate.",
+            "dominance": "Thank you for your passion. Let's hear from others who haven't had a chance to contribute recently.",
+            "confusion": "Let me help clarify the current state of our discussion and the key points raised so far."
+        }
+        
+        for key, intervention in interventions.items():
+            if key in situation.lower():
+                return intervention
+        
+        return "Consider: pausing for clarification, summarizing key points, ensuring balanced participation, or refocusing on the topic."
+    except Exception as e:
+        logger.error(f"Error suggesting intervention: {e}")
+        return "Let me help guide this discussion back to a productive path."
 
 @function_tool
+@agent_error_handler
 async def fact_check_claim(claim: str, source_requested: bool = False):
     """Fact-check a claim made during the debate"""
-    logger.info(f"🔍 Fact-checking claim: {claim}")
-    
-    # Simple fact-checking responses
-    if source_requested:
-        return f"I'd like to verify this claim: '{claim}'. Could you provide a source for this information so we can evaluate its credibility?"
-    
-    return f"This claim requires verification: '{claim}'. Let's examine the evidence supporting this statement. What sources inform this position?"
+    try:
+        logger.info(f"🔍 Fact-checking claim: {claim}")
+        
+        # Simple fact-checking responses
+        if source_requested:
+            return f"I'd like to verify this claim: '{claim}'. Could you provide a source for this information so we can evaluate its credibility?"
+        
+        return f"This claim requires verification: '{claim}'. Let's examine the evidence supporting this statement. What sources inform this position?"
+    except Exception as e:
+        logger.error(f"Error fact-checking claim: {e}")
+        return "Let's examine the evidence for this claim. What sources support this position?"
 
 @function_tool
+@agent_error_handler
 async def end_debate():
     """End the current debate session"""
-    logger.info("🏁 Ending debate session")
-    return "Thank you all for this engaging discussion. Let me provide a brief summary of the key points raised and conclude our session."
+    try:
+        logger.info("🏁 Ending debate session")
+        return "Thank you all for this engaging discussion. Let me provide a brief summary of the key points raised and conclude our session."
+    except Exception as e:
+        logger.error(f"Error ending debate: {e}")
+        return "Thank you for this discussion. This concludes our debate session."
 
 @function_tool
+@agent_error_handler
 async def summarize_discussion():
     """Summarize the key points of the discussion"""
-    logger.info("📝 Summarizing discussion")
-    return "Let me summarize the main arguments and perspectives we've heard so far in this debate."
+    try:
+        logger.info("📝 Summarizing discussion")
+        return "Let me summarize the main arguments and perspectives we've heard so far in this debate."
+    except Exception as e:
+        logger.error(f"Error summarizing discussion: {e}")
+        return "Let me provide a summary of the key points discussed."
 
 def get_persona_instructions(persona: str) -> str:
     """Get persona-specific instructions for the agent."""
@@ -218,25 +314,31 @@ def get_persona_greeting(persona: str) -> str:
     else:  # Aristotle (default)
         return "Greet the participants as Aristotle. Welcome them to the debate and ask them to present their arguments with logic and evidence."
 
+@agent_error_handler
 async def entrypoint(ctx: JobContext):
-    """Main entry point for the LiveKit agent"""
+    """Enhanced main entry point for the LiveKit agent with comprehensive error handling"""
     session = None
     try:
-        logger.info("🚀 Starting Sage AI Debate Moderator Agent")
+        logger.info("🚀 Starting Sage AI Debate Moderator Agent with Enhanced Error Handling")
+        
+        # Validate environment first
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+        if not openai_api_key:
+            raise ConfigurationError("OPENAI_API_KEY environment variable is required", "MISSING_API_KEY")
+        logger.info("✅ OpenAI API key validated")
         
         # Connect to the room
         await ctx.connect()
         logger.info("Connected to room %s", ctx.room.name)
         
-        # Get persona from room metadata (metadata is a string, not dict)
-        import json
+        # Get persona from room metadata with enhanced error handling
         persona = "socrates"  # default
         try:
             if ctx.room.metadata:
                 # Try to parse metadata as JSON
                 metadata_dict = json.loads(ctx.room.metadata)
                 persona = metadata_dict.get("persona", "socrates")
-            logger.info("Using persona: %s", persona)
+            logger.info("✅ Using persona: %s", persona)
         except (json.JSONDecodeError, AttributeError, TypeError) as e:
             logger.warning(f"Could not parse room metadata, using default persona 'socrates': {e}")
             persona = "socrates"
@@ -254,33 +356,41 @@ async def entrypoint(ctx: JobContext):
             ],
         )
         
-        # Verify OpenAI API key is available
-        openai_api_key = os.getenv("OPENAI_API_KEY")
-        if not openai_api_key:
-            raise ValueError("OPENAI_API_KEY environment variable is required")
-        logger.info("✅ OpenAI API key found")
+        # Create session with enhanced error handling and resource management
+        try:
+            session = AgentSession(
+                vad=silero.VAD.load(),
+                stt=openai.STT(),  # Use built-in OpenAI STT
+                llm=openai.LLM(
+                    model="gpt-4o-mini",
+                    api_key=openai_api_key,  # Explicitly pass API key
+                ),
+                tts=openai.TTS(
+                    voice="echo",
+                    api_key=openai_api_key,  # Explicitly pass API key
+                ),
+            )
+            logger.info("✅ Agent session created successfully")
+        except Exception as e:
+            logger.error(f"Failed to create agent session: {e}")
+            raise SessionError(f"Session creation failed: {e}", "SESSION_CREATE_ERROR")
         
-        # Create session with proper OpenAI configuration and resource management
-        # Use LiveKit's http_context for proper aiohttp session management
-        session = AgentSession(
-            vad=silero.VAD.load(),
-            stt=openai.STT(),  # Use built-in OpenAI STT
-            llm=openai.LLM(
-                model="gpt-4o-mini",
-                api_key=openai_api_key,  # Explicitly pass API key
-            ),
-            tts=openai.TTS(
-                voice="echo",
-                api_key=openai_api_key,  # Explicitly pass API key
-            ),
-        )
+        # Start the session with error handling
+        try:
+            await session.start(agent=agent, room=ctx.room)
+            logger.info("✅ Agent session started successfully")
+        except Exception as e:
+            logger.error(f"Failed to start agent session: {e}")
+            raise SessionError(f"Session start failed: {e}", "SESSION_START_ERROR")
         
-        # Start the session
-        await session.start(agent=agent, room=ctx.room)
-        
-        # Generate initial greeting
-        greeting = get_persona_greeting(persona)
-        await session.generate_reply(instructions=greeting)
+        # Generate initial greeting with error handling
+        try:
+            greeting = get_persona_greeting(persona)
+            await session.generate_reply(instructions=greeting)
+            logger.info("✅ Initial greeting generated successfully")
+        except Exception as e:
+            logger.warning(f"Failed to generate initial greeting: {e}")
+            # Continue without greeting rather than failing
         
         # Get topic for logging
         topic = os.environ.get("DEBATE_TOPIC", "The impact of AI on society")
@@ -289,9 +399,18 @@ async def entrypoint(ctx: JobContext):
         # Session will run until the room is disconnected
         # No need to wait for completion - session.start() handles the lifecycle
         
-    except Exception as e:
-        logger.error(f"❌ Failed to start agent: {e}")
+    except ConfigurationError as e:
+        logger.error(f"❌ Configuration error: {e}")
         raise
+    except SessionError as e:
+        logger.error(f"❌ Session error: {e}")
+        raise
+    except OpenAIAgentError as e:
+        logger.error(f"❌ OpenAI error: {e}")
+        raise
+    except Exception as e:
+        logger.error(f"❌ Unexpected error starting agent: {e}")
+        raise AgentError(f"Agent startup failed: {e}", "STARTUP_ERROR")
     finally:
         # Ensure proper cleanup of session resources
         if session:
