@@ -9,6 +9,9 @@ PyPDF2>=3.0.1
 # Let pip automatically find compatible versions for all plugins
 livekit-agents[openai,silero,deepgram,cartesia,turn-detector]
 
+# Audio/Video processing dependencies required by LiveKit
+av>=10.0.0
+
 # AI and ML dependencies  
 openai==1.47.1
 anthropic>=0.3.0
