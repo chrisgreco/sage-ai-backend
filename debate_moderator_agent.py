@@ -499,11 +499,24 @@ async def entrypoint(ctx: JobContext):
         
         await ctx.connect()
         
-        # Get persona and topic from environment variables (Context7 compliant approach)
-        persona = os.getenv("MODERATOR_PERSONA", "Aristotle")
-        debate_topic = os.getenv("DEBATE_TOPIC", "General Discussion")
+        # Get persona and topic from job metadata (Context7 compliant approach)
+        persona = "Aristotle"  # Default fallback
+        debate_topic = "General Discussion"  # Default fallback
         
-        logger.info(f"🎭 Using environment variables - Persona: {persona}, Topic: {debate_topic}")
+        try:
+            # Read from job metadata if available
+            if hasattr(ctx, 'job') and hasattr(ctx.job, 'metadata') and ctx.job.metadata:
+                persona = ctx.job.metadata.get("moderator_persona", "Aristotle")
+                debate_topic = ctx.job.metadata.get("debate_topic", "General Discussion")
+                logger.info(f"🎭 Using job metadata - Persona: {persona}, Topic: {debate_topic}")
+            else:
+                # Fallback to environment variables
+                persona = os.getenv("MODERATOR_PERSONA", "Aristotle")
+                debate_topic = os.getenv("DEBATE_TOPIC", "General Discussion")
+                logger.info(f"🎭 Using environment variables fallback - Persona: {persona}, Topic: {debate_topic}")
+        except Exception as e:
+            logger.warning(f"Could not read job metadata: {e}, using defaults")
+            logger.info(f"🎭 Using defaults - Persona: {persona}, Topic: {debate_topic}")
         
         # Create moderator instance with persona
         moderator = DebateModerator()
