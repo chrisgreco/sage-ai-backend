@@ -227,9 +227,18 @@ async def entrypoint(ctx: JobContext):
         await ctx.connect()
         logger.info("Connected to room %s", ctx.room.name)
         
-        # Get persona from room metadata
-        persona = ctx.room.metadata.get("persona", "socrates")
-        logger.info("Using persona: %s", persona)
+        # Get persona from room metadata (metadata is a string, not dict)
+        import json
+        persona = "socrates"  # default
+        try:
+            if ctx.room.metadata:
+                # Try to parse metadata as JSON
+                metadata_dict = json.loads(ctx.room.metadata)
+                persona = metadata_dict.get("persona", "socrates")
+            logger.info("Using persona: %s", persona)
+        except (json.JSONDecodeError, AttributeError, TypeError) as e:
+            logger.warning(f"Could not parse room metadata, using default persona 'socrates': {e}")
+            persona = "socrates"
         
         # Create agent with persona-specific instructions and tools
         agent = Agent(
