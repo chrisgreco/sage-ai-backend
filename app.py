@@ -22,8 +22,8 @@ load_dotenv()
 
 # Import enhanced logging configuration
 try:
-    from app.logging_config import setup_global_logging, agent_logger, performance_logger
-    from app.routers.log_webhook import router as log_router
+    from backend_modules.logging_config import setup_global_logging, agent_logger, performance_logger
+    from backend_modules.routers.log_webhook import router as log_router
     setup_global_logging(os.getenv("LOG_LEVEL", "INFO"))
     logger = agent_logger.logger
     ENHANCED_LOGGING = True
