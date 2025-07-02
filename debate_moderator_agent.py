@@ -499,12 +499,28 @@ async def entrypoint(ctx: JobContext):
         
         await ctx.connect()
         
-        # Create moderator instance first - it will get persona from environment variable
-        moderator = DebateModerator()
-        
-        # Use the persona from the moderator instance
-        persona = moderator.current_persona
+        # Get persona and topic from room metadata (set by backend when launching agents)
+        persona = "Aristotle"  # Default fallback
         debate_topic = "General Discussion"  # Default fallback
+        
+        try:
+            # Read from room metadata if available
+            room_info = ctx.room
+            if hasattr(room_info, 'metadata') and room_info.metadata:
+                persona = room_info.metadata.get("moderator_persona", "Aristotle")
+                debate_topic = room_info.metadata.get("debate_topic", "General Discussion")
+                logger.info(f"🎭 Using room metadata - Persona: {persona}, Topic: {debate_topic}")
+            else:
+                # Fallback to environment variables
+                persona = os.getenv("MODERATOR_PERSONA", "Aristotle")
+                debate_topic = os.getenv("DEBATE_TOPIC", "General Discussion")
+                logger.info(f"🎭 Using environment variables - Persona: {persona}, Topic: {debate_topic}")
+        except Exception as e:
+            logger.warning(f"Could not read room metadata: {e}, using defaults")
+        
+        # Create moderator instance with persona
+        moderator = DebateModerator()
+        moderator.current_persona = persona
         
         logger.info(f"🎭 Agent configured as: {persona}")
         logger.info(f"📋 Debate topic: {debate_topic}")
