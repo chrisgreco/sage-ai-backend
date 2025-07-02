@@ -17,8 +17,9 @@ import signal
 import functools
 from dotenv import load_dotenv
 from dataclasses import dataclass
-from typing import Optional, Annotated, Dict, Any, List, Tuple
+from typing import Optional, Annotated, Dict, Any, List, Tuple, Callable, Set
 from datetime import datetime
+from contextlib import asynccontextmanager
 
 from livekit import rtc
 from livekit.agents import (
@@ -487,12 +488,37 @@ def get_persona_greeting(persona: str) -> str:
 async def entrypoint(ctx: JobContext):
     """Main entrypoint with enhanced error handling and simplified LiveKit integration"""
     try:
-        logger.info("Starting Aristotle - Debate Moderator Agent")
+        logger.info("Starting AI Debate Moderator Agent")
         
         await ctx.connect()
         
-        # Create moderator instance
+        # Read persona from room metadata (sent by Flask app)
+        persona = "Aristotle"  # Default fallback
+        debate_topic = "General Discussion"  # Default fallback
+        
+        try:
+            # Get room metadata to determine which persona to use
+            room_info = await ctx.room.get_room_info()
+            if room_info and room_info.metadata:
+                metadata = json.loads(room_info.metadata)
+                persona = metadata.get("moderator", "Aristotle")
+                debate_topic = metadata.get("debate_topic", "General Discussion")
+                logger.info(f"✅ Persona from metadata: {persona}, Topic: {debate_topic}")
+            else:
+                logger.info(f"ℹ️ No room metadata found, using default persona: {persona}")
+        except Exception as e:
+            logger.warning(f"Could not read room metadata, using default persona {persona}: {e}")
+        
+        # Create moderator instance with dynamic persona
         moderator = DebateModerator()
+        moderator.current_persona = persona
+        moderator.current_topic = debate_topic
+        
+        # Get persona-specific instructions and greeting
+        persona_instructions = get_persona_instructions(persona)
+        persona_greeting = get_persona_greeting(persona)
+        
+        logger.info(f"🎭 Configured as {persona} for topic: {debate_topic}")
         
         # Create LiveKit agent session with built-in Perplexity support
         # This uses LiveKit's native Perplexity integration - no direct API calls!
@@ -502,55 +528,46 @@ async def entrypoint(ctx: JobContext):
             
             # Use LiveKit's built-in Perplexity support instead of OpenAI
             llm=openai.LLM.with_perplexity(
-                model="llama-3.1-sonar-small-128k-online",  # Perplexity model with real-time search
+                model="llama-3.1-sonar-small-128k-online",  # Real-time search model
                 api_key=os.getenv("PERPLEXITY_API_KEY"),
-                temperature=0.7
+                base_url="https://api.perplexity.ai"
             ),
+            tts=openai.TTS(voice="alloy"),
             
-            tts=openai.TTS(voice="echo"),
-        )
-        
-        # Initialize the moderator session
-        room_name = ctx.room.name or "default_debate_room"
-        await moderator.initialize_session(room_name)
-        
-        # Create agent with tools - using the same Perplexity LLM
-        agent = Agent(
-            instructions="""You are Aristotle, a wise and fair debate moderator. Your role is to:
-
-1. **Facilitate Fair Discussion**: Ensure all participants have equal speaking time and opportunities.
-
-2. **Guide Productive Dialogue**: Keep conversations focused, relevant, and constructive.
-
-3. **Fact-Check Claims**: When participants make factual assertions, verify their accuracy and provide context using your real-time search capabilities.
-
-4. **Maintain Civility**: Intervene if discussions become hostile or unproductive.
-
-5. **Summarize Progress**: Periodically summarize key points and areas of agreement/disagreement.
-
-Use your philosophical wisdom to encourage thoughtful, evidence-based discourse while maintaining a respectful atmosphere. You have access to real-time information to verify claims and provide current context.""",
-            
-            # Tools for moderation
-            fnc_ctx=AssistantContext(
-                tools=[
-                    moderator.fact_check_statement,
-                    moderator.manage_speaking_time,
-                    moderator.summarize_discussion,
-                    moderator.suggest_topic_transition
+            # Enable function calling for moderation tools
+            fnc_ctx=FunctionContext(),
+            chat_ctx=ChatContext(
+                instructions=persona_instructions,  # Use persona-specific instructions
+                messages=[
+                    ChatMessage.create(
+                        text=persona_greeting  # Use persona-specific greeting
+                    )
                 ]
             )
+        )
+        
+        # Register all moderation tools with the session
+        session.fnc_ctx.ai_functions = [
+            moderator.fact_check_statement,
+            moderator.manage_speaking_time,
+            moderator.summarize_discussion,
+            moderator.suggest_topic_transition
+        ]
+        
+        # Create agent with persona-specific configuration
+        agent = Agent(
+            instructions=persona_instructions,  # Dynamic persona instructions
+            llm=session.llm,
+            tts=session.tts,
+            fnc_ctx=session.fnc_ctx,
+            chat_ctx=session.chat_ctx
         )
         
         # Start the agent
         await session.start(agent=agent, room=ctx.room)
         
-        # Generate initial greeting
-        await session.generate_reply(
-            instructions="Greet the participants and explain your role as Aristotle, the debate moderator. Ask what topic they'd like to discuss."
-        )
+        logger.info(f"✅ {persona} moderator successfully started and connected to room")
         
-        logger.info("Aristotle agent started successfully with Perplexity integration")
-            
     except Exception as e:
         logger.error(f"Failed to start agent: {safe_binary_repr(str(e))}")
         raise
