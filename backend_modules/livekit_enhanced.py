@@ -7,6 +7,7 @@ import asyncio
 import time
 import signal
 import threading
+import os
 from typing import Dict, Any, Optional, List, Callable
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -409,4 +410,80 @@ async def get_enhanced_session(session_id: str):
         async with session:
             yield session
     finally:
-        await agent_manager.remove_session(session_id) 
+        await agent_manager.remove_session(session_id)
+
+
+class PerplexityLLM:
+    """Perplexity LLM wrapper that integrates with LiveKit Agent Session"""
+    
+    def __init__(self, 
+                 model: str = "llama-3.1-sonar-small-128k-chat",  # Regular sonar model as requested
+                 api_key: str = None,
+                 temperature: float = 0.3):
+        self.model = model
+        self.api_key = api_key or os.environ.get("PERPLEXITY_API_KEY")
+        self.temperature = temperature
+        
+        if not self.api_key:
+            raise ValueError("Perplexity AI API key is required, either as argument or set PERPLEXITY_API_KEY environment variable")
+    
+    async def agenerate(self, prompt: str) -> Any:
+        """Generate response using Perplexity API - compatible with LiveKit LLM interface"""
+        
+        # Create a temporary enhanced session for the API call
+        session_id = f"perplexity_temp_{int(time.time())}"
+        async with get_enhanced_session(session_id) as session:
+            
+            payload = {
+                "model": self.model,
+                "messages": [
+                    {"role": "user", "content": prompt}
+                ],
+                "temperature": self.temperature,
+                "max_tokens": 1000  # Reasonable limit for fact-checking
+            }
+            
+            result = await session.call_perplexity_api(payload)
+            
+            # Return in a format compatible with OpenAI LLM interface
+            class MockResponse:
+                def __init__(self, content):
+                    self.choices = [MockChoice(content)]
+            
+            class MockChoice:
+                def __init__(self, content):
+                    self.message = MockMessage(content)
+            
+            class MockMessage:
+                def __init__(self, content):
+                    self.content = content
+            
+            if result and "choices" in result and result["choices"]:
+                content = result["choices"][0]["message"]["content"]
+                return MockResponse(content)
+            else:
+                return MockResponse("No response generated from Perplexity API")
+
+
+def with_perplexity(
+    *,
+    model: str = "llama-3.1-sonar-small-128k-chat",  # Regular sonar model for faster responses
+    api_key: str = None,
+    temperature: float = 0.3
+) -> PerplexityLLM:
+    """
+    Create a new instance of PerplexityAI LLM.
+    
+    Args:
+        model: Perplexity model to use (default: regular sonar for speed)
+        api_key: Perplexity API key (or set PERPLEXITY_API_KEY env var)
+        temperature: Temperature for response generation
+    
+    Returns:
+        PerplexityLLM instance
+    """
+    return PerplexityLLM(
+        model=model,
+        api_key=api_key,
+        temperature=temperature
+    ) 

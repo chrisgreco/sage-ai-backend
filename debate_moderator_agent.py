@@ -17,7 +17,8 @@ import signal
 import functools
 from dotenv import load_dotenv
 from dataclasses import dataclass
-from typing import Optional, Annotated
+from typing import Optional, Annotated, Dict, Any, List, Tuple
+from datetime import datetime
 
 from livekit import rtc
 from livekit.agents import (
@@ -30,7 +31,22 @@ from livekit.agents import (
     RunContext,
 )
 from livekit.agents.utils import http_context
-from livekit.plugins import openai, silero
+from livekit.plugins import openai, silero, deepgram
+
+from backend_modules.livekit_enhanced import (
+    get_enhanced_session,
+    EnhancedAgentSession,
+    AgentError,
+    OpenAIAgentError,
+    SessionError,
+    ConfigurationError,
+    agent_error_handler,
+    BinaryDataFilter,
+    safe_binary_repr,
+    with_perplexity
+)
+
+from supabase_memory_manager import SupabaseMemoryManager
 
 # Load environment variables first
 load_dotenv()
@@ -135,33 +151,210 @@ class ConversationState:
 # Global conversation state
 conversation_state = ConversationState()
 
-class DebateModeratorAgent:
-    """Simple debate moderator agent with enhanced error handling"""
+class DebateModerator:
+    """Aristotle - The Debate Moderator Agent"""
     
     def __init__(self):
-        self.name = "moderator"
-
+        self.memory_manager = SupabaseMemoryManager()
+        self.session_data = {}
+        self.current_topic = None
+        self.participants = []
+        self.debate_phase = "opening"  # opening, discussion, closing
+        
+        # Use Perplexity through enhanced session for fact-checking
+        self.fact_checker_llm = None  # Will be set in entrypoint
+        self.enhanced_session = None  # Enhanced session for Perplexity API calls
+        
     @agent_error_handler
-    async def check_speaking_permission(self, session) -> bool:
-        """Check if agent can speak"""
-        with conversation_state.conversation_lock:
-            if conversation_state.user_speaking:
-                return False
-            if conversation_state.active_speaker and conversation_state.active_speaker != self.name:
-                return False
-            return True
+    async def initialize_session(self, session: EnhancedAgentSession, room_name: str):
+        """Initialize debate session with enhanced error handling"""
+        try:
+            logger.info(f"Initializing debate session for room: {safe_binary_repr(room_name)}")
+            
+            # Store session data
+            self.session_data = {
+                "room_name": room_name,
+                "start_time": datetime.now().isoformat(),
+                "participants": [],
+                "topic": None,
+                "phase": "opening"
+            }
+            
+            # Initialize memory manager
+            await self.memory_manager.initialize_session(room_name)
+            
+            logger.info("Debate session initialized successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize session: {safe_binary_repr(str(e))}")
+            raise SessionError(f"Session initialization failed: {e}")
 
-    @agent_error_handler
-    async def claim_speaking_turn(self):
-        """Claim speaking turn"""
-        with conversation_state.conversation_lock:
-            conversation_state.active_speaker = self.name
+    @function_tool
+    async def set_debate_topic(
+        self,
+        context: RunContext,
+        topic: str,
+        context_info: Optional[str] = None
+    ) -> str:
+        """Set the debate topic and provide context"""
+        try:
+            self.current_topic = topic
+            self.session_data["topic"] = topic
+            
+            # Store in memory
+            await self.memory_manager.store_memory(
+                "debate_topic",
+                {
+                    "topic": topic,
+                    "context": context_info,
+                    "timestamp": datetime.now().isoformat()
+                }
+            )
+            
+            response = f"Debate topic set: '{topic}'"
+            if context_info:
+                response += f"\n\nContext: {context_info}"
+            
+            logger.info(f"Debate topic set: {safe_binary_repr(topic)}")
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error setting debate topic: {safe_binary_repr(str(e))}")
+            return f"I encountered an error setting the topic. Let's proceed with the current discussion."
 
-    @agent_error_handler
-    async def release_speaking_turn(self):
-        """Release speaking turn"""
-        with conversation_state.conversation_lock:
-            conversation_state.active_speaker = None
+    @function_tool
+    async def fact_check_statement(
+        self,
+        context: RunContext,
+        statement: str,
+        speaker: Optional[str] = None
+    ) -> str:
+        """Fact-check a statement using OpenAI through LiveKit (no more manual API calls!)"""
+        try:
+            # Use OpenAI through LiveKit's system - much cleaner!
+            fact_check_prompt = f"""
+            Please fact-check the following statement and provide a brief, balanced analysis:
+            
+            Statement: "{statement}"
+            
+            Provide:
+            1. Accuracy assessment (Accurate/Partially Accurate/Inaccurate/Unclear)
+            2. Brief explanation (2-3 sentences max)
+            3. Any important context or nuance
+            
+            Keep it concise and suitable for a live debate.
+            """
+            
+            # Use Perplexity LLM for fact-checking through enhanced session
+            if self.fact_checker_llm:
+                response = await self.fact_checker_llm.agenerate(fact_check_prompt)
+                fact_check_result = response.choices[0].message.content
+            else:
+                fact_check_result = "Fact-checking service temporarily unavailable. Please continue the discussion."
+            
+            # Store the fact-check
+            await self.memory_manager.store_memory(
+                "fact_check",
+                {
+                    "statement": statement,
+                    "speaker": speaker,
+                    "result": fact_check_result,
+                    "timestamp": datetime.now().isoformat()
+                }
+            )
+            
+            logger.info(f"Fact-check completed for statement: {safe_binary_repr(statement[:50])}...")
+            return f"Fact-check result: {fact_check_result}"
+            
+        except Exception as e:
+            logger.error(f"Error in fact-checking: {safe_binary_repr(str(e))}")
+            return "I'm unable to fact-check that statement right now, but let's continue the discussion."
+
+    @function_tool
+    async def moderate_discussion(
+        self,
+        context: RunContext,
+        action: str,
+        participant: Optional[str] = None,
+        reason: Optional[str] = None
+    ) -> str:
+        """Moderate the discussion flow"""
+        try:
+            valid_actions = ["give_floor", "request_clarification", "summarize_points", "transition_topic", "call_for_evidence"]
+            
+            if action not in valid_actions:
+                return f"Invalid moderation action. Valid actions: {', '.join(valid_actions)}"
+            
+            moderation_result = ""
+            
+            if action == "give_floor":
+                moderation_result = f"The floor is now given to {participant or 'the next speaker'}."
+                
+            elif action == "request_clarification":
+                moderation_result = f"Could {participant or 'the speaker'} please clarify their position?"
+                if reason:
+                    moderation_result += f" Specifically: {reason}"
+                    
+            elif action == "summarize_points":
+                moderation_result = "Let me summarize the key points made so far in this discussion."
+                
+            elif action == "transition_topic":
+                moderation_result = "Let's transition to the next aspect of this topic."
+                
+            elif action == "call_for_evidence":
+                moderation_result = f"Could {participant or 'the speaker'} provide evidence to support that claim?"
+            
+            # Store moderation action
+            await self.memory_manager.store_memory(
+                "moderation_action",
+                {
+                    "action": action,
+                    "participant": participant,
+                    "reason": reason,
+                    "result": moderation_result,
+                    "timestamp": datetime.now().isoformat()
+                }
+            )
+            
+            logger.info(f"Moderation action: {safe_binary_repr(action)}")
+            return moderation_result
+            
+        except Exception as e:
+            logger.error(f"Error in moderation: {safe_binary_repr(str(e))}")
+            return "Let's continue with our discussion."
+
+    @function_tool
+    async def get_debate_summary(
+        self,
+        context: RunContext,
+        include_fact_checks: bool = True
+    ) -> str:
+        """Get a summary of the current debate"""
+        try:
+            # Retrieve memories from the session
+            memories = await self.memory_manager.get_recent_memories(limit=20)
+            
+            summary_parts = []
+            
+            if self.current_topic:
+                summary_parts.append(f"Topic: {self.current_topic}")
+            
+            summary_parts.append(f"Phase: {self.debate_phase}")
+            summary_parts.append(f"Participants: {len(self.participants)}")
+            
+            if include_fact_checks and memories:
+                fact_checks = [m for m in memories if m.get("type") == "fact_check"]
+                if fact_checks:
+                    summary_parts.append(f"Fact-checks performed: {len(fact_checks)}")
+            
+            summary = "\n".join(summary_parts)
+            
+            logger.info("Debate summary generated")
+            return f"Debate Summary:\n{summary}"
+            
+        except Exception as e:
+            logger.error(f"Error generating summary: {safe_binary_repr(str(e))}")
+            return "I'm having trouble generating a summary right now."
 
 @function_tool
 @agent_error_handler
@@ -317,171 +510,87 @@ def get_persona_greeting(persona: str) -> str:
 
 @agent_error_handler
 async def entrypoint(ctx: JobContext):
-    """Enhanced main entry point for the LiveKit agent with comprehensive error handling"""
-    session = None
+    """Main entrypoint with enhanced error handling and simplified OpenAI integration"""
     try:
-        logger.info("🚀 Starting Sage AI Debate Moderator Agent with Enhanced Error Handling")
+        logger.info("Starting Aristotle - Debate Moderator Agent")
         
-        # Validate environment first - Check for Perplexity API key
-        perplexity_api_key = os.getenv("PERPLEXITY_API_KEY")
-        if not perplexity_api_key:
-            raise ConfigurationError("PERPLEXITY_API_KEY environment variable is required", "MISSING_PERPLEXITY_KEY")
-        logger.info("✅ Perplexity API key validated")
+        # Validate environment
+        if not os.getenv("PERPLEXITY_API_KEY"):
+            raise ConfigurationError("PERPLEXITY_API_KEY environment variable is required")
         
-        # Fallback to OpenAI if needed (for STT/TTS)
-        openai_api_key = os.getenv("OPENAI_API_KEY")
-        if not openai_api_key:
-            logger.warning("⚠️ OpenAI API key not found - using Perplexity for all operations")
-            # Use Perplexity for everything if no OpenAI key
-            openai_api_key = None
-        
-        # Connect to the room
         await ctx.connect()
-        logger.info("Connected to room %s", ctx.room.name)
         
-        # Get persona from room metadata with enhanced error handling
-        persona = "socrates"  # default
-        try:
-            if ctx.room.metadata:
-                metadata_dict = json.loads(ctx.room.metadata)
-                persona = metadata_dict.get("persona", "socrates")
-            logger.info("Using persona: %s", persona)
-        except (json.JSONDecodeError, AttributeError, TypeError) as e:
-            logger.warning(f"Could not parse room metadata, using default persona 'socrates': {e}")
+        # Create moderator instance
+        moderator = DebateModerator()
+        
+        # Use Perplexity with regular sonar model for faster fact-checking
+        llm = with_perplexity(
+            model="llama-3.1-sonar-small-128k-chat",  # Regular sonar model for speed
+            temperature=0.3  # Lower temperature for more factual responses
+        )
+        
+        # Set the fact-checker LLM
+        moderator.fact_checker_llm = llm
+        
+        # Create agent with tools
+        agent = Agent(
+            instructions="""You are Aristotle, a wise and fair debate moderator. Your role is to:
+
+1. **Facilitate Fair Discussion**: Ensure all participants have equal opportunity to speak
+2. **Fact-Check Claims**: Use your fact-checking tool when participants make factual claims
+3. **Maintain Order**: Keep discussions focused and productive
+4. **Encourage Evidence**: Ask for sources and evidence when appropriate
+5. **Summarize Progress**: Periodically summarize key points made
+
+Guidelines:
+- Be impartial and respectful to all viewpoints
+- Encourage critical thinking and evidence-based arguments
+- Use your tools to fact-check, moderate, and summarize
+- Keep the discussion engaging and educational
+- Intervene when discussions become unproductive
+
+Remember: You're here to elevate the quality of discourse, not to take sides.""",
+            tools=[
+                moderator.set_debate_topic,
+                moderator.fact_check_statement,
+                moderator.moderate_discussion,
+                moderator.get_debate_summary,
+            ],
+        )
+        
+        # Create LiveKit agent session with proper components
+        session = AgentSession(
+            vad=silero.VAD.load(),
+            stt=deepgram.STT(model="nova-3"),
+            llm=openai.LLM(model="gpt-4o-mini"),  # Keep OpenAI for main agent
+            tts=openai.TTS(voice="echo"),
+        )
+        
+        # Initialize the moderator session
+        room_name = ctx.room.name or "default_debate_room"
+        
+        # Create enhanced session for Perplexity API calls
+        enhanced_session_id = f"debate_moderator_{int(time.time())}"
+        async with get_enhanced_session(enhanced_session_id) as enhanced_session:
+            # Store enhanced session for Perplexity API calls
+            moderator.enhanced_session = enhanced_session
             
-        # Create enhanced session with Perplexity integration using newest model
-        from backend_modules.livekit_enhanced import EnhancedAgentSession
-        
-        # Create enhanced session for Perplexity API calls with proper lifecycle management
-        session_id = f"debate_{ctx.room.name}_{int(time.time())}"
-        
-        # Use the enhanced session context manager for proper cleanup
-        from backend_modules.livekit_enhanced import get_enhanced_session
-        
-        async with get_enhanced_session(session_id) as enhanced_session:
-            # Create a custom LLM wrapper that uses Perplexity API with safe logging and proper session management
-            class PerplexityLLMWrapper:
-                def __init__(self, enhanced_session, model="sonar-deep-research"):
-                    self.enhanced_session = enhanced_session
-                    self.model = model
-                    self._session = None
-                    
-                async def __aenter__(self):
-                    """Async context manager entry"""
-                    return self
-                    
-                async def __aexit__(self, exc_type, exc_val, exc_tb):
-                    """Async context manager exit with proper cleanup"""
-                    await self.aclose()
-                    
-                async def aclose(self):
-                    """Properly close any resources"""
-                    if self._session and not self._session.closed:
-                        await self._session.close()
-                        self._session = None
-                    
-                async def agenerate(self, messages, **kwargs):
-                    """Generate response using Perplexity API with newest model and safe logging"""
-                    try:
-                        # Safe logging of input messages (avoid logging large content)
-                        message_info = {
-                            "message_count": len(messages),
-                            "model": self.model,
-                            "total_input_length": sum(len(str(msg.get("content", ""))) for msg in messages)
-                        }
-                        logger.debug(f"🤖 Generating response with Perplexity: {safe_binary_repr(message_info)}")
-                        
-                        # Convert messages to Perplexity format
-                        perplexity_payload = {
-                            "model": self.model,  # Use newest Sonar Deep Research model
-                            "messages": [{"role": msg.get("role", "user"), "content": msg.get("content", "")} for msg in messages],
-                            "temperature": kwargs.get("temperature", 0.7),
-                            "max_tokens": kwargs.get("max_tokens", 1000)
-                        }
-                        
-                        response = await self.enhanced_session.call_perplexity_api(perplexity_payload)
-                        
-                        # Extract content from response with safe logging
-                        if response and "choices" in response and len(response["choices"]) > 0:
-                            content = response["choices"][0].get("message", {}).get("content", "")
-                            logger.debug(f"✅ Perplexity response generated: {len(content)} chars")
-                            return content
-                        else:
-                            logger.warning("Invalid Perplexity API response format")
-                            return "I apologize, but I'm having trouble processing that request right now."
-                            
-                    except Exception as e:
-                        logger.error(f"Perplexity API call failed: {safe_binary_repr(str(e))}")
-                        return "I apologize, but I'm experiencing technical difficulties. Please try again."
+            # Start the agent
+            await session.start(agent=agent, room=ctx.room)
             
-            # Create the custom Perplexity LLM
-            perplexity_llm = PerplexityLLMWrapper(enhanced_session, "sonar-deep-research")
-            
-            # Create agent with persona-specific instructions and tools
-            agent = Agent(
-                instructions=get_persona_instructions(persona),
-                tools=[
-                    get_debate_topic,
-                    access_facilitation_knowledge,
-                    suggest_process_intervention,
-                    fact_check_claim,
-                    end_debate,
-                    summarize_discussion,
-                ],
+            # Generate initial greeting
+            await session.generate_reply(
+                instructions="Greet the participants and explain your role as Aristotle, the debate moderator. Ask what topic they'd like to discuss."
             )
             
-            # Create standard LiveKit session with our custom LLM
-            session = AgentSession(
-                vad=silero.VAD.load(),
-                stt=openai.STT() if openai_api_key else None,
-                llm=perplexity_llm,  # Use our custom Perplexity wrapper
-                tts=openai.TTS(voice="echo") if openai_api_key else None,
-            )
+            logger.info("Aristotle agent started successfully")
             
-            # Start the session with error handling
-            try:
-                await session.start(agent=agent, room=ctx.room)
-                logger.info("✅ Agent session started successfully")
-            except Exception as e:
-                logger.error(f"Failed to start agent session: {e}")
-                raise SessionError(f"Session start failed: {e}", "SESSION_START_ERROR")
-            
-            # Generate initial greeting with error handling
-            try:
-                greeting = get_persona_greeting(persona)
-                await session.generate_reply(instructions=greeting)
-                logger.info("✅ Initial greeting generated successfully")
-            except Exception as e:
-                logger.warning(f"Failed to generate initial greeting: {e}")
-                # Continue without greeting rather than failing
-            
-            # Get topic for logging
-            topic = os.environ.get("DEBATE_TOPIC", "The impact of AI on society")
-            logger.info(f"✅ {persona} agent started successfully for topic: {topic}")
-            
-            # Session will run until the room is disconnected
-            # No need to wait for completion - session.start() handles the lifecycle
-        
     except ConfigurationError as e:
-        logger.error(f"❌ Configuration error: {e}")
-        raise
-    except SessionError as e:
-        logger.error(f"❌ Session error: {e}")
-        raise
-    except OpenAIAgentError as e:
-        logger.error(f"❌ OpenAI error: {e}")
+        logger.error(f"Configuration error: {safe_binary_repr(str(e))}")
         raise
     except Exception as e:
-        logger.error(f"❌ Unexpected error starting agent: {e}")
-        raise AgentError(f"Agent startup failed: {e}", "STARTUP_ERROR")
-    finally:
-        # Ensure proper cleanup of session resources
-        if session:
-            try:
-                await session.aclose()
-                logger.info("🧹 Session cleanup completed")
-            except Exception as cleanup_error:
-                logger.warning(f"⚠️ Session cleanup warning: {cleanup_error}")
+        logger.error(f"Failed to start agent: {safe_binary_repr(str(e))}")
+        raise OpenAIAgentError(f"Agent startup failed: {e}")
 
 def main():
     """Main entry point for the debate moderator agent"""
