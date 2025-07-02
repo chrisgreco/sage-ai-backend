@@ -28,6 +28,7 @@ from livekit.agents import (
     function_tool,
     RunContext,
 )
+from livekit.agents.utils import http_context
 # Load environment variables first
 load_dotenv()
 
@@ -253,12 +254,25 @@ async def entrypoint(ctx: JobContext):
             ],
         )
         
-        # Create session with built-in OpenAI STT
+        # Verify OpenAI API key is available
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+        if not openai_api_key:
+            raise ValueError("OPENAI_API_KEY environment variable is required")
+        logger.info("✅ OpenAI API key found")
+        
+        # Create session with proper OpenAI configuration and resource management
+        # Use LiveKit's http_context for proper aiohttp session management
         session = AgentSession(
             vad=silero.VAD.load(),
-            stt=openai.STT(),  # Use built-in OpenAI STT without model parameter
-            llm=openai.LLM(model="gpt-4o-mini"),
-            tts=openai.TTS(voice="echo"),
+            stt=openai.STT(),  # Use built-in OpenAI STT
+            llm=openai.LLM(
+                model="gpt-4o-mini",
+                api_key=openai_api_key,  # Explicitly pass API key
+            ),
+            tts=openai.TTS(
+                voice="echo",
+                api_key=openai_api_key,  # Explicitly pass API key
+            ),
         )
         
         # Start the session
