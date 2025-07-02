@@ -30,6 +30,8 @@ from livekit.agents import (
     RunContext,
 )
 from livekit.agents.utils import http_context
+from livekit.plugins import openai, silero
+from livekit.plugins.openai import with_perplexity
 
 # Load environment variables first
 load_dotenv()
@@ -45,6 +47,7 @@ logger = logging.getLogger(__name__)
 try:
     from livekit.agents import JobContext, WorkerOptions, cli, AgentSession, Agent, function_tool
     from livekit.plugins import openai, silero
+    from livekit.plugins.openai import with_perplexity
     logger.info("✅ LiveKit Agents successfully imported")
 except ImportError as e:
     logger.error(f"❌ Failed to import LiveKit Agents: {e}")
@@ -321,11 +324,16 @@ async def entrypoint(ctx: JobContext):
     try:
         logger.info("🚀 Starting Sage AI Debate Moderator Agent with Enhanced Error Handling")
         
-        # Validate environment first
+        # Validate environment first - Check for Perplexity API key
+        perplexity_api_key = os.getenv("PERPLEXITY_API_KEY")
+        if not perplexity_api_key:
+            raise ConfigurationError("PERPLEXITY_API_KEY environment variable is required", "MISSING_PERPLEXITY_KEY")
+        logger.info("✅ Perplexity API key validated")
+        
+        # Fallback to OpenAI if needed (for STT/TTS)
         openai_api_key = os.getenv("OPENAI_API_KEY")
         if not openai_api_key:
-            raise ConfigurationError("OPENAI_API_KEY environment variable is required", "MISSING_API_KEY")
-        logger.info("✅ OpenAI API key validated")
+            logger.warning("⚠️ OpenAI API key not found - STT/TTS may be limited")
         
         # Connect to the room
         await ctx.connect()
@@ -356,21 +364,24 @@ async def entrypoint(ctx: JobContext):
             ],
         )
         
-        # Create session with enhanced error handling and resource management
+        # Create session with Perplexity integration instead of direct OpenAI
         try:
+            # Use Perplexity for LLM with the llama-3.1-sonar model
+            perplexity_llm = with_perplexity(
+                model="llama-3.1-sonar-small-128k-chat",
+                api_key=perplexity_api_key,
+                base_url="https://api.perplexity.ai",
+                temperature=0.7,
+                tool_choice="auto"
+            )
+            
             session = AgentSession(
                 vad=silero.VAD.load(),
-                stt=openai.STT(),  # Use built-in OpenAI STT
-                llm=openai.LLM(
-                    model="gpt-4o-mini",
-                    api_key=openai_api_key,  # Explicitly pass API key
-                ),
-                tts=openai.TTS(
-                    voice="echo",
-                    api_key=openai_api_key,  # Explicitly pass API key
-                ),
+                stt=openai.STT() if openai_api_key else None,  # Use OpenAI STT if available
+                llm=perplexity_llm,  # Use Perplexity instead of OpenAI
+                tts=openai.TTS(voice="echo", api_key=openai_api_key) if openai_api_key else None,  # Use OpenAI TTS if available
             )
-            logger.info("✅ Agent session created successfully")
+            logger.info("✅ Agent session created successfully with Perplexity LLM")
         except Exception as e:
             logger.error(f"Failed to create agent session: {e}")
             raise SessionError(f"Session creation failed: {e}", "SESSION_CREATE_ERROR")
