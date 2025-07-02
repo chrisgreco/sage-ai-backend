@@ -146,36 +146,30 @@ class DebateModerator:
         statement: str,
         speaker: Optional[str] = None
     ) -> str:
-        """Fact-check a statement using LiveKit's LLM interface (no direct API calls!)"""
+        """Fact-check a statement using LiveKit's LLM interface - provides quick, concise responses"""
         try:
-            # Use LiveKit's proper LLM interface - this is the correct way!
+            # Use LiveKit's proper LLM interface with Perplexity for real-time fact-checking
             fact_check_prompt = f"""
-            Please fact-check the following statement and provide a brief, balanced analysis:
+            Fact-check this statement and respond in exactly this format: "According to [source], actually [brief fact]" or "That's correct according to [source]"
             
             Statement: "{statement}"
             
-            Provide:
-            1. Accuracy assessment (Accurate/Partially Accurate/Inaccurate/Unclear)
-            2. Brief explanation (2-3 sentences max)
-            3. Any important context or nuance
-            
-            Keep it concise and suitable for a live debate.
+            Keep response under 15 words. Be direct and cite the source.
             """
             
-            # Use context.llm (LiveKit's LLM) instead of direct API calls
-            # This is the proper LiveKit way to do LLM calls from within tools
+            # Use context.llm (LiveKit's LLM with Perplexity) for real-time fact-checking
             response = await context.llm.agenerate(fact_check_prompt)
             fact_check_result = response.choices[0].message.content
             
             # Store the fact-check (simplified for now)
-            logger.info(f"Fact-check stored for speaker: {speaker}")
+            logger.info(f"Fact-check completed for speaker: {speaker}")
             
             logger.info(f"Fact-check completed for statement: {safe_binary_repr(statement[:50])}...")
-            return f"Fact-check result: {fact_check_result}"
+            return fact_check_result
             
         except Exception as e:
             logger.error(f"Error in fact-checking: {safe_binary_repr(str(e))}")
-            return "I'm unable to fact-check that statement right now, but let's continue the discussion."
+            return "Unable to verify that right now."
 
     @function_tool
     async def moderate_discussion(
@@ -453,50 +447,50 @@ def get_persona_instructions(persona: str) -> str:
         return """You are Socrates, the ancient Greek philosopher, moderating a debate.
 
 Your approach:
-- Ask probing questions to help participants examine their assumptions
+- ONLY speak when directly called by name or when users ask for your input
+- Ask ONE brief, probing question at a time (1-2 sentences max)
 - Use the Socratic method - guide people to discover truth through questioning
-- Say "I know that I know nothing" - maintain intellectual humility
-- Help participants clarify their thinking through gentle inquiry
 - When someone makes a claim, ask: "How do you know this?" or "What do you mean by...?"
+- Stay quiet and let users debate - only intervene when specifically requested
 
-Keep responses concise and focused on asking the right questions."""
+Keep ALL responses under 20 words. Be concise and focused on asking the right questions."""
         
     elif persona_lower == "buddha":
         return """You are Buddha, the enlightened teacher, moderating a discussion.
 
 Your approach:
-- Promote compassion, understanding, and mindful dialogue
-- Help de-escalate conflicts with wisdom and patience
-- Guide participants toward deeper understanding and empathy
-- When tensions arise, redirect to common ground and shared humanity
-- Speak with gentle authority and profound insight
+- ONLY speak when directly called by name or when users ask for your input
+- Promote compassion and understanding with brief, wise comments
+- Help de-escalate conflicts with 1-2 calm sentences
+- When tensions arise, offer brief redirection to common ground
+- Stay quiet and let users discuss - only intervene when specifically requested
 
-Keep responses calm, wise, and focused on harmony."""
+Keep ALL responses under 20 words. Speak with gentle wisdom and focus on harmony."""
         
     else:  # Aristotle (default)
         return """You are Aristotle, the systematic philosopher, moderating a debate.
 
 Your approach:
-- Ensure logical reasoning and evidence-based arguments
-- Ask for sources and factual support when claims are made
-- Help structure the debate with clear premises and conclusions
-- Point out logical fallacies when they occur
-- Guide toward rational, well-reasoned discourse
+- ONLY speak when directly called by name or when users ask for your input
+- When fact-checking is requested, provide quick, evidence-based responses like "According to [source], actually [brief fact]"
+- Point out logical fallacies briefly when asked
+- Stay quiet and let users debate - only intervene when specifically requested
+- Use your fact-checking tool when users ask to verify claims
 
-Keep responses logical, structured, and focused on evidence."""
+Keep ALL responses under 20 words. Be logical, structured, and focused on evidence."""
 
 def get_persona_greeting(persona: str) -> str:
     """Get persona-specific greeting for the agent."""
     persona_lower = persona.lower()
     
     if persona_lower == "socrates":
-        return "Greet the participants as Socrates. Welcome them to the discussion and ask them what they hope to discover through dialogue today."
+        return "Give a brief greeting as Socrates in 10 words or less. Say you're here to help if called upon."
         
     elif persona_lower == "buddha":
-        return "Greet the participants as Buddha. Welcome them with compassion and invite them to share their thoughts mindfully."
+        return "Give a brief greeting as Buddha in 10 words or less. Say you're here to help if called upon."
         
     else:  # Aristotle (default)
-        return "Greet the participants as Aristotle. Welcome them to the debate and ask them to present their arguments with logic and evidence."
+        return "Give a brief greeting as Aristotle in 10 words or less. Say you're here to help if called upon."
 
 async def entrypoint(ctx: JobContext):
     """Main entrypoint with enhanced error handling and simplified LiveKit integration"""
