@@ -251,6 +251,93 @@ class DebateModerator:
             logger.error(f"Error generating summary: {safe_binary_repr(str(e))}")
             return "I'm having trouble generating a summary right now."
 
+    @function_tool
+    async def manage_speaking_time(
+        self,
+        context: RunContext,
+        action: str,
+        participant: Optional[str] = None
+    ) -> str:
+        """Manage speaking time and turn-taking in the debate"""
+        try:
+            if action == "get_status":
+                return f"Current debate phase: {self.debate_phase}. Participants: {', '.join(self.participants) if self.participants else 'None yet'}"
+            
+            elif action == "give_turn":
+                if participant:
+                    return f"🎯 {participant}, you have the floor. Please share your thoughts on the current topic."
+                else:
+                    return "🎯 Who would like to speak next? Please raise your hand or say your name."
+            
+            elif action == "time_reminder":
+                return "⏰ Let's keep our points concise to ensure everyone gets a chance to participate."
+            
+            elif action == "transition":
+                return "🔄 Let's hear from someone who hasn't spoken recently. Anyone with a different perspective?"
+            
+            else:
+                return "Available actions: get_status, give_turn, time_reminder, transition"
+                
+        except Exception as e:
+            logger.error(f"Error in manage_speaking_time: {safe_binary_repr(str(e))}")
+            return "I'll help manage speaking time as we continue the discussion."
+
+    @function_tool
+    async def summarize_discussion(
+        self,
+        context: RunContext,
+        include_positions: bool = True
+    ) -> str:
+        """Provide a summary of the current discussion"""
+        try:
+            if not self.current_topic:
+                return "No topic has been set for discussion yet."
+            
+            summary = f"📋 **Discussion Summary - Topic: {self.current_topic}**\n\n"
+            
+            if include_positions:
+                summary += "**Key Points Raised:**\n"
+                summary += "- [Points will be tracked as discussion progresses]\n\n"
+            
+            summary += "**Next Steps:**\n"
+            summary += "- Continue with evidence-based arguments\n"
+            summary += "- Address counterpoints respectfully\n"
+            summary += "- Seek areas of common ground\n"
+            
+            return summary
+            
+        except Exception as e:
+            logger.error(f"Error in summarize_discussion: {safe_binary_repr(str(e))}")
+            return "I'll provide a summary as our discussion continues to develop."
+
+    @function_tool
+    async def suggest_topic_transition(
+        self,
+        context: RunContext,
+        reason: str,
+        suggested_direction: Optional[str] = None
+    ) -> str:
+        """Suggest transitioning to a new aspect of the topic or related topic"""
+        try:
+            if reason == "exhausted":
+                return f"🔄 It seems we've explored this aspect thoroughly. {suggested_direction or 'Shall we consider a related angle or different perspective?'}"
+            
+            elif reason == "heated":
+                return f"🕊️ I notice the discussion is getting intense. {suggested_direction or 'Perhaps we could step back and examine the underlying principles we both value?'}"
+            
+            elif reason == "stuck":
+                return f"🤔 We seem to be at an impasse. {suggested_direction or 'Let me ask: what evidence might change your mind, or what common ground can we identify?'}"
+            
+            elif reason == "broaden":
+                return f"🌐 {suggested_direction or 'Let us broaden our perspective. How might this issue affect different groups or contexts?'}"
+            
+            else:
+                return f"🧭 Let's consider shifting our focus. {suggested_direction or 'What aspect would you like to explore next?'}"
+                
+        except Exception as e:
+            logger.error(f"Error in suggest_topic_transition: {safe_binary_repr(str(e))}")
+            return "Let's continue our thoughtful exploration of this topic."
+
 @function_tool
 async def get_debate_topic():
     """Get the current debate topic"""
@@ -407,49 +494,52 @@ async def entrypoint(ctx: JobContext):
         # Create moderator instance
         moderator = DebateModerator()
         
-        # No need for separate Perplexity LLM - we'll use LiveKit's context.llm in tools
-        # This eliminates all direct API calls and follows LiveKit best practices
-        
-        # Create agent with tools
-        agent = Agent(
-            instructions="""You are Aristotle, a wise and fair debate moderator. Your role is to:
-
-1. **Facilitate Fair Discussion**: Ensure all participants have equal opportunity to speak
-2. **Fact-Check Claims**: Use your fact-checking tool when participants make factual claims
-3. **Maintain Order**: Keep discussions focused and productive
-4. **Encourage Evidence**: Ask for sources and evidence when appropriate
-5. **Summarize Progress**: Periodically summarize key points made
-
-Guidelines:
-- Be impartial and respectful to all viewpoints
-- Encourage critical thinking and evidence-based arguments
-- Use your tools to fact-check, moderate, and summarize
-- Keep the discussion engaging and educational
-- Intervene when discussions become unproductive
-
-Remember: You're here to elevate the quality of discourse, not to take sides.""",
-            tools=[
-                moderator.set_debate_topic,
-                moderator.fact_check_statement,
-                moderator.moderate_discussion,
-                moderator.get_debate_summary,
-            ],
-        )
-        
-        # Create LiveKit agent session with proper components
-        # All LLM calls will go through LiveKit's interface - no direct API calls!
+        # Create LiveKit agent session with built-in Perplexity support
+        # This uses LiveKit's native Perplexity integration - no direct API calls!
         session = AgentSession(
             vad=silero.VAD.load(),
             stt=deepgram.STT(model="nova-3"),
-            llm=openai.LLM(model="gpt-4o-mini"),  # This is the only LLM we need
+            
+            # Use LiveKit's built-in Perplexity support instead of OpenAI
+            llm=openai.LLM.with_perplexity(
+                model="llama-3.1-sonar-small-128k-online",  # Perplexity model with real-time search
+                api_key=os.getenv("PERPLEXITY_API_KEY"),
+                temperature=0.7
+            ),
+            
             tts=openai.TTS(voice="echo"),
         )
         
         # Initialize the moderator session
         room_name = ctx.room.name or "default_debate_room"
-        
-        # Initialize the moderator session
         await moderator.initialize_session(room_name)
+        
+        # Create agent with tools - using the same Perplexity LLM
+        agent = Agent(
+            instructions="""You are Aristotle, a wise and fair debate moderator. Your role is to:
+
+1. **Facilitate Fair Discussion**: Ensure all participants have equal speaking time and opportunities.
+
+2. **Guide Productive Dialogue**: Keep conversations focused, relevant, and constructive.
+
+3. **Fact-Check Claims**: When participants make factual assertions, verify their accuracy and provide context using your real-time search capabilities.
+
+4. **Maintain Civility**: Intervene if discussions become hostile or unproductive.
+
+5. **Summarize Progress**: Periodically summarize key points and areas of agreement/disagreement.
+
+Use your philosophical wisdom to encourage thoughtful, evidence-based discourse while maintaining a respectful atmosphere. You have access to real-time information to verify claims and provide current context.""",
+            
+            # Tools for moderation
+            fnc_ctx=AssistantContext(
+                tools=[
+                    moderator.fact_check_statement,
+                    moderator.manage_speaking_time,
+                    moderator.summarize_discussion,
+                    moderator.suggest_topic_transition
+                ]
+            )
+        )
         
         # Start the agent
         await session.start(agent=agent, room=ctx.room)
@@ -459,7 +549,7 @@ Remember: You're here to elevate the quality of discourse, not to take sides."""
             instructions="Greet the participants and explain your role as Aristotle, the debate moderator. Ask what topic they'd like to discuss."
         )
         
-        logger.info("Aristotle agent started successfully")
+        logger.info("Aristotle agent started successfully with Perplexity integration")
             
     except Exception as e:
         logger.error(f"Failed to start agent: {safe_binary_repr(str(e))}")
