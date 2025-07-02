@@ -87,6 +87,8 @@ class DebateModerator:
         self.current_topic = None
         self.participants = []
         self.debate_phase = "opening"  # opening, discussion, closing
+        # Get persona from environment variable, default to Aristotle
+        self.current_persona = os.getenv("MODERATOR_PERSONA", "Aristotle")
 
     async def initialize_session(self, room_name: str):
         """Initialize debate session with simple error handling"""
@@ -339,6 +341,17 @@ class DebateModerator:
             logger.error(f"Error in suggest_topic_transition: {safe_binary_repr(str(e))}")
             return "Let's continue our thoughtful exploration of this topic."
 
+    @function_tool
+    async def switch_persona(self, context: RunContext, new_persona: str):
+        """Switch to a new persona"""
+        try:
+            self.current_persona = new_persona
+            logger.info(f"Switched to persona: {new_persona}")
+            return f"Switched to persona: {new_persona}"
+        except Exception as e:
+            logger.error(f"Error switching persona: {safe_binary_repr(str(e))}")
+            return "I'm unable to switch personas right now. Please try again later."
+
 @function_tool
 async def get_debate_topic():
     """Get the current debate topic"""
@@ -492,19 +505,15 @@ async def entrypoint(ctx: JobContext):
         
         await ctx.connect()
         
-        # Following Context7 patterns: Read configuration from environment
-        # For Render deployment, we'll use a default persona that can be overridden
-        # In production, you'd set MODERATOR_PERSONA at the deployment level
-        persona = os.getenv("MODERATOR_PERSONA", "Aristotle")  # Default fallback
-        debate_topic = os.getenv("DEBATE_TOPIC", "General Discussion")  # Default fallback
+        # Create moderator instance first - it will get persona from environment variable
+        moderator = DebateModerator()
         
-        # For demo purposes, we can cycle through personas or use room-based logic
-        # This allows the single agent to handle different personas
+        # Use the persona from the moderator instance
+        persona = moderator.current_persona
+        debate_topic = "General Discussion"  # Default fallback
+        
         logger.info(f"🎭 Agent configured as: {persona}")
         logger.info(f"📋 Debate topic: {debate_topic}")
-        
-        # Create moderator instance
-        moderator = DebateModerator()
         
         # Get persona-specific instructions and greeting following LiveKit patterns
         persona_instructions = get_persona_instructions(persona)
@@ -534,6 +543,7 @@ async def entrypoint(ctx: JobContext):
                 moderator.manage_speaking_time,
                 moderator.summarize_discussion,
                 moderator.suggest_topic_transition,
+                moderator.switch_persona,  # Add persona switching tool
             ],
         )
 
