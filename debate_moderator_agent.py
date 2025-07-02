@@ -576,13 +576,16 @@ async def entrypoint(ctx: JobContext):
             logger.error(f"❌ PERSONA SETUP FAILED: {type(persona_error).__name__}: {str(persona_error)}")
             raise persona_error
         
-        # Check API key availability
-        perplexity_key = os.getenv("PERPLEXITY_API_KEY")
-        if not perplexity_key:
-            logger.error("❌ CRITICAL: PERPLEXITY_API_KEY not found in environment")
-            raise ValueError("PERPLEXITY_API_KEY is required for agent operation")
+        # Get environment variables
+        logger.info("🔍 Checking environment variables...")
+        
+        # Only OpenAI API key is required now (no Perplexity needed)
+        openai_key = os.getenv("OPENAI_API_KEY")
+        if not openai_key:
+            logger.error("❌ CRITICAL: OPENAI_API_KEY not found in environment")
+            raise ValueError("OPENAI_API_KEY is required for agent operation")
         else:
-            logger.info("✅ Perplexity API key found")
+            logger.info("✅ OpenAI API key found")
         
         # Create LiveKit agent session with built-in Perplexity support
         try:
@@ -604,12 +607,12 @@ async def entrypoint(ctx: JobContext):
                 logger.error(f"❌ STT setup failed: {stt_error}")
                 raise stt_error
             
-            # Setup LLM with Perplexity
+            # Setup LLM with Perplexity (Official LiveKit integration)
             try:
                 logger.info("🧠 Setting up LLM with Perplexity integration...")
                 llm = openai.LLM.with_perplexity(
-                    model="llama-3.1-sonar-small-128k-online",  # Real-time search model
-                    api_key=perplexity_key,
+                    model="llama-3.1-sonar-small-128k-online",  # Current Perplexity model
+                    api_key=openai_key,
                     temperature=0.7,
                 )
                 logger.info("✅ LLM with Perplexity integration configured")
