@@ -618,6 +618,7 @@ async def entrypoint(ctx: JobContext):
                     model="llama-3.1-sonar-small-128k-online",  # Updated to current model name
                     api_key=perplexity_key,  # Use Perplexity API key
                     temperature=0.7,
+                    base_url="https://api.perplexity.ai/v1",  # Add correct Perplexity API endpoint with version
                 )
                 logger.info("✅ LLM with Perplexity integration configured")
             except Exception as llm_error:
@@ -678,8 +679,21 @@ async def entrypoint(ctx: JobContext):
             await session.start(agent=agent, room=ctx.room)
             logger.info("✅ Agent session started successfully")
             
-            # Keep the session running
+            # Keep the session running until the room is disconnected
             logger.info("🎉 Agent is now active and ready for participants")
+            
+            # Wait for room to disconnect
+            try:
+                await ctx.room.wait_until_disconnected()
+            except Exception as e:
+                logger.warning(f"Room disconnect error: {e}")
+            
+            # Cleanup session
+            try:
+                await session.close()
+                logger.info("Session closed successfully")
+            except Exception as e:
+                logger.error(f"Error closing session: {e}")
                 
         except Exception as start_error:
             logger.error(f"❌ SESSION START FAILED: {type(start_error).__name__}: {str(start_error)}")
