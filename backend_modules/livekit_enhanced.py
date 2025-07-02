@@ -20,88 +20,83 @@ from .logging_config import agent_logger, performance_logger
 
 
 class EnhancedErrorHandler:
-    """Production-grade error handler for LiveKit agents."""
+    """Enhanced error handling with exponential backoff following Context7 patterns."""
     
     def __init__(self, max_retries: int = 3, base_delay: float = 1.0):
         self.max_retries = max_retries
         self.base_delay = base_delay
-        self.error_counts = {}
-        
+
     async def handle_api_call(self, 
                             api_func: Callable,
                             api_name: str,
                             *args,
                             **kwargs) -> Any:
-        """Handle API calls with retry logic and error classification."""
-        start_time = time.time()
-        last_error = None
+        """Handle API calls with retry logic and proper error handling."""
+        last_exception = None
         
-        for attempt in range(self.max_retries):
+        for attempt in range(self.max_retries + 1):
             try:
                 result = await api_func(*args, **kwargs)
-                
-                # Log successful API call
-                duration = time.time() - start_time
-                performance_logger.log_api_call(
-                    api_name=api_name,
-                    duration=duration,
-                    status_code=200,
-                    attempt=attempt + 1
-                )
-                
+                if attempt > 0:
+                    agent_logger.info(f"API call succeeded after {attempt} retries",
+                                    api_name=api_name,
+                                    attempt=attempt)
                 return result
                 
+            except asyncio.TimeoutError as e:
+                last_exception = e
+                if attempt < self.max_retries:
+                    delay = self.base_delay * (2 ** attempt)
+                    agent_logger.warning(f"API timeout, retrying in {delay}s",
+                                       api_name=api_name,
+                                       attempt=attempt,
+                                       delay=delay)
+                    await asyncio.sleep(delay)
+                else:
+                    agent_logger.error("API call failed after max retries",
+                                     api_name=api_name,
+                                     max_retries=self.max_retries,
+                                     error="timeout")
             except aiohttp.ClientResponseError as e:
-                last_error = e
-                duration = time.time() - start_time
-                
-                agent_logger.error("API response error",
-                                 api_name=api_name,
-                                 status_code=e.status,
-                                 message=str(e),
-                                 attempt=attempt + 1,
-                                 duration=duration)
-                
-                # Don't retry on client errors (4xx)
-                if 400 <= e.status < 500:
+                last_exception = e
+                if e.status >= 500 and attempt < self.max_retries:
+                    delay = self.base_delay * (2 ** attempt)
+                    agent_logger.warning(f"Server error {e.status}, retrying in {delay}s",
+                                       api_name=api_name,
+                                       attempt=attempt,
+                                       status=e.status,
+                                       delay=delay)
+                    await asyncio.sleep(delay)
+                else:
+                    agent_logger.error("API call failed",
+                                     api_name=api_name,
+                                     status=e.status,
+                                     error=str(e))
                     break
-                    
             except aiohttp.ClientConnectionError as e:
-                last_error = e
-                duration = time.time() - start_time
-                
-                agent_logger.error("API connection error",
-                                 api_name=api_name,
-                                 error=str(e),
-                                 attempt=attempt + 1,
-                                 duration=duration)
-                
+                last_exception = e
+                if attempt < self.max_retries:
+                    delay = self.base_delay * (2 ** attempt)
+                    agent_logger.warning(f"Connection error, retrying in {delay}s",
+                                       api_name=api_name,
+                                       attempt=attempt,
+                                       delay=delay)
+                    await asyncio.sleep(delay)
+                else:
+                    agent_logger.error("Connection failed after max retries",
+                                     api_name=api_name,
+                                     max_retries=self.max_retries,
+                                     error=str(e))
             except Exception as e:
-                last_error = e
-                duration = time.time() - start_time
-                
+                last_exception = e
                 agent_logger.error("Unexpected API error",
                                  api_name=api_name,
-                                 error_type=type(e).__name__,
                                  error=str(e),
-                                 attempt=attempt + 1,
-                                 duration=duration,
-                                 exc_info=True)
-            
-            # Wait before retry with exponential backoff
-            if attempt < self.max_retries - 1:
-                delay = self.base_delay * (2 ** attempt)
-                await asyncio.sleep(delay)
+                                 error_type=type(e).__name__)
+                break
         
-        # All retries failed
-        total_duration = time.time() - start_time
-        performance_logger.log_api_call(
-            api_name=api_name,
-            duration=total_duration,
-            error=str(last_error)
-        )
-        
-        raise RuntimeError(f"API call {api_name} failed after {self.max_retries} attempts: {last_error}")
+        # If we get here, all retries failed
+        raise last_exception
 
 
 class ConversationState:
@@ -411,115 +406,233 @@ async def get_enhanced_session(session_id: str):
         await agent_manager.remove_session(session_id)
 
 
+class PerplexityClient:
+    """Shared Perplexity API client with proper session management following Context7 patterns."""
+    
+    def __init__(self, api_key: str = None):
+        self.api_key = api_key or os.getenv('PERPLEXITY_API_KEY')
+        if not self.api_key:
+            raise ValueError("Perplexity API key is required")
+        
+        self.session: Optional[aiohttp.ClientSession] = None
+        self.error_handler = EnhancedErrorHandler()
+        self._session_lock = asyncio.Lock()
+        
+    async def __aenter__(self):
+        """Async context manager entry - create shared session."""
+        await self._ensure_session()
+        return self
+        
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit - cleanup session."""
+        await self.close()
+    
+    async def _ensure_session(self):
+        """Ensure we have an active session, create if needed."""
+        async with self._session_lock:
+            if self.session is None or self.session.closed:
+                # Following Context7 pattern for proper session management
+                timeout = aiohttp.ClientTimeout(total=30, connect=10)
+                connector = aiohttp.TCPConnector(
+                    limit=10,  # Reduced connection pool size
+                    limit_per_host=5,
+                    ttl_dns_cache=300,
+                    use_dns_cache=True,
+                    enable_cleanup_closed=True
+                )
+                
+                self.session = aiohttp.ClientSession(
+                    connector=connector,
+                    timeout=timeout,
+                    headers={
+                        "Authorization": f"Bearer {self.api_key}",
+                        "Content-Type": "application/json",
+                        "User-Agent": "LiveKit-Agent/1.0"
+                    }
+                )
+                agent_logger.debug("Created new Perplexity session")
+
+    async def call_api(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+        """Call Perplexity API using shared session."""
+        await self._ensure_session()
+        
+        # Validate payload
+        if not self._validate_payload(payload):
+            raise ValueError("Invalid Perplexity API payload format")
+        
+        # Safe logging
+        safe_info = {
+            "model": payload.get("model", "unknown"),
+            "message_count": len(payload.get("messages", [])),
+            "temperature": payload.get("temperature"),
+            "max_tokens": payload.get("max_tokens")
+        }
+        agent_logger.debug("Making Perplexity API call", **safe_info)
+        
+        async def _api_call():
+            async with self.session.post(
+                "https://api.perplexity.ai/chat/completions",
+                json=payload
+            ) as response:
+                response.raise_for_status()
+                result = await response.json()
+                
+                # Safe response logging
+                if result and "choices" in result:
+                    content_length = len(result["choices"][0].get("message", {}).get("content", "")) if result["choices"] else 0
+                    agent_logger.debug("Perplexity API response received", 
+                                     status=response.status,
+                                     choices_count=len(result["choices"]),
+                                     content_length=content_length)
+                
+                return result
+        
+        return await self.error_handler.handle_api_call(
+            _api_call,
+            "perplexity_api"
+        )
+    
+    def _validate_payload(self, payload: Dict[str, Any]) -> bool:
+        """Validate Perplexity API payload format."""
+        if "messages" not in payload:
+            return False
+        
+        messages = payload["messages"]
+        if not messages:
+            return False
+        
+        # Check last message has required role
+        last_message = messages[-1]
+        if last_message.get("role") not in ["user", "tool"]:
+            agent_logger.error("Invalid message role in Perplexity payload",
+                             last_role=last_message.get("role"),
+                             required_roles=["user", "tool"])
+            return False
+        
+        return True
+    
+    async def close(self):
+        """Close the session and cleanup resources."""
+        if self.session and not self.session.closed:
+            await self.session.close()
+            agent_logger.debug("Closed Perplexity session")
+
+
 class PerplexityLLM:
-    """Perplexity LLM wrapper following Context7 best practices for async session management"""
+    """Simplified Perplexity LLM following Context7 patterns with shared client."""
     
     def __init__(self, 
-                 model: str = "llama-3.1-sonar-small-128k-chat",  # Regular sonar model as requested
+                 model: str = "llama-3.1-sonar-small-128k-chat",
                  api_key: str = None,
                  temperature: float = 0.3):
         self.model = model
-        self.api_key = api_key or os.environ.get("PERPLEXITY_API_KEY")
         self.temperature = temperature
+        self._client: Optional[PerplexityClient] = None
+        self._api_key = api_key
         
-        if not self.api_key:
-            raise ValueError("Perplexity AI API key is required, either as argument or set PERPLEXITY_API_KEY environment variable")
+    async def _get_client(self) -> PerplexityClient:
+        """Get or create shared client."""
+        if self._client is None:
+            self._client = PerplexityClient(api_key=self._api_key)
+            await self._client._ensure_session()
+        return self._client
     
     async def agenerate(self, prompt: str) -> Any:
-        """Generate response using Perplexity API - compatible with LiveKit LLM interface"""
-        
-        payload = {
-            "model": self.model,
-            "messages": [
-                {"role": "user", "content": prompt}
-            ],
-            "temperature": self.temperature,
-            "max_tokens": 1000  # Reasonable limit for fact-checking
-        }
-        
-        # Use proper async context manager for aiohttp session (Context7 pattern)
-        connector = aiohttp.TCPConnector(
-            limit=100,
-            limit_per_host=30,
-            enable_cleanup_closed=True  # Prevents unclosed connection warnings
-        )
-        timeout = aiohttp.ClientTimeout(total=30, connect=10)
-        
+        """Generate response using Perplexity API with shared client."""
         try:
-            # Follow Context7 async session management pattern
-            async with aiohttp.ClientSession(
-                connector=connector,
-                timeout=timeout,
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                    "User-Agent": "LiveKit-Agent/1.0"
-                }
-            ) as session:
+            client = await self._get_client()
+            
+            payload = {
+                "model": self.model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": self.temperature,
+                "max_tokens": 1000,
+                "stream": False
+            }
+            
+            result = await client.call_api(payload)
+            
+            # Mock response object for compatibility
+            class MockMessage:
+                def __init__(self, content):
+                    self.content = content
+            
+            class MockChoice:
+                def __init__(self, content):
+                    self.message = MockMessage(content)
+            
+            class MockResponse:
+                def __init__(self, content):
+                    self.choices = [MockChoice(content)]
+            
+            if result and "choices" in result and result["choices"]:
+                content = result["choices"][0]["message"]["content"]
+                return MockResponse(content)
+            else:
+                agent_logger.warning("Empty response from Perplexity API")
+                return MockResponse("I apologize, but I'm unable to provide a response at the moment.")
                 
-                async with session.post(
-                    "https://api.perplexity.ai/chat/completions",
-                    json=payload
-                ) as response:
-                    
-                    if response.status == 200:
-                        result = await response.json()
-                        
-                        # Return in a format compatible with OpenAI LLM interface
-                        class MockResponse:
-                            def __init__(self, content):
-                                self.choices = [MockChoice(content)]
-                        
-                        class MockChoice:
-                            def __init__(self, content):
-                                self.message = MockMessage(content)
-                        
-                        class MockMessage:
-                            def __init__(self, content):
-                                self.content = content
-                        
-                        if result and "choices" in result and result["choices"]:
-                            content = result["choices"][0]["message"]["content"]
-                            return MockResponse(content)
-                        else:
-                            return MockResponse("No response generated from Perplexity API")
-                    else:
-                        error_text = await response.text()
-                        agent_logger.error("Perplexity API error", 
-                                         status=response.status, 
-                                         error=error_text)
-                        return MockResponse(f"Perplexity API error (status {response.status})")
-                        
-        except aiohttp.ClientError as e:
-            agent_logger.error("Perplexity API client error", error=str(e))
-            return MockResponse("Fact-checking service temporarily unavailable")
-        except asyncio.TimeoutError:
-            agent_logger.error("Perplexity API timeout")
-            return MockResponse("Fact-checking service timed out")
-        finally:
-            # Ensure connector is properly closed
-            await connector.close()
+        except Exception as e:
+            agent_logger.error(f"Error in Perplexity LLM generation: {str(e)}")
+            # Return fallback response
+            return MockResponse("I'm experiencing technical difficulties and cannot provide fact-checking at the moment.")
+    
+    async def close(self):
+        """Close the client connection."""
+        if self._client:
+            await self._client.close()
+
+
+# Global shared client instance
+_global_perplexity_client: Optional[PerplexityClient] = None
+
+@asynccontextmanager
+async def get_perplexity_client():
+    """Get shared Perplexity client instance following Context7 patterns."""
+    global _global_perplexity_client
+    
+    if _global_perplexity_client is None:
+        _global_perplexity_client = PerplexityClient()
+    
+    try:
+        async with _global_perplexity_client as client:
+            yield client
+    finally:
+        # Client will be cleaned up by its own context manager
+        pass
 
 
 def with_perplexity(
     *,
-    model: str = "llama-3.1-sonar-small-128k-chat",  # Regular sonar model for faster responses
+    model: str = "llama-3.1-sonar-small-128k-chat",
     api_key: str = None,
     temperature: float = 0.3
 ) -> PerplexityLLM:
-    """
-    Create a new instance of PerplexityAI LLM.
-    
-    Args:
-        model: Perplexity model to use (default: regular sonar for speed)
-        api_key: Perplexity API key (or set PERPLEXITY_API_KEY env var)
-        temperature: Temperature for response generation
-    
-    Returns:
-        PerplexityLLM instance
-    """
+    """Create PerplexityLLM instance with proper resource management."""
     return PerplexityLLM(
         model=model,
         api_key=api_key,
         temperature=temperature
-    ) 
+    )
+
+
+# Cleanup function for global resources
+async def cleanup_global_resources():
+    """Cleanup global resources on shutdown."""
+    global _global_perplexity_client
+    if _global_perplexity_client:
+        await _global_perplexity_client.close()
+        _global_perplexity_client = None
+
+
+# Setup signal handlers for cleanup
+def _setup_cleanup_handlers():
+    """Setup signal handlers for graceful cleanup."""
+    def signal_handler(signum, frame):
+        agent_logger.info("Received shutdown signal, cleaning up resources", signal=signum)
+        asyncio.create_task(cleanup_global_resources())
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+_setup_cleanup_handlers() 

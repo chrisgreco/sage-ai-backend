@@ -33,10 +33,6 @@ from livekit.agents import (
 from livekit.agents.utils import http_context
 from livekit.plugins import openai, silero, deepgram
 
-from backend_modules.livekit_enhanced import (
-    with_perplexity
-)
-
 from supabase_memory_manager import SupabaseMemoryManager
 
 # Load environment variables first
@@ -69,17 +65,6 @@ def safe_binary_repr(data) -> str:
         return data_str[:500] + "... (truncated)"
     return data_str
 
-# Check for Perplexity availability
-PERPLEXITY_AVAILABLE = False
-try:
-    if os.getenv("PERPLEXITY_API_KEY"):
-        PERPLEXITY_AVAILABLE = True
-        logger.info("✅ Perplexity API available")
-    else:
-        logger.info("ℹ️ Perplexity API key not found - using OpenAI only")
-except Exception:
-    logger.info("ℹ️ Perplexity not available - using OpenAI only")
-
 @dataclass
 class ConversationState:
     """Shared state for coordinating between agents"""
@@ -101,11 +86,7 @@ class DebateModerator:
         self.current_topic = None
         self.participants = []
         self.debate_phase = "opening"  # opening, discussion, closing
-        
-        # Use Perplexity through enhanced session for fact-checking
-        self.fact_checker_llm = None  # Will be set in entrypoint
-        self.enhanced_session = None  # Enhanced session for Perplexity API calls
-        
+
     async def initialize_session(self, room_name: str):
         """Initialize debate session with simple error handling"""
         try:
@@ -162,9 +143,9 @@ class DebateModerator:
         statement: str,
         speaker: Optional[str] = None
     ) -> str:
-        """Fact-check a statement using OpenAI through LiveKit (no more manual API calls!)"""
+        """Fact-check a statement using LiveKit's LLM interface (no direct API calls!)"""
         try:
-            # Use OpenAI through LiveKit's system - much cleaner!
+            # Use LiveKit's proper LLM interface - this is the correct way!
             fact_check_prompt = f"""
             Please fact-check the following statement and provide a brief, balanced analysis:
             
@@ -178,12 +159,10 @@ class DebateModerator:
             Keep it concise and suitable for a live debate.
             """
             
-            # Use Perplexity LLM for fact-checking through enhanced session
-            if self.fact_checker_llm:
-                response = await self.fact_checker_llm.agenerate(fact_check_prompt)
-                fact_check_result = response.choices[0].message.content
-            else:
-                fact_check_result = "Fact-checking service temporarily unavailable. Please continue the discussion."
+            # Use context.llm (LiveKit's LLM) instead of direct API calls
+            # This is the proper LiveKit way to do LLM calls from within tools
+            response = await context.llm.agenerate(fact_check_prompt)
+            fact_check_result = response.choices[0].message.content
             
             # Store the fact-check (simplified for now)
             logger.info(f"Fact-check stored for speaker: {speaker}")
@@ -419,28 +398,17 @@ def get_persona_greeting(persona: str) -> str:
         return "Greet the participants as Aristotle. Welcome them to the debate and ask them to present their arguments with logic and evidence."
 
 async def entrypoint(ctx: JobContext):
-    """Main entrypoint with enhanced error handling and simplified OpenAI integration"""
+    """Main entrypoint with enhanced error handling and simplified LiveKit integration"""
     try:
         logger.info("Starting Aristotle - Debate Moderator Agent")
-        
-        # Validate environment
-        if not os.getenv("PERPLEXITY_API_KEY"):
-            logger.error("PERPLEXITY_API_KEY environment variable is required")
-            return
         
         await ctx.connect()
         
         # Create moderator instance
         moderator = DebateModerator()
         
-        # Use Perplexity with regular sonar model for faster fact-checking
-        llm = with_perplexity(
-            model="llama-3.1-sonar-small-128k-chat",  # Regular sonar model for speed
-            temperature=0.3  # Lower temperature for more factual responses
-        )
-        
-        # Set the fact-checker LLM
-        moderator.fact_checker_llm = llm
+        # No need for separate Perplexity LLM - we'll use LiveKit's context.llm in tools
+        # This eliminates all direct API calls and follows LiveKit best practices
         
         # Create agent with tools
         agent = Agent(
@@ -469,10 +437,11 @@ Remember: You're here to elevate the quality of discourse, not to take sides."""
         )
         
         # Create LiveKit agent session with proper components
+        # All LLM calls will go through LiveKit's interface - no direct API calls!
         session = AgentSession(
             vad=silero.VAD.load(),
             stt=deepgram.STT(model="nova-3"),
-            llm=openai.LLM(model="gpt-4o-mini"),  # Keep OpenAI for main agent
+            llm=openai.LLM(model="gpt-4o-mini"),  # This is the only LLM we need
             tts=openai.TTS(voice="echo"),
         )
         

@@ -74,8 +74,8 @@ export const useWebRTCRoom = ({ roomName, participantName, onAudioData }: UseWeb
     }
     
     const data = await response.json();
-    console.log('Token received for participant:', uniqueName);
-    return { token: data.token, participantName: uniqueName };
+    console.log('Token received for participant:', uniqueName, 'LiveKit URL:', data.livekit_url);
+    return { token: data.token, participantName: uniqueName, livekit_url: data.livekit_url };
   };
 
   const connectToRoom = useCallback(async (roomName: string, debateTopic?: string) => {
