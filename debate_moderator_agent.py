@@ -272,8 +272,8 @@ async def entrypoint(ctx: JobContext):
         topic = os.environ.get("DEBATE_TOPIC", "The impact of AI on society")
         logger.info(f"✅ {persona} agent started successfully for topic: {topic}")
         
-        # Wait for session completion to ensure proper cleanup
-        await session.wait_for_completion()
+        # Session will run until the room is disconnected
+        # No need to wait for completion - session.start() handles the lifecycle
         
     except Exception as e:
         logger.error(f"❌ Failed to start agent: {e}")
