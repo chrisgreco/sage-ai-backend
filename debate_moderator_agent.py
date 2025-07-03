@@ -652,21 +652,22 @@ async def entrypoint(ctx: JobContext):
                     raise ValueError("Valid PERPLEXITY_API_KEY is required for Perplexity integration")
                 
                 # Allow model selection via environment variable for troubleshooting
-                perplexity_model = os.getenv("PERPLEXITY_MODEL", "sonar-small-online")
+                perplexity_model = os.getenv("PERPLEXITY_MODEL", "llama-3.1-sonar-small-128k-online")
                 logger.info(f"🧠 Using Perplexity model: {perplexity_model}")
-                logger.info(f"🔗 Perplexity API endpoint: https://api.perplexity.ai/v1")
+                logger.info(f"🔗 Perplexity API endpoint: https://api.perplexity.ai/")
+                
+                # Use proper Perplexity integration without base_url override
                 llm = openai.LLM.with_perplexity(
                     model=perplexity_model,
                     api_key=perplexity_key,
-                    temperature=0.7,
-                    base_url="https://api.perplexity.ai/v1"
+                    temperature=0.7
                 )
                 
                 # Verify connection to Perplexity API with a simple test query
                 try:
                     logger.info("🔍 Testing Perplexity API connection...")
-                    # Use a simpler test that's more likely to succeed
-                    test_response = await llm.agenerate("Test")
+                    # Use proper chat method for testing
+                    test_response = await llm.chat([{"role": "user", "content": "Hello"}])
                     if test_response and test_response.choices:
                         logger.info("✅ Perplexity API connection test successful")
                     else:
