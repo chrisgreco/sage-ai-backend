@@ -29,7 +29,7 @@ services:
       - key: PERPLEXITY_API_KEY
         fromGroup: sage-ai-env
 
-  # LiveKit Debate Moderator Agent - minimal deployment
+  # LiveKit Debate Moderator Agent - background service
   - type: background
     name: sage-ai-agent
     env: python
@@ -49,6 +49,12 @@ services:
       - key: DEEPGRAM_API_KEY
         fromGroup: sage-ai-env
       - key: PERPLEXITY_API_KEY
+        fromGroup: sage-ai-env
+      - key: SUPABASE_URL
+        fromGroup: sage-ai-env
+      - key: SUPABASE_ANON_KEY
+        fromGroup: sage-ai-env
+      - key: SUPABASE_SERVICE_ROLE_KEY
         fromGroup: sage-ai-env
       - key: MODERATOR_PERSONA
         value: Aristotle
