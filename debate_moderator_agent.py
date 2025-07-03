@@ -528,41 +528,22 @@ if __name__ == "__main__":
     
     # Handle download-files command for Docker optimization
     if len(sys.argv) > 1 and sys.argv[1] == "download-files":
-        logger.info("Pre-downloading model files...")
+        logger.info("📦 Pre-downloading model files...")
         try:
             # Pre-load models to speed up startup
             silero.VAD.load()
             logger.info("✅ Models downloaded successfully")
         except Exception as e:
-            logger.warning(f"Model download failed (optional): {e}")
+            logger.warning(f"⚠️ Model download failed (optional): {e}")
         sys.exit(0)
     
-    # Check if we have token-based connection (from backend launch)
-    livekit_token = os.getenv("LIVEKIT_TOKEN")
-    room_name = os.getenv("ROOM_NAME")
+    # Standard LiveKit Agents CLI pattern
+    logger.info("🚀 Starting LiveKit Agent with CLI")
     
-    if livekit_token and room_name:
-        # Direct connection mode (launched by backend)
-        logger.info(f"🎯 Direct connection mode: Connecting to room {room_name}")
-        
-        cli.run_app(
-            WorkerOptions(
-                entrypoint_fnc=entrypoint,
-                prewarm_fnc=None,
-                port=8081,
-                # Connect directly to the specified room
-                room_name=room_name,
-                token=livekit_token,
-            )
+    cli.run_app(
+        WorkerOptions(
+            entrypoint_fnc=entrypoint,
+            prewarm_fnc=None,
+            port=8081,
         )
-    else:
-        # Development/worker mode
-        logger.info("🔧 Worker mode: Ready to connect to any room")
-        
-        cli.run_app(
-            WorkerOptions(
-                entrypoint_fnc=entrypoint,
-                prewarm_fnc=None,
-                port=8081,
-            )
-        ) 
+    ) 

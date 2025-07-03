@@ -245,19 +245,26 @@ async def start_agent_process(room_name: str, topic: str, persona: str):
         if not openai_key:
             raise Exception("OPENAI_API_KEY environment variable is required")
         
-        # Set environment variables for the agent process
+        # Set environment variables for the agent process (LiveKit standard pattern)
         env = os.environ.copy()
         env.update({
+            # LiveKit connection (standard pattern)
             "LIVEKIT_URL": LIVEKIT_URL,
-            "LIVEKIT_TOKEN": jwt_token,
+            "LIVEKIT_API_KEY": LIVEKIT_API_KEY,
+            "LIVEKIT_API_SECRET": LIVEKIT_API_SECRET,
+            
+            # Debate context
             "DEBATE_TOPIC": topic,
             "MODERATOR_PERSONA": persona,
             "ROOM_NAME": room_name,
-            # Ensure all required API keys are passed
+            
+            # AI provider API keys
             "OPENAI_API_KEY": openai_key,
             "PERPLEXITY_API_KEY": os.getenv("PERPLEXITY_API_KEY", ""),
             "CARTESIA_API_KEY": os.getenv("CARTESIA_API_KEY", ""),
             "DEEPGRAM_API_KEY": os.getenv("DEEPGRAM_API_KEY", ""),
+            
+            # Memory system
             "SUPABASE_URL": os.getenv("SUPABASE_URL", ""),
             "SUPABASE_KEY": os.getenv("SUPABASE_KEY", ""),
         })
@@ -266,8 +273,8 @@ async def start_agent_process(room_name: str, topic: str, persona: str):
         import subprocess
         import sys
         
-        # Use the proper command for LiveKit agents
-        cmd = [sys.executable, "debate_moderator_agent.py"]
+        # Use the proper command for LiveKit agents in production mode
+        cmd = [sys.executable, "debate_moderator_agent.py", "start"]
         
         logger.info(f"Starting agent with command: {' '.join(cmd)}")
         logger.info(f"Environment variables set: LIVEKIT_URL, DEBATE_TOPIC={topic}, MODERATOR_PERSONA={persona}")
