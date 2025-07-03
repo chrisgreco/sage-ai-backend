@@ -360,7 +360,7 @@ async def entrypoint(ctx: JobContext):
     
     # Configure LLM with Perplexity for research-backed responses
     try:
-        perplexity_model = os.getenv("PERPLEXITY_MODEL", "llama-3.1-sonar-small-128k-online")
+        perplexity_model = os.getenv("PERPLEXITY_MODEL", "sonar")
         llm = openai.LLM.with_perplexity(
             model=perplexity_model,
             api_key=perplexity_key,

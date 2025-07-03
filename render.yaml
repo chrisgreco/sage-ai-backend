@@ -63,7 +63,7 @@ services:
       - key: MODERATOR_PERSONA
         value: Aristotle
       - key: PERPLEXITY_MODEL
-        value: llama-3.1-sonar-small-128k-online
+        value: sonar
 
 # Environment variables must be configured in Render Dashboard
 # Create an Environment Group named "sage-ai-env" with the actual API keys and URLs 
