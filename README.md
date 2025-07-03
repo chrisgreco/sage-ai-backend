@@ -1,82 +1,100 @@
-# Sage AI Backend
+# Sage AI Debate Moderator
 
-This repository contains the backend services for the Sage AI debate moderator application.
+A minimal LiveKit-powered AI debate moderator agent built with Context7 best practices.
 
-## Architecture
+## Features
 
-The backend is built with a dual-service architecture on Render:
+- **AI-Powered Moderation**: Uses Perplexity AI for intelligent debate moderation and fact-checking
+- **Voice Interaction**: Real-time speech-to-text via Deepgram and text-to-speech via OpenAI
+- **LiveKit Integration**: Built on LiveKit Agents framework for reliable real-time communication
+- **Minimal Architecture**: Clean, focused implementation following LiveKit documentation patterns
 
-1. **Web Service**: A FastAPI application that provides API endpoints for token generation and room creation.
-2. **Background Worker**: A service that will eventually connect to LiveKit rooms and provide real-time AI moderation.
+## Quick Start
 
-## Dependencies
+### Prerequisites
 
-- Python 3.10+
-- FastAPI
-- LiveKit Python SDK (`livekit-api`)
-- OpenAI
-- Deepgram (for future speech-to-text capabilities)
+- Python 3.11+
+- LiveKit Cloud account or self-hosted LiveKit server
+- API keys for OpenAI, Perplexity, and Deepgram
+
+### Installation
+
+1. Clone the repository:
+```bash
+git clone https://github.com/chrisgreco/sage-ai-backend.git
+cd sage-ai-backend
+```
+
+2. Install dependencies:
+```bash
+pip install -r requirements.txt
+```
+
+3. Configure environment variables:
+```bash
+cp example.env .env
+# Edit .env with your actual API keys
+```
+
+4. Run the agent:
+```bash
+# Development mode
+python debate_moderator_agent.py dev
+
+# Production mode  
+python debate_moderator_agent.py start
+```
 
 ## Environment Variables
 
-The following environment variables are required:
+Required:
+- `LIVEKIT_URL` - Your LiveKit server URL
+- `LIVEKIT_API_KEY` - LiveKit API key
+- `LIVEKIT_API_SECRET` - LiveKit API secret
+- `OPENAI_API_KEY` - OpenAI API key for TTS
+- `PERPLEXITY_API_KEY` - Perplexity API key for LLM
+- `DEEPGRAM_API_KEY` - Deepgram API key for STT
 
-```
-LIVEKIT_URL=https://your-livekit-server.livekit.cloud
-LIVEKIT_API_KEY=your-livekit-api-key
-LIVEKIT_API_SECRET=your-livekit-api-secret
-OPENAI_API_KEY=your-openai-api-key
-DEEPGRAM_API_KEY=your-deepgram-api-key (optional for now)
-SERVICE_MODE=web or worker
-```
-
-## API Endpoints
-
-### Health Check
-
-```
-GET /health
-```
-
-Returns a simple health status to verify the service is running.
-
-### LiveKit Connection
-
-```
-GET /connect
-```
-
-Returns a LiveKit token for the backend service, along with connection details.
-
-### Create Debate Room
-
-```
-POST /debate
-{
-  "topic": "Should AI be regulated?",
-  "room_name": "ai-debate-123" (optional)
-}
-```
-
-Creates a new debate room in LiveKit and returns a token with room creation permissions.
+Optional:
+- `MODERATOR_PERSONA` - AI persona (default: "Aristotle")
+- `PERPLEXITY_MODEL` - Perplexity model (default: "llama-3.1-sonar-small-128k-online")
 
 ## Deployment
 
-This project is set up for deployment on Render with the included `render.yaml` blueprint file. 
+### Render
 
-The deployment creates:
+The project includes `render.yaml` for easy deployment to Render:
 
-1. A Web Service for API endpoints (on the free plan)
-2. A Background Worker for AI moderation (on the starter plan - $7/month)
+1. Connect your GitHub repository to Render
+2. Configure environment variables in Render dashboard
+3. Deploy automatically from main branch
 
-## Local Development
+### Docker
 
-1. Clone the repository
-2. Create a `.env` file with the required environment variables
-3. Install dependencies: `pip install -r requirements.txt`
-4. Run the service: `python app.py`
+```bash
+docker build -t sage-ai-agent .
+docker run --env-file .env sage-ai-agent
+```
 
-The service will start on port 8000 by default.
+## Architecture
+
+- **LiveKit Agents**: Core framework for real-time AI agents
+- **Perplexity AI**: LLM for intelligent responses and fact-checking
+- **OpenAI TTS**: High-quality text-to-speech synthesis
+- **Deepgram STT**: Fast, accurate speech-to-text
+- **Silero VAD**: Voice activity detection
+
+## Function Tools
+
+The agent provides these interactive tools:
+
+- `set_debate_topic` - Set and contextualize debate topics
+- `moderate_discussion` - Control discussion flow and speaking turns
+- `fact_check_statement` - Real-time fact verification using Perplexity
+
+## License
+
+MIT License - see LICENSE file for details.
 
 ## Current Status
 

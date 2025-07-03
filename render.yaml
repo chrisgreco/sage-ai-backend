@@ -29,13 +29,13 @@ services:
       - key: PERPLEXITY_API_KEY
         fromGroup: sage-ai-env
 
-  # Single AI Agent - adapts to different personas (Aristotle, Socrates, Buddha, etc.)
+  # LiveKit Debate Moderator Agent - minimal deployment
   - type: background
     name: sage-ai-agent
     env: python
     repo: https://github.com/chrisgreco/sage-ai-backend.git
     buildCommand: pip install -r requirements.txt
-    startCommand: python debate_moderator_agent.py
+    startCommand: python debate_moderator_agent.py start
     plan: starter
     envVars:
       - key: LIVEKIT_URL
@@ -48,14 +48,12 @@ services:
         fromGroup: sage-ai-env
       - key: DEEPGRAM_API_KEY
         fromGroup: sage-ai-env
-      - key: SUPABASE_URL
-        fromGroup: sage-ai-env
-      - key: SUPABASE_ANON_KEY
-        fromGroup: sage-ai-env
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        fromGroup: sage-ai-env
       - key: PERPLEXITY_API_KEY
         fromGroup: sage-ai-env
+      - key: MODERATOR_PERSONA
+        value: Aristotle
+      - key: PERPLEXITY_MODEL
+        value: llama-3.1-sonar-small-128k-online
 
 # Environment variables must be configured in Render Dashboard
 # Create an Environment Group named "sage-ai-env" with the actual API keys and URLs 
