@@ -11,14 +11,11 @@ import sys
 import asyncio
 import logging
 import json
-import time
-import threading
 from dotenv import load_dotenv
-from dataclasses import dataclass
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 
-from livekit import rtc
+# LiveKit imports
 from livekit.agents import (
     Agent,
     AgentSession,
@@ -28,7 +25,6 @@ from livekit.agents import (
     function_tool,
     RunContext,
 )
-from livekit.agents.utils import http_context
 from livekit.plugins import openai, silero, deepgram
 
 from supabase_memory_manager import SupabaseMemoryManager
@@ -43,14 +39,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# LiveKit Agents imports with error handling
-try:
-    from livekit.agents import JobContext, WorkerOptions, cli, AgentSession, Agent, function_tool
-    from livekit.plugins import openai, silero
-    logger.info("✅ LiveKit Agents successfully imported")
-except ImportError as e:
-    logger.error(f"❌ Failed to import LiveKit Agents: {e}")
-    sys.exit(1)
+# LiveKit imports are already handled above
 
 # Simple error handling following LiveKit patterns
 def safe_binary_repr(data) -> str:
@@ -63,17 +52,7 @@ def safe_binary_repr(data) -> str:
         return data_str[:500] + "... (truncated)"
     return data_str
 
-@dataclass
-class ConversationState:
-    """Shared state for coordinating between agents"""
-    active_speaker: Optional[str] = None
-    user_speaking: bool = False
-    last_intervention_time: float = 0
-    intervention_count: int = 0
-    conversation_lock: threading.Lock = threading.Lock()
-
-# Global conversation state
-conversation_state = ConversationState()
+# Removed unused ConversationState class and global variable
 
 class DebateModerator:
     """Aristotle - The Debate Moderator Agent"""
@@ -634,13 +613,19 @@ async def entrypoint(ctx: JobContext):
                 logger.error(f"❌ LLM setup failed: {type(llm_error).__name__}: {str(llm_error)}")
                 raise llm_error
             
-            # Setup TTS
+            # Setup TTS - Perplexity doesn't support TTS, use OpenAI TTS instead
             try:
-                tts = openai.TTS.with_perplexity(
+                openai_key = os.getenv("OPENAI_API_KEY")
+                if not openai_key or openai_key == "your-openai-key" or len(openai_key) < 20:
+                    logger.error("❌ CRITICAL: OPENAI_API_KEY not found or invalid in environment (required for TTS)")
+                    raise ValueError("Valid OPENAI_API_KEY is required for TTS functionality")
+                
+                logger.info("🗣️ Setting up TTS with OpenAI (Perplexity doesn't support TTS)...")
+                tts = openai.TTS(
                     voice="alloy",
-                    api_key=perplexity_key,  # Use Perplexity API key
+                    api_key=openai_key,  # Use OpenAI API key for TTS
                 )
-                logger.info("✅ TTS (Text-to-Speech) configured")
+                logger.info("✅ TTS (Text-to-Speech) configured with OpenAI")
             except Exception as tts_error:
                 logger.error(f"❌ TTS setup failed: {tts_error}")
                 raise tts_error
