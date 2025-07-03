@@ -199,9 +199,10 @@ async def get_agent_status(room_name: str):
 async def start_agent_process(room_name: str, topic: str, persona: str):
     """Start the LiveKit agent process with topic and persona context"""
     try:
-        # Generate agent token
+        # Generate agent token with proper identity matching frontend expectations
+        agent_identity = f"{persona}"  # Frontend expects "Socrates", "Aristotle", or "Buddha"
         agent_token = api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET) \
-            .with_identity(f"sage-ai-{persona.lower()}") \
+            .with_identity(agent_identity) \
             .with_name(f"Sage AI - {persona}") \
             .with_grants(api.VideoGrants(
                 room_join=True,
@@ -212,7 +213,8 @@ async def start_agent_process(room_name: str, topic: str, persona: str):
             .with_metadata({
                 "topic": topic,
                 "persona": persona,
-                "participant_type": "agent"
+                "participant_type": "agent",
+                "agent_state": "initializing"
             })
         
         jwt_token = agent_token.to_jwt()
@@ -230,7 +232,7 @@ async def start_agent_process(room_name: str, topic: str, persona: str):
         # Start the agent process
         import subprocess
         process = subprocess.Popen(
-            ["python", "debate_moderator_agent.py", "start"],
+            ["python", "debate_moderator_agent.py"],
             env=env,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
