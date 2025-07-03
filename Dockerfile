@@ -26,6 +26,10 @@ COPY debate_moderator_agent.py .
 COPY supabase_memory_manager.py .
 COPY example.env .env
 
+# Download required model files for LiveKit plugins
+# This ensures models are available at runtime and improves startup time
+RUN python debate_moderator_agent.py download-files || echo "Model download skipped (optional)"
+
 # Create non-root user for security
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser

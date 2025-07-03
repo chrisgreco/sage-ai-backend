@@ -20,6 +20,8 @@ services:
         fromGroup: sage-ai-env
       - key: DEEPGRAM_API_KEY
         fromGroup: sage-ai-env
+      - key: CARTESIA_API_KEY
+        fromGroup: sage-ai-env
       - key: SUPABASE_URL
         fromGroup: sage-ai-env
       - key: SUPABASE_ANON_KEY
@@ -47,6 +49,8 @@ services:
       - key: OPENAI_API_KEY
         fromGroup: sage-ai-env
       - key: DEEPGRAM_API_KEY
+        fromGroup: sage-ai-env
+      - key: CARTESIA_API_KEY
         fromGroup: sage-ai-env
       - key: PERPLEXITY_API_KEY
         fromGroup: sage-ai-env

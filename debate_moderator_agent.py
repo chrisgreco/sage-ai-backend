@@ -21,8 +21,10 @@ from livekit.agents import (
     cli,
     function_tool,
     RunContext,
+    RoomInputOptions,
 )
-from livekit.plugins import openai, silero, deepgram
+from livekit.plugins import openai, silero, deepgram, cartesia, noise_cancellation
+from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 # Import memory manager
 from supabase_memory_manager import memory_manager
@@ -309,29 +311,48 @@ async def entrypoint(ctx: JobContext):
         logger.error(f"❌ Perplexity LLM setup failed: {e}")
         raise
     
-    # Configure TTS with OpenAI
+    # Configure TTS with Cartesia for better voice quality (fallback to OpenAI)
     try:
-        tts = openai.TTS(
-            voice="alloy",
-            api_key=openai_key,
-        )
-        logger.info("🎤 OpenAI TTS configured")
+        cartesia_key = os.getenv("CARTESIA_API_KEY")
+        if cartesia_key:
+            tts = cartesia.TTS(
+                model="sonic-2", 
+                voice="f786b574-daa5-4673-aa0c-cbe3e8534c02",  # Default voice
+                api_key=cartesia_key
+            )
+            logger.info("🎤 Cartesia TTS configured (premium)")
+        else:
+            # Fallback to OpenAI TTS
+            tts = openai.TTS(
+                voice="alloy",
+                api_key=openai_key,
+            )
+            logger.info("🎤 OpenAI TTS configured (fallback)")
     except Exception as e:
-        logger.error(f"❌ OpenAI TTS setup failed: {e}")
+        logger.error(f"❌ TTS setup failed: {e}")
         raise
     
-    # Create session with all components
+    # Create enhanced session with all recommended components
     session = AgentSession(
         vad=silero.VAD.load(),
         stt=deepgram.STT(model="nova-2"),
         llm=llm,
         tts=tts,
+        turn_detection=MultilingualModel(),
     )
     
-    # Start the session
+    # Start the session with enhanced room input options
     try:
-        await session.start(agent=agent, room=ctx.room)
-        logger.info("🚀 Agent session started successfully")
+        await session.start(
+            agent=agent, 
+            room=ctx.room,
+            room_input_options=RoomInputOptions(
+                # LiveKit Cloud enhanced noise cancellation
+                # If not using LiveKit Cloud, this will be ignored gracefully
+                noise_cancellation=noise_cancellation.BVC(),
+            ),
+        )
+        logger.info("🚀 Agent session started successfully with enhanced audio processing")
         
         # Generate contextual greeting
         greeting = f"""
@@ -365,5 +386,8 @@ if __name__ == "__main__":
             entrypoint_fnc=entrypoint,
             # Allow agent to connect to any room
             prewarm_fnc=None,
+            # Enable health check endpoint on port 8081
+            # This allows monitoring systems to check agent health
+            port=8081,
         )
     ) 
