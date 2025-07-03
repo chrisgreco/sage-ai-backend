@@ -37,7 +37,7 @@ services:
     env: python
     repo: https://github.com/chrisgreco/sage-ai-backend.git
     buildCommand: pip install -r requirements.txt
-    startCommand: python debate_moderator_agent.py start
+    startCommand: python debate_moderator_agent.py
     plan: starter
     envVars:
       - key: LIVEKIT_URL
