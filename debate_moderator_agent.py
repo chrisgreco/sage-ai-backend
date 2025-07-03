@@ -602,17 +602,33 @@ async def entrypoint(ctx: JobContext):
                 
                 # Perplexity requires PERPLEXITY_API_KEY environment variable
                 perplexity_key = os.getenv("PERPLEXITY_API_KEY")
-                if not perplexity_key:
-                    logger.error("❌ CRITICAL: PERPLEXITY_API_KEY not found in environment")
-                    raise ValueError("PERPLEXITY_API_KEY is required for Perplexity integration")
+                if not perplexity_key or perplexity_key == "your-perplexity-key" or len(perplexity_key) < 20:
+                    logger.error("❌ CRITICAL: PERPLEXITY_API_KEY not found or invalid in environment")
+                    raise ValueError("Valid PERPLEXITY_API_KEY is required for Perplexity integration")
                 
-                # Initialize Perplexity LLM using the official LiveKit integration
+                # Allow model selection via environment variable for troubleshooting
+                perplexity_model = os.getenv("PERPLEXITY_MODEL", "sonar-small-online")
+                logger.info(f"🧠 Using Perplexity model: {perplexity_model}")
+                logger.info(f"🔗 Perplexity API endpoint: https://api.perplexity.ai/v1")
                 llm = openai.LLM.with_perplexity(
-                    model="llama-3.1-sonar-small-128k-chat",  # Updated to current model name
-                    api_key=perplexity_key,  # Use Perplexity API key
+                    model=perplexity_model,
+                    api_key=perplexity_key,
                     temperature=0.7,
-                    base_url="https://api.perplexity.ai/v1",  # Add correct Perplexity API endpoint with version
+                    base_url="https://api.perplexity.ai/v1"
                 )
+                
+                # Verify connection to Perplexity API with a simple test query
+                try:
+                    logger.info("🔍 Testing Perplexity API connection...")
+                    test_response = await llm.chat(messages=[{"role": "user", "content": "Hello"}])
+                    if test_response:
+                        logger.info("✅ Perplexity API connection test successful")
+                    else:
+                        logger.warning("⚠️ Perplexity API connection test returned empty response")
+                except Exception as test_error:
+                    logger.warning(f"⚠️ Perplexity API connection test failed: {test_error}")
+                    logger.warning("⚠️ Continuing despite test failure, but the agent may encounter issues")
+                
                 logger.info("✅ LLM with Perplexity integration configured")
             except Exception as llm_error:
                 logger.error(f"❌ LLM setup failed: {type(llm_error).__name__}: {str(llm_error)}")
@@ -675,22 +691,13 @@ async def entrypoint(ctx: JobContext):
             await session.start(agent=agent, room=ctx.room)
             logger.info("✅ Agent session started successfully")
             
-            # Keep the session running until the room is disconnected
+            # Keep the session running - LiveKit will handle disconnection automatically
             logger.info("🎉 Agent is now active and ready for participants")
             
-            # Wait for room to disconnect
-            try:
-                await ctx.room.wait_until_disconnected()
-            except Exception as e:
-                logger.warning(f"Room disconnect error: {e}")
+            # Generate initial greeting
+            await session.generate_reply(instructions=persona_greeting)
+            logger.info("✅ Initial greeting sent")
             
-            # Cleanup session
-            try:
-                await session.close()
-                logger.info("Session closed successfully")
-            except Exception as e:
-                logger.error(f"Error closing session: {e}")
-                
         except Exception as start_error:
             logger.error(f"❌ SESSION START FAILED: {type(start_error).__name__}: {str(start_error)}")
             import traceback
