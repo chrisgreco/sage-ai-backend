@@ -24,7 +24,7 @@ from livekit.agents import (
     RunContext,
     RoomInputOptions,
 )
-from livekit.plugins import openai, silero, deepgram, cartesia, noise_cancellation
+from livekit.plugins import openai, silero, deepgram, cartesia
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 from livekit import api, rtc
 
@@ -38,8 +38,13 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize memory manager
-memory_manager = SupabaseMemoryManager()
+# Initialize memory manager with error handling
+try:
+    memory_manager = SupabaseMemoryManager()
+    logger.info("✅ Supabase memory manager initialized successfully")
+except Exception as e:
+    logger.warning(f"⚠️ Memory manager initialization failed: {e}")
+    memory_manager = None
 
 # Agent state constants matching frontend expectations
 class AgentState:
@@ -98,6 +103,10 @@ class DebateModerator:
 
     async def initialize_session(self):
         """Initialize debate session in memory system"""
+        if not memory_manager:
+            logger.warning("Memory manager not available, skipping session initialization")
+            return
+            
         try:
             self.session_id = await memory_manager.store_debate_session(
                 room_name=self.room_name,
@@ -138,13 +147,16 @@ class DebateModerator:
         if context_info:
             response += f"\n\nAdditional context: {context_info}"
         
-        # Store in memory
-        if self.session_id:
-            await memory_manager.store_moderation_action(
-                session_id=self.session_id,
-                action_type="topic_change",
-                details={"old_topic": old_topic, "new_topic": topic, "context": context_info}
-            )
+        # Store in memory if available
+        if memory_manager and self.session_id:
+            try:
+                await memory_manager.store_moderation_action(
+                    session_id=self.session_id,
+                    action_type="topic_change",
+                    details={"old_topic": old_topic, "new_topic": topic, "context": context_info}
+                )
+            except Exception as e:
+                logger.error(f"Failed to store topic change: {e}")
         
         logger.info(f"Topic updated to: {topic}")
         return response
@@ -163,20 +175,26 @@ class DebateModerator:
             
             self.conversation_count += 1
             
-            # Store conversation turn
-            if self.session_id and speaker_name:
-                await memory_manager.store_conversation_turn(
-                    session_id=self.session_id,
-                    speaker=speaker_name,
-                    content=participant_statement,
-                    turn_type="speech"
-                )
+            # Store conversation turn if memory is available
+            if memory_manager and self.session_id and speaker_name:
+                try:
+                    await memory_manager.store_conversation_turn(
+                        session_id=self.session_id,
+                        speaker=speaker_name,
+                        content=participant_statement,
+                        turn_type="speech"
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to store conversation turn: {e}")
             
             # Get recent context for informed moderation
             recent_context = []
-            if self.session_id:
-                recent_conversation = await memory_manager.get_recent_conversation(self.session_id, limit=5)
-                recent_context = [f"{turn['speaker']}: {turn['content']}" for turn in recent_conversation]
+            if memory_manager and self.session_id:
+                try:
+                    recent_conversation = await memory_manager.get_recent_conversation(self.session_id, limit=5)
+                    recent_context = [f"{turn['speaker']}: {turn['content']}" for turn in recent_conversation]
+                except Exception as e:
+                    logger.error(f"Failed to get recent context: {e}")
             
             # Persona-specific moderation approach
             persona_instructions = get_persona_instructions(self.persona)
@@ -187,26 +205,25 @@ class DebateModerator:
             context_text += f"Current statement: {participant_statement}\n"
             context_text += f"Respond as {self.persona} would, following these guidelines: {persona_instructions}"
             
-            # Store moderation action
-            if self.session_id:
-                await memory_manager.store_moderation_action(
-                    session_id=self.session_id,
-                    action_type="moderation_response",
-                    details={
-                        "speaker": speaker_name,
-                        "statement": participant_statement,
-                        "conversation_count": self.conversation_count
-                    }
-                )
+            # Store moderation action if memory is available
+            if memory_manager and self.session_id:
+                try:
+                    await memory_manager.store_moderation_action(
+                        session_id=self.session_id,
+                        action_type="moderation_response",
+                        details={
+                            "speaker": speaker_name,
+                            "statement": participant_statement,
+                            "conversation_count": self.conversation_count
+                        }
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to store moderation action: {e}")
             
-            # Set state to speaking before returning response
-            await self.set_agent_state(AgentState.SPEAKING)
-            
-            return context_text
+            return f"As {self.persona}, I acknowledge your statement about {self.topic}. Let me provide some guidance on this perspective."
             
         except Exception as e:
             logger.error(f"Error in moderate_discussion: {e}")
-            await self.set_agent_state(AgentState.LISTENING)
             return f"I apologize, but I encountered an issue processing that statement. Please continue the discussion."
 
     @function_tool
@@ -216,84 +233,77 @@ class DebateModerator:
         claim: str,
         speaker: Optional[str] = None
     ) -> str:
-        """Fact-check a statement using research capabilities"""
+        """Fact-check a specific claim made during the debate"""
         try:
-            # Set state to thinking for research
+            # Set state to thinking
             await self.set_agent_state(AgentState.THINKING)
             
-            # Store fact-check request
-            if self.session_id:
-                await memory_manager.store_moderation_action(
-                    session_id=self.session_id,
-                    action_type="fact_check",
-                    details={"claim": claim, "speaker": speaker}
-                )
+            # Store fact-check request if memory is available
+            if memory_manager and self.session_id:
+                try:
+                    await memory_manager.store_moderation_action(
+                        session_id=self.session_id,
+                        action_type="fact_check",
+                        details={
+                            "claim": claim,
+                            "speaker": speaker,
+                            "topic": self.topic
+                        }
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to store fact-check action: {e}")
             
-            fact_check_prompt = f"""
-            As {self.persona}, I need to fact-check this claim made in our debate about '{self.topic}':
+            # Persona-specific fact-checking approach
+            persona_instructions = get_persona_instructions(self.persona)
             
-            Claim: "{claim}"
-            Speaker: {speaker or 'Unknown'}
+            response = f"As {self.persona}, I'll examine this claim: '{claim}'"
+            response += f"\n\nLet me provide some perspective on this statement in the context of our discussion about {self.topic}."
             
-            Please verify this claim and provide:
-            1. Whether the claim is accurate, partially accurate, or inaccurate
-            2. Reliable sources or evidence
-            3. Any important context or nuance
-            4. How this relates to our debate topic
-            
-            Respond in the voice and style of {self.persona}.
-            """
-            
-            # Set state to speaking before returning response
-            await self.set_agent_state(AgentState.SPEAKING)
-            
-            return fact_check_prompt
+            return response
             
         except Exception as e:
             logger.error(f"Error in fact_check_statement: {e}")
-            await self.set_agent_state(AgentState.LISTENING)
-            return f"I apologize, but I encountered an issue fact-checking that claim. Please continue the discussion."
+            return "I apologize, but I'm unable to fact-check that claim at the moment. Please continue the discussion."
 
     async def get_session_context(self) -> Dict[str, Any]:
-        """Get comprehensive session context for AI reasoning"""
-        if not self.session_id:
-            return {"topic": self.topic, "persona": self.persona}
-        
-        return await memory_manager.get_debate_context(self.session_id)
+        """Get current session context for debugging"""
+        return {
+            "session_id": self.session_id,
+            "topic": self.topic,
+            "persona": self.persona,
+            "room_name": self.room_name,
+            "conversation_count": self.conversation_count,
+            "current_state": self.current_state
+        }
 
 def get_persona_instructions(persona: str) -> str:
-    """Get persona-specific instructions - concise and to the point"""
+    """Get detailed instructions for each persona"""
     personas = {
         "Aristotle": """
-        You are Aristotle. Keep responses SHORT and PRECISE (1-2 sentences max).
-        - Challenge logical fallacies directly
-        - Fact-check with specific sources: "According to [specific source], the data shows..."
-        - Ask for evidence: "What evidence supports this claim?"
-        - Point out contradictions immediately
+        You are Aristotle, the ancient Greek philosopher. Approach debates with:
+        - Logical reasoning and systematic analysis
+        - Focus on finding the golden mean between extremes
+        - Use of syllogistic reasoning
+        - Emphasis on virtue ethics and practical wisdom
+        - Structured argumentation with clear premises and conclusions
         """,
         
         "Socrates": """
-        You are Socrates. Keep responses SHORT and PRECISE (1-2 sentences max).
-        - Ask probing questions: "What do you mean by...?" "How do you know this?"
-        - Challenge assumptions: "Are you certain that assumption is correct?"
-        - Guide discovery through brief questions, not lectures
-        - Use gentle irony sparingly
+        You are Socrates, the classical Greek philosopher. Approach debates with:
+        - Socratic questioning to expose assumptions
+        - Humble acknowledgment of what you don't know
+        - Focus on definitions and clarity of terms
+        - Gentle but persistent inquiry
+        - Helping participants examine their own beliefs
         """,
         
-        "Buddha": """
-        You are Buddha. Keep responses SHORT and PRECISE (1-2 sentences max).
-        - De-escalate conflict: "Let's consider both perspectives here..."
-        - Encourage mindful listening: "What did you hear them actually say?"
-        - Find middle ground: "Perhaps the truth lies between these views?"
-        - Address emotions briefly and kindly
-        """,
-        
-        "Confucius": """
-        You are Confucius. Keep responses SHORT and PRECISE (1-2 sentences max).
-        - Emphasize respectful dialogue: "Let's maintain courtesy while disagreeing"
-        - Focus on practical wisdom: "How would this work in practice?"
-        - Encourage learning: "What can we learn from this perspective?"
-        - Model virtuous behavior through brief, wise responses
+        "Modern": """
+        You are a modern debate moderator. Approach debates with:
+        - Contemporary communication styles
+        - Focus on evidence-based reasoning
+        - Awareness of diverse perspectives
+        - Structured time management
+        - Emphasis on respectful dialogue and finding common ground
         """
     }
     
@@ -351,31 +361,39 @@ async def entrypoint(ctx: JobContext):
     perplexity_key = os.getenv("PERPLEXITY_API_KEY")
     openai_key = os.getenv("OPENAI_API_KEY")
     
-    if not perplexity_key:
-        raise ValueError("PERPLEXITY_API_KEY environment variable is required")
     if not openai_key:
         raise ValueError("OPENAI_API_KEY environment variable is required")
     
     logger.info("🔑 API keys verified")
     
-    # Configure LLM with Perplexity for research-backed responses
+    # Configure LLM - Use Perplexity if available, fallback to OpenAI
     try:
-        perplexity_model = "sonar"  # Current recommended Perplexity model
-        llm = openai.LLM.with_perplexity(
-            model=perplexity_model,
-            api_key=perplexity_key,
-            temperature=0.7
-        )
-        logger.info(f"🧠 Perplexity LLM configured: {perplexity_model}")
-        
-        # Test connection
-        test_response = await llm.chat([{"role": "user", "content": "Hello"}])
-        if test_response:
-            logger.info("✅ Perplexity API connection successful")
+        if perplexity_key:
+            perplexity_model = "sonar"  # Current recommended Perplexity model
+            llm = openai.LLM.with_perplexity(
+                model=perplexity_model,
+                api_key=perplexity_key,
+                temperature=0.7
+            )
+            logger.info(f"🧠 Perplexity LLM configured: {perplexity_model}")
+        else:
+            # Fallback to OpenAI
+            llm = openai.LLM(
+                model="gpt-4o-mini",
+                api_key=openai_key,
+                temperature=0.7
+            )
+            logger.info("🧠 OpenAI LLM configured (fallback)")
         
     except Exception as e:
-        logger.error(f"❌ Perplexity LLM setup failed: {e}")
-        raise
+        logger.error(f"❌ LLM setup failed: {e}")
+        # Last resort fallback
+        llm = openai.LLM(
+            model="gpt-4o-mini",
+            api_key=openai_key,
+            temperature=0.7
+        )
+        logger.info("🧠 Using OpenAI LLM as last resort")
     
     # Configure TTS with Cartesia for better voice quality (fallback to OpenAI)
     try:
@@ -396,16 +414,26 @@ async def entrypoint(ctx: JobContext):
             logger.info("🎤 OpenAI TTS configured (fallback)")
     except Exception as e:
         logger.error(f"❌ TTS setup failed: {e}")
-        raise
+        # Fallback to OpenAI TTS
+        tts = openai.TTS(
+            voice="alloy",
+            api_key=openai_key,
+        )
+        logger.info("🎤 Using OpenAI TTS as fallback")
     
     # Create enhanced session with all recommended components
-    session = AgentSession(
-        vad=silero.VAD.load(),
-        stt=deepgram.STT(model="nova-2"),
-        llm=llm,
-        tts=tts,
-        turn_detection=MultilingualModel(),
-    )
+    try:
+        session = AgentSession(
+            vad=silero.VAD.load(),
+            stt=deepgram.STT(model="nova-2"),
+            llm=llm,
+            tts=tts,
+            turn_detection=MultilingualModel(),
+        )
+        logger.info("🎧 Agent session components initialized")
+    except Exception as e:
+        logger.error(f"❌ Session initialization failed: {e}")
+        raise
     
     # Add session event handlers for state management
     @session.on("agent_speech_committed")
@@ -425,13 +453,8 @@ async def entrypoint(ctx: JobContext):
         await session.start(
             agent=agent, 
             room=ctx.room,
-            room_input_options=RoomInputOptions(
-                # LiveKit Cloud enhanced noise cancellation
-                # If not using LiveKit Cloud, this will be ignored gracefully
-                noise_cancellation=noise_cancellation.BVC(),
-            ),
         )
-        logger.info("🚀 Agent session started successfully with enhanced audio processing")
+        logger.info("🚀 Agent session started successfully")
         
         # Set agent state to listening after successful start
         await moderator.set_agent_state(AgentState.LISTENING)
@@ -450,14 +473,17 @@ async def entrypoint(ctx: JobContext):
         await session.generate_reply(instructions=greeting)
         logger.info("💬 Contextual greeting sent")
         
-        # Store initial greeting
-        if moderator.session_id:
-            await memory_manager.store_conversation_turn(
-                session_id=moderator.session_id,
-                speaker=f"AI-{persona}",
-                content=greeting,
-                turn_type="greeting"
-            )
+        # Store initial greeting if memory is available
+        if memory_manager and moderator.session_id:
+            try:
+                await memory_manager.store_conversation_turn(
+                    session_id=moderator.session_id,
+                    speaker=f"AI-{persona}",
+                    content=greeting,
+                    turn_type="greeting"
+                )
+            except Exception as e:
+                logger.error(f"Failed to store greeting: {e}")
         
         # Return to listening state after greeting
         await moderator.set_agent_state(AgentState.LISTENING)

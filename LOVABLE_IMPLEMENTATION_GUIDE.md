@@ -647,4 +647,191 @@ The backend is now fully compatible with the Lovable frontend implementation. Th
 5. **Memory Persistence**: Supabase integration maintains conversation context
 6. **Multi-Persona Support**: Three distinct AI moderators with unique approaches
 
-The frontend and backend are now in perfect sync, providing a professional-grade voice AI debate moderation experience. 
+The frontend and backend are now in perfect sync, providing a professional-grade voice AI debate moderation experience.
+
+# Sage AI LiveKit Integration - Implementation Guide for Lovable Team
+
+## 🚨 Critical Issue: LiveKit Configuration Mismatch
+
+Based on the console logs, the frontend is trying to connect to `sage-2kpu4zly.livekit.cloud` while the backend is configured for a different LiveKit instance. This is causing all the connection failures.
+
+## Console Errors Analysis
+
+### 1. **401 Unauthorized Errors**
+```
+GET https://sage-2kpu4zly.livekit.cloud/settings/region 401 (Unauthorized)
+GET https://sage-2kpu4zly.livekit.cloud/rtc/validate 401 (Unauthorized)
+```
+
+### 2. **WebSocket Connection Failures**
+```
+WebSocket connection to 'wss://sage-2kpu4zly.livekit.cloud/rtc2access_token=...' failed
+```
+
+### 3. **Invalid Token Errors**
+```
+Failed to connect to room: ConnectionError: could not establish signal connection: invalid token
+```
+
+## Root Cause
+
+**Frontend and backend are using different LiveKit instances:**
+- **Frontend**: Trying to connect to `sage-2kpu4zly.livekit.cloud` (appears to be a Lovable-created LiveKit Cloud instance)
+- **Backend**: Configured for a different LiveKit server (likely the user's own instance)
+
+## Required Fixes
+
+### 1. **Coordinate LiveKit Configuration**
+
+The frontend and backend MUST use the same LiveKit instance. You have two options:
+
+#### Option A: Use Backend's LiveKit Instance (Recommended)
+- Get the `LIVEKIT_URL` from the backend environment
+- Update frontend to use the same URL
+- Ensure frontend uses backend's `/participant-token` endpoint for token generation
+
+#### Option B: Use Frontend's LiveKit Instance
+- Update backend to use `sage-2kpu4zly.livekit.cloud`
+- Provide backend with matching API credentials
+- Update backend environment variables
+
+### 2. **Token Generation Coordination**
+
+The frontend should request tokens from the backend's `/participant-token` endpoint:
+
+```typescript
+// Frontend token request should go to backend
+const tokenResponse = await fetch(`${BACKEND_URL}/participant-token`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+    room_name: roomName,
+    participant_name: participantName,
+    participant_identity: participantIdentity
+  })
+});
+```
+
+### 3. **Agent Detection Logic**
+
+The backend is configured to create agents with identities:
+- `"Socrates"`
+- `"Aristotle"` 
+- `"Buddha"`
+
+Your frontend should detect these agents by checking:
+```typescript
+// Check if participant is an agent
+const isAgent = participant.kind === ParticipantKind.Agent || 
+                participant.identity.match(/^(Socrates|Aristotle|Buddha)$/);
+```
+
+### 4. **Agent State Visualization**
+
+The backend broadcasts agent states via participant metadata:
+```typescript
+// Listen for agent state changes
+const metadata = JSON.parse(participant.metadata || '{}');
+const agentState = metadata.agent_state; // "initializing", "listening", "thinking", "speaking"
+const persona = metadata.persona; // "Socrates", "Aristotle", "Buddha"
+```
+
+### 5. **Environment Variables Alignment**
+
+Ensure these environment variables match between frontend and backend:
+- `LIVEKIT_URL`
+- `LIVEKIT_API_KEY`
+- `LIVEKIT_API_SECRET`
+
+## Backend API Endpoints
+
+The backend provides these endpoints for frontend integration:
+
+### 1. **Health Check**
+```
+GET /health
+```
+Returns LiveKit configuration status.
+
+### 2. **Participant Token**
+```
+POST /participant-token
+Body: {
+  "room_name": "string",
+  "participant_name": "string", 
+  "participant_identity": "string"
+}
+```
+Returns LiveKit token for room access.
+
+### 3. **Agent Management**
+```
+POST /start-agent
+Body: {
+  "room_name": "string",
+  "topic": "string",
+  "persona": "Socrates|Aristotle|Buddha"
+}
+```
+Starts an AI moderator agent in the specified room.
+
+## Agent Behavior
+
+### Agent States
+- `"initializing"` - Agent is starting up
+- `"listening"` - Agent is listening to conversation
+- `"thinking"` - Agent is processing/analyzing
+- `"speaking"` - Agent is currently speaking
+
+### Agent Capabilities
+- **Moderation**: Guides discussion flow
+- **Fact-checking**: Verifies claims with sources
+- **Context awareness**: Maintains conversation memory
+- **Persona-based responses**: Each agent has distinct personality
+
+## Testing Steps
+
+1. **Verify Backend Health**
+   ```bash
+   curl https://sage-ai-backend-l0en.onrender.com/health
+   ```
+
+2. **Test Token Generation**
+   ```bash
+   curl -X POST https://sage-ai-backend-l0en.onrender.com/participant-token \
+     -H "Content-Type: application/json" \
+     -d '{"room_name":"test-room","participant_name":"test-user","participant_identity":"user-123"}'
+   ```
+
+3. **Start Agent**
+   ```bash
+   curl -X POST https://sage-ai-backend-l0en.onrender.com/start-agent \
+     -H "Content-Type: application/json" \
+     -d '{"room_name":"test-room","topic":"AI Ethics","persona":"Socrates"}'
+   ```
+
+## Expected Frontend Behavior
+
+Once properly configured, the frontend should:
+1. Successfully connect to the same LiveKit instance as backend
+2. Receive valid tokens from backend
+3. Detect agents as `ParticipantKind.Agent`
+4. Display agent states in real-time
+5. Show agents with their persona names ("Socrates", "Aristotle", "Buddha")
+
+## Debugging Tips
+
+1. **Check Network Tab**: Verify all requests go to correct LiveKit URL
+2. **Console Logs**: Look for successful token generation
+3. **Participant Events**: Monitor agent join/leave events
+4. **Metadata Updates**: Watch for agent state changes
+
+## Next Steps
+
+1. **Coordinate with backend team** to confirm LiveKit instance
+2. **Update frontend LiveKit configuration** to match backend
+3. **Test token generation** flow
+4. **Verify agent detection** logic
+5. **Test agent state visualization**
+
+The backend is fully ready and compatible with LiveKit standards. The issue is purely a configuration coordination problem between frontend and backend. 

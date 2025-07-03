@@ -3,8 +3,7 @@ python-dotenv>=1.0
 
 # LiveKit dependencies - ENHANCED FULL VOICE AI STACK
 # Using the recommended pattern from LiveKit documentation
-livekit-agents[deepgram,openai,cartesia,silero,turn-detector]~=1.0
-livekit-plugins-noise-cancellation~=0.2
+livekit-agents[deepgram,openai,cartesia,silero,turn-detector]>=1.0
 livekit-api>=1.0.0
 
 # FastAPI backend dependencies
@@ -26,3 +25,4 @@ supabase>=2.3.0
 
 # Additional utilities
 asyncio-mqtt>=0.13.0
+psutil>=5.9.0

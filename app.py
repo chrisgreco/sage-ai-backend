@@ -192,15 +192,36 @@ async def stop_ai_agents(request: AgentStopRequest):
 async def get_agent_status(room_name: str):
     """Get status of AI agents for a room"""
     if room_name in active_agents:
-        return active_agents[room_name]
+        agent_info = active_agents[room_name].copy()
+        
+        # Check if process is still running
+        if "process_id" in agent_info:
+            try:
+                import psutil
+                process = psutil.Process(agent_info["process_id"])
+                agent_info["process_running"] = process.is_running()
+                agent_info["process_status"] = process.status()
+            except (psutil.NoSuchProcess, ImportError):
+                agent_info["process_running"] = False
+                agent_info["process_status"] = "not_found"
+        
+        return agent_info
     else:
         return {"status": "inactive", "room_name": room_name}
+
+@app.get("/ai-agents/status")
+async def get_all_agent_status():
+    """Get status of all active agents"""
+    return {
+        "active_agents": active_agents,
+        "total_agents": len(active_agents)
+    }
 
 async def start_agent_process(room_name: str, topic: str, persona: str):
     """Start the LiveKit agent process with topic and persona context"""
     try:
         # Generate agent token with proper identity matching frontend expectations
-        agent_identity = f"{persona}"  # Frontend expects "Socrates", "Aristotle", or "Buddha"
+        agent_identity = f"sage-ai-{persona.lower()}"  # Use consistent naming
         agent_token = api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET) \
             .with_identity(agent_identity) \
             .with_name(f"Sage AI - {persona}") \
@@ -226,29 +247,91 @@ async def start_agent_process(room_name: str, topic: str, persona: str):
             "LIVEKIT_TOKEN": jwt_token,
             "DEBATE_TOPIC": topic,
             "MODERATOR_PERSONA": persona,
-            "ROOM_NAME": room_name
+            "ROOM_NAME": room_name,
+            # Ensure all required API keys are passed
+            "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", ""),
+            "PERPLEXITY_API_KEY": os.getenv("PERPLEXITY_API_KEY", ""),
+            "CARTESIA_API_KEY": os.getenv("CARTESIA_API_KEY", ""),
+            "DEEPGRAM_API_KEY": os.getenv("DEEPGRAM_API_KEY", ""),
+            "SUPABASE_URL": os.getenv("SUPABASE_URL", ""),
+            "SUPABASE_KEY": os.getenv("SUPABASE_KEY", ""),
         })
         
-        # Start the agent process
+        # Start the agent process with proper error handling
         import subprocess
+        import sys
+        
+        # Use the proper command for LiveKit agents
+        # On Windows, use the batch file for better debugging
+        if os.name == 'nt':  # Windows
+            cmd = ["start_agent.bat"]
+        else:  # Unix/Linux
+            cmd = ["./start_agent.sh"]
+        
+        logger.info(f"Starting agent with command: {' '.join(cmd)}")
+        logger.info(f"Environment variables set: LIVEKIT_URL, DEBATE_TOPIC={topic}, MODERATOR_PERSONA={persona}")
+        
         process = subprocess.Popen(
-            ["python", "debate_moderator_agent.py"],
+            cmd,
             env=env,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE
+            stderr=subprocess.STDOUT,  # Combine stderr with stdout
+            universal_newlines=True,
+            bufsize=1,  # Line buffered
+            shell=True  # Required for batch files on Windows
         )
         
         # Update status
         if room_name in active_agents:
             active_agents[room_name]["status"] = "active"
             active_agents[room_name]["process_id"] = process.pid
+            active_agents[room_name]["agent_identity"] = agent_identity
         
-        logger.info(f"Started agent process {process.pid} for room {room_name}")
+        logger.info(f"✅ Started agent process {process.pid} for room {room_name}")
+        
+        # Monitor process in background (non-blocking)
+        asyncio.create_task(monitor_agent_process(room_name, process))
         
     except Exception as e:
-        logger.error(f"Failed to start agent process: {e}")
+        logger.error(f"❌ Failed to start agent process: {e}")
         if room_name in active_agents:
             active_agents[room_name]["status"] = "failed"
+            active_agents[room_name]["error"] = str(e)
+
+async def monitor_agent_process(room_name: str, process):
+    """Monitor the agent process and handle failures"""
+    try:
+        # Wait for process to complete (or crash)
+        await asyncio.get_event_loop().run_in_executor(None, process.wait)
+        
+        # Process has ended
+        return_code = process.returncode
+        
+        if return_code == 0:
+            logger.info(f"✅ Agent process for room {room_name} completed successfully")
+        else:
+            logger.error(f"❌ Agent process for room {room_name} exited with code {return_code}")
+            
+            # Get the last output for debugging
+            try:
+                stdout, stderr = process.communicate(timeout=1)
+                if stdout:
+                    logger.error(f"Agent stdout: {stdout}")
+                if stderr:
+                    logger.error(f"Agent stderr: {stderr}")
+            except Exception as e:
+                logger.warning(f"Could not get process output: {e}")
+        
+        # Update status
+        if room_name in active_agents:
+            active_agents[room_name]["status"] = "completed" if return_code == 0 else "failed"
+            active_agents[room_name]["exit_code"] = return_code
+            active_agents[room_name]["ended_at"] = datetime.utcnow().isoformat()
+            
+    except Exception as e:
+        logger.error(f"❌ Error monitoring agent process for room {room_name}: {e}")
+        if room_name in active_agents:
+            active_agents[room_name]["status"] = "error"
             active_agents[room_name]["error"] = str(e)
 
 if __name__ == "__main__":
