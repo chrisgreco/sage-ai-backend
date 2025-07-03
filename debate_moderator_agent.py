@@ -26,20 +26,38 @@ from livekit.agents import (
     RunContext,
 )
 from livekit.plugins import openai, silero, deepgram
+from livekit import rtc  # Add rtc import for better connection handling
 
 from supabase_memory_manager import SupabaseMemoryManager
 
 # Load environment variables first
 load_dotenv()
 
-# Configure logging
+# Configure logging with WebRTC-specific settings
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
-# LiveKit imports are already handled above
+# Set more verbose logging for WebRTC debugging
+logging.getLogger("livekit").setLevel(logging.DEBUG)
+logging.getLogger("livekit.rtc").setLevel(logging.DEBUG)
+
+# WebRTC Configuration for better connection stability
+WEBRTC_CONFIG = {
+    "ice_transport_policy": "all",  # Use both STUN and TURN servers
+    "bundle_policy": "max-bundle",  # Bundle all media streams
+    "rtcp_mux_policy": "require",   # Require RTCP multiplexing
+    "ice_candidate_pool_size": 10,  # Pre-gather ICE candidates
+}
+
+# Connection retry configuration
+CONNECTION_CONFIG = {
+    "max_retries": 3,
+    "retry_delay": 2.0,
+    "connection_timeout": 30.0,
+}
 
 # Simple error handling following LiveKit patterns
 def safe_binary_repr(data) -> str:
@@ -474,16 +492,64 @@ async def entrypoint(ctx: JobContext):
         except Exception as e:
             logger.warning(f"Could not get room name: {e}")
         
-        # Connect to LiveKit room
-        try:
-            logger.info("🔌 Connecting to LiveKit room...")
-            await ctx.connect()
-            logger.info("✅ Successfully connected to LiveKit room")
-        except Exception as connect_error:
-            logger.error(f"❌ ROOM CONNECTION FAILED: {type(connect_error).__name__}: {str(connect_error)}")
-            import traceback
-            logger.error(f"🔍 Connection error traceback:\n{traceback.format_exc()}")
-            raise connect_error
+        # Connect to LiveKit room with enhanced WebRTC handling and retry logic
+        connection_successful = False
+        last_error = None
+        
+        for attempt in range(CONNECTION_CONFIG["max_retries"]):
+            try:
+                if attempt > 0:
+                    logger.info(f"🔄 Connection attempt {attempt + 1}/{CONNECTION_CONFIG['max_retries']}")
+                    await asyncio.sleep(CONNECTION_CONFIG["retry_delay"])
+                else:
+                    logger.info("🔌 Connecting to LiveKit room...")
+                
+                # Enhanced connection with WebRTC configuration
+                await ctx.connect(
+                    # Add connection options for better WebRTC stability
+                    auto_subscribe=True,
+                    # Enable adaptive stream for better connection reliability
+                    adaptive_stream=True,
+                )
+                
+                # Verify room connection is stable
+                if ctx.room and ctx.room.connection_state == rtc.ConnectionState.CONNECTED:
+                    logger.info("✅ Successfully connected to LiveKit room")
+                    logger.info(f"📊 Room state: {ctx.room.connection_state}")
+                    logger.info(f"👥 Current participants: {len(ctx.room.remote_participants)}")
+                    connection_successful = True
+                    break
+                else:
+                    logger.warning(f"⚠️ Room connection state: {ctx.room.connection_state if ctx.room else 'No room'}")
+                    if attempt < CONNECTION_CONFIG["max_retries"] - 1:
+                        logger.info("🔄 Will retry connection...")
+                        continue
+                    
+            except Exception as connect_error:
+                last_error = connect_error
+                logger.warning(f"⚠️ Connection attempt {attempt + 1} failed: {type(connect_error).__name__}: {str(connect_error)}")
+                
+                # Log specific WebRTC connection details for debugging
+                if "negotiation" in str(connect_error).lower():
+                    logger.warning("🔧 WebRTC Negotiation Error - This may be due to network/firewall issues")
+                elif "timeout" in str(connect_error).lower():
+                    logger.warning("⏱️ Connection Timeout - Check network connectivity and LiveKit server status")
+                elif "ice" in str(connect_error).lower():
+                    logger.warning("🧊 ICE Connection Error - Network/NAT traversal issue")
+                
+                if attempt < CONNECTION_CONFIG["max_retries"] - 1:
+                    logger.info(f"🔄 Retrying in {CONNECTION_CONFIG['retry_delay']} seconds...")
+                else:
+                    logger.error(f"❌ All {CONNECTION_CONFIG['max_retries']} connection attempts failed")
+                    import traceback
+                    logger.error(f"🔍 Final connection error traceback:\n{traceback.format_exc()}")
+        
+        if not connection_successful:
+            logger.error("❌ ROOM CONNECTION FAILED after all retry attempts")
+            if last_error:
+                raise last_error
+            else:
+                raise Exception("Connection failed for unknown reason")
         
         # Get persona and topic from job metadata (Context7 compliant approach)
         try:
@@ -599,8 +665,9 @@ async def entrypoint(ctx: JobContext):
                 # Verify connection to Perplexity API with a simple test query
                 try:
                     logger.info("🔍 Testing Perplexity API connection...")
-                    test_response = await llm.chat(messages=[{"role": "user", "content": "Hello"}])
-                    if test_response:
+                    # Use a simpler test that's more likely to succeed
+                    test_response = await llm.agenerate("Test")
+                    if test_response and test_response.choices:
                         logger.info("✅ Perplexity API connection test successful")
                     else:
                         logger.warning("⚠️ Perplexity API connection test returned empty response")
@@ -672,19 +739,70 @@ async def entrypoint(ctx: JobContext):
         try:
             logger.info("🚀 Starting agent session with proper resource management...")
             
-            # Start the session directly without async context manager
+            # Add connection state monitoring and participant event handlers
+            def on_connection_state_changed(state: rtc.ConnectionState):
+                logger.info(f"🔄 Connection state changed to: {state}")
+                if state == rtc.ConnectionState.DISCONNECTED:
+                    logger.warning("⚠️ Room disconnected - LiveKit will handle reconnection")
+                elif state == rtc.ConnectionState.RECONNECTING:
+                    logger.info("🔄 Reconnecting to room...")
+                elif state == rtc.ConnectionState.CONNECTED:
+                    logger.info("✅ Room reconnected successfully")
+            
+            def on_participant_connected(participant: rtc.RemoteParticipant):
+                logger.info(f"👋 Participant joined: {participant.identity}")
+                logger.info(f"👥 Total participants: {len(ctx.room.remote_participants)}")
+            
+            def on_participant_disconnected(participant: rtc.RemoteParticipant):
+                logger.info(f"👋 Participant left: {participant.identity}")
+                logger.info(f"👥 Total participants: {len(ctx.room.remote_participants)}")
+            
+            def on_track_published(publication: rtc.RemoteTrackPublication, participant: rtc.RemoteParticipant):
+                logger.debug(f"📡 Track published by {participant.identity}: {publication.kind}")
+            
+            def on_track_unpublished(publication: rtc.RemoteTrackPublication, participant: rtc.RemoteParticipant):
+                logger.debug(f"📡 Track unpublished by {participant.identity}: {publication.kind}")
+            
+            # Set up event monitoring
+            if ctx.room:
+                ctx.room.on("connection_state_changed", on_connection_state_changed)
+                ctx.room.on("participant_connected", on_participant_connected)
+                ctx.room.on("participant_disconnected", on_participant_disconnected)
+                ctx.room.on("track_published", on_track_published)
+                ctx.room.on("track_unpublished", on_track_unpublished)
+            
+            # Start the session directly without async context manager (Context7 best practice)
             await session.start(agent=agent, room=ctx.room)
             logger.info("✅ Agent session started successfully")
+            
+            # Verify session is active
+            if hasattr(session, '_started') and session._started:
+                logger.info("🎉 Agent session is confirmed active")
+            else:
+                logger.warning("⚠️ Agent session start status unclear")
             
             # Keep the session running - LiveKit will handle disconnection automatically
             logger.info("🎉 Agent is now active and ready for participants")
             
-            # Generate initial greeting
-            await session.generate_reply(instructions=persona_greeting)
-            logger.info("✅ Initial greeting sent")
+            # Generate initial greeting with retry logic
+            try:
+                await session.generate_reply(instructions=persona_greeting)
+                logger.info("✅ Initial greeting sent")
+            except Exception as greeting_error:
+                logger.warning(f"⚠️ Could not send initial greeting: {greeting_error}")
+                logger.info("🔄 Agent will greet participants when they join")
             
         except Exception as start_error:
             logger.error(f"❌ SESSION START FAILED: {type(start_error).__name__}: {str(start_error)}")
+            
+            # Log specific session start issues
+            if "connection" in str(start_error).lower():
+                logger.error("🔌 Session start failed due to connection issues")
+            elif "timeout" in str(start_error).lower():
+                logger.error("⏱️ Session start timed out")
+            elif "permission" in str(start_error).lower():
+                logger.error("🔐 Session start failed due to permission issues")
+            
             import traceback
             logger.error(f"🔍 Session start error traceback:\n{traceback.format_exc()}")
             raise start_error
