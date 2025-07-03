@@ -360,8 +360,10 @@ async def entrypoint(ctx: JobContext):
     # Verify API keys
     perplexity_key = os.getenv("PERPLEXITY_API_KEY")
     openai_key = os.getenv("OPENAI_API_KEY")
+    deepgram_key = os.getenv("DEEPGRAM_API_KEY")
     
     if not openai_key:
+        logger.error("❌ OPENAI_API_KEY environment variable is required")
         raise ValueError("OPENAI_API_KEY environment variable is required")
     
     logger.info("🔑 API keys verified")
@@ -421,15 +423,45 @@ async def entrypoint(ctx: JobContext):
         )
         logger.info("🎤 Using OpenAI TTS as fallback")
     
+    # Configure STT with proper fallbacks
+    try:
+        if deepgram_key:
+            stt = deepgram.STT(model="nova-2", api_key=deepgram_key)
+            logger.info("🎙️ Deepgram STT configured")
+        else:
+            # Fallback to OpenAI STT
+            stt = openai.STT(api_key=openai_key)
+            logger.info("🎙️ OpenAI STT configured (fallback)")
+    except Exception as e:
+        logger.error(f"❌ STT setup failed: {e}")
+        # Last resort fallback
+        stt = openai.STT(api_key=openai_key)
+        logger.info("🎙️ Using OpenAI STT as fallback")
+    
+    # Configure VAD with error handling
+    try:
+        vad = silero.VAD.load()
+        logger.info("🔊 Silero VAD loaded successfully")
+    except Exception as e:
+        logger.error(f"❌ VAD loading failed: {e}")
+        # Continue without VAD - LiveKit can handle this
+        vad = None
+        logger.info("🔊 Continuing without VAD")
+    
     # Create enhanced session with all recommended components
     try:
-        session = AgentSession(
-            vad=silero.VAD.load(),
-            stt=deepgram.STT(model="nova-2"),
-            llm=llm,
-            tts=tts,
-            turn_detection=MultilingualModel(),
-        )
+        session_kwargs = {
+            'stt': stt,
+            'llm': llm,
+            'tts': tts,
+            'turn_detection': MultilingualModel(),
+        }
+        
+        # Only add VAD if it loaded successfully
+        if vad:
+            session_kwargs['vad'] = vad
+            
+        session = AgentSession(**session_kwargs)
         logger.info("🎧 Agent session components initialized")
     except Exception as e:
         logger.error(f"❌ Session initialization failed: {e}")
@@ -459,34 +491,33 @@ async def entrypoint(ctx: JobContext):
         # Set agent state to listening after successful start
         await moderator.set_agent_state(AgentState.LISTENING)
         
-        # Generate contextual greeting
-        await moderator.set_agent_state(AgentState.SPEAKING)
-        greeting = f"""
-        Greetings! I am {persona}, your debate moderator for today's discussion on: "{topic}"
-        
-        I'm here to facilitate a thoughtful and structured dialogue. 
-        I'll help ensure our conversation remains productive, fact-based, and respectful.
-        
-        Please feel free to begin sharing your perspectives on this important topic.
-        """
-        
-        await session.generate_reply(instructions=greeting)
-        logger.info("💬 Contextual greeting sent")
-        
-        # Store initial greeting if memory is available
-        if memory_manager and moderator.session_id:
-            try:
-                await memory_manager.store_conversation_turn(
-                    session_id=moderator.session_id,
-                    speaker=f"AI-{persona}",
-                    content=greeting,
-                    turn_type="greeting"
-                )
-            except Exception as e:
-                logger.error(f"Failed to store greeting: {e}")
-        
-        # Return to listening state after greeting
-        await moderator.set_agent_state(AgentState.LISTENING)
+        # Generate contextual greeting with error handling
+        try:
+            await moderator.set_agent_state(AgentState.SPEAKING)
+            greeting = f"Greetings! I am {persona}, your debate moderator for today's discussion on: {topic}. I'm here to facilitate a thoughtful dialogue. Please feel free to share your perspectives."
+            
+            await session.generate_reply(instructions=greeting)
+            logger.info("💬 Contextual greeting sent")
+            
+            # Store initial greeting if memory is available
+            if memory_manager and moderator.session_id:
+                try:
+                    await memory_manager.store_conversation_turn(
+                        session_id=moderator.session_id,
+                        speaker=f"AI-{persona}",
+                        content=greeting,
+                        turn_type="greeting"
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to store greeting: {e}")
+            
+            # Return to listening state after greeting
+            await moderator.set_agent_state(AgentState.LISTENING)
+            
+        except Exception as e:
+            logger.error(f"❌ Greeting generation failed: {e}")
+            # Continue without greeting - agent is still functional
+            await moderator.set_agent_state(AgentState.LISTENING)
         
     except Exception as e:
         logger.error(f"❌ Session start failed: {e}")

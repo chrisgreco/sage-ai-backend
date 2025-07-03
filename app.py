@@ -240,6 +240,11 @@ async def start_agent_process(room_name: str, topic: str, persona: str):
         
         jwt_token = agent_token.to_jwt()
         
+        # Check required API keys
+        openai_key = os.getenv("OPENAI_API_KEY")
+        if not openai_key:
+            raise Exception("OPENAI_API_KEY environment variable is required")
+        
         # Set environment variables for the agent process
         env = os.environ.copy()
         env.update({
@@ -249,7 +254,7 @@ async def start_agent_process(room_name: str, topic: str, persona: str):
             "MODERATOR_PERSONA": persona,
             "ROOM_NAME": room_name,
             # Ensure all required API keys are passed
-            "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY", ""),
+            "OPENAI_API_KEY": openai_key,
             "PERPLEXITY_API_KEY": os.getenv("PERPLEXITY_API_KEY", ""),
             "CARTESIA_API_KEY": os.getenv("CARTESIA_API_KEY", ""),
             "DEEPGRAM_API_KEY": os.getenv("DEEPGRAM_API_KEY", ""),
@@ -262,11 +267,7 @@ async def start_agent_process(room_name: str, topic: str, persona: str):
         import sys
         
         # Use the proper command for LiveKit agents
-        # On Windows, use the batch file for better debugging
-        if os.name == 'nt':  # Windows
-            cmd = ["start_agent.bat"]
-        else:  # Unix/Linux
-            cmd = ["./start_agent.sh"]
+        cmd = [sys.executable, "debate_moderator_agent.py"]
         
         logger.info(f"Starting agent with command: {' '.join(cmd)}")
         logger.info(f"Environment variables set: LIVEKIT_URL, DEBATE_TOPIC={topic}, MODERATOR_PERSONA={persona}")
@@ -277,8 +278,7 @@ async def start_agent_process(room_name: str, topic: str, persona: str):
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,  # Combine stderr with stdout
             universal_newlines=True,
-            bufsize=1,  # Line buffered
-            shell=True  # Required for batch files on Windows
+            bufsize=1  # Line buffered
         )
         
         # Update status
