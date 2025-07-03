@@ -480,13 +480,32 @@ if __name__ == "__main__":
             logger.warning(f"Model download failed (optional): {e}")
         sys.exit(0)
     
-    cli.run_app(
-        WorkerOptions(
-            entrypoint_fnc=entrypoint,
-            # Allow agent to connect to any room
-            prewarm_fnc=None,
-            # Enable health check endpoint on port 8081
-            # This allows monitoring systems to check agent health
-            port=8081,
+    # Check if we have token-based connection (from backend launch)
+    livekit_token = os.getenv("LIVEKIT_TOKEN")
+    room_name = os.getenv("ROOM_NAME")
+    
+    if livekit_token and room_name:
+        # Direct connection mode (launched by backend)
+        logger.info(f"🎯 Direct connection mode: Connecting to room {room_name}")
+        
+        cli.run_app(
+            WorkerOptions(
+                entrypoint_fnc=entrypoint,
+                prewarm_fnc=None,
+                port=8081,
+                # Connect directly to the specified room
+                room_name=room_name,
+                token=livekit_token,
+            )
         )
-    ) 
+    else:
+        # Development/worker mode
+        logger.info("🔧 Worker mode: Ready to connect to any room")
+        
+        cli.run_app(
+            WorkerOptions(
+                entrypoint_fnc=entrypoint,
+                prewarm_fnc=None,
+                port=8081,
+            )
+        ) 
