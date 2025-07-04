@@ -26,7 +26,7 @@ from livekit.agents import (
     RoomInputOptions,
 )
 from livekit.plugins import openai, silero, deepgram, cartesia
-from livekit.plugins.turn_detector.multilingual import MultilingualModel
+from livekit.plugins.turn_detector.english import EnglishModel
 from livekit import api, rtc
 
 # Import memory manager
@@ -486,27 +486,16 @@ async def entrypoint(ctx: JobContext):
         if vad:
             session_kwargs['vad'] = vad
             
-        # Try to add turn detection, but make it optional based on environment variable
-        enable_turn_detection = os.getenv("ENABLE_TURN_DETECTION", "true").lower() == "true"
-        
-        if enable_turn_detection:
-            try:
-                logger.info("🎯 Loading turn detection model (MultilingualModel)...")
-                turn_detector = MultilingualModel()
-                session_kwargs['turn_detection'] = turn_detector
-                logger.info("🎯 Turn detection (MultilingualModel) loaded successfully")
-            except Exception as turn_error:
-                logger.warning(f"⚠️ Turn detection failed to load: {turn_error}")
-                
-                # Check if it's a disk space issue
-                if "No space left on device" in str(turn_error) or "Errno 28" in str(turn_error):
-                    logger.error("💾 DISK SPACE ISSUE: Turn detection model download failed due to insufficient space")
-                    logger.info("💡 SOLUTION: Increase disk space or set ENABLE_TURN_DETECTION=false")
-                
-                logger.info("🎯 Continuing without advanced turn detection - using basic silence detection")
-                # Continue without turn detection - LiveKit will use basic silence detection
-        else:
-            logger.info("🎯 Turn detection disabled via ENABLE_TURN_DETECTION=false - using basic silence detection")
+        # Use the smaller English-only turn detection model (pre-downloaded during build)
+        try:
+            logger.info("🎯 Loading turn detection model (EnglishModel - optimized for space)...")
+            turn_detector = EnglishModel()
+            session_kwargs['turn_detection'] = turn_detector
+            logger.info("🎯 Turn detection (EnglishModel) loaded successfully")
+        except Exception as turn_error:
+            logger.error(f"❌ Turn detection model loading failed: {turn_error}")
+            logger.error("💡 SOLUTION: Ensure models are downloaded during build phase with 'python debate_moderator_agent.py download-files'")
+            raise  # Don't continue without turn detection - this should be fixed properly
             
         session = AgentSession(**session_kwargs)
         logger.info("🎧 Agent session components initialized")

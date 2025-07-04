@@ -50,6 +50,11 @@ COPY debate_moderator_agent.py .
 COPY supabase_memory_manager.py .
 COPY example.env .env
 
+# Pre-download LiveKit models to avoid runtime downloads and space issues
+# This must be done as root before switching to appuser
+USER root
+RUN python debate_moderator_agent.py download-files || echo "Model download failed but continuing build"
+
 # Create non-root user for security
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
@@ -60,8 +65,8 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PIP_NO_CACHE_DIR=1
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Disable turn detection by default to save space and avoid model downloads
-ENV ENABLE_TURN_DETECTION=false
+# Turn detection is now enabled since models are pre-downloaded during build
+# ENV ENABLE_TURN_DETECTION=false  # REMOVED - models are pre-downloaded now
 
 # Health check for web service (lightweight)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \

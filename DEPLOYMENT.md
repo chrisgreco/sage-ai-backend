@@ -5,10 +5,10 @@
 This deployment includes critical fixes for the "No space left on device" errors that were causing exit status 2 crashes.
 
 ### ✅ Fixed Issues
-- Turn detector model download failures 
-- Docker image size optimization
+- Turn detector model download failures (now pre-downloaded during build)
+- Docker image size optimization with multi-stage builds
 - Graceful fallbacks for all model loading
-- Proactive disk space monitoring
+- Proper model caching strategy
 
 ## Environment Configuration
 
@@ -27,135 +27,103 @@ CARTESIA_API_KEY=your-cartesia-key (optional)
 
 # Agent Configuration
 DEBATE_TOPIC=General Discussion
-MODERATOR_PERSONA=Aristotle
+MODERATOR_PERSONA=neutral-facilitator
 
-# CRITICAL: Prevent model download crashes
-ENABLE_TURN_DETECTION=false
-
-# Supabase (optional)
+# Database (Optional - for memory persistence)
 SUPABASE_URL=your-supabase-url
-SUPABASE_KEY=your-supabase-key
+SUPABASE_ANON_KEY=your-supabase-key
 ```
 
-### Render.com Configuration
+## Render Deployment Configuration
 
-#### Web Service (FastAPI Backend)
-```yaml
-services:
-  - type: web
-    name: sage-ai-backend
-    env: docker
-    dockerfilePath: ./Dockerfile
-    dockerCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
-    envVars:
-      - key: ENABLE_TURN_DETECTION
-        value: false
-      - key: OPENAI_API_KEY
-        fromSecret: OPENAI_API_KEY
-      # ... other env vars
+### For Web Service (sage-ai-backend)
+```bash
+# Build Command
+npm install
+
+# Start Command  
+uvicorn app:app --host 0.0.0.0 --port $PORT
+
+# Environment Variables
+PORT=8000
+LIVEKIT_URL=wss://your-livekit-server.livekit.cloud
+LIVEKIT_API_KEY=your-api-key
+LIVEKIT_API_SECRET=your-api-secret
+OPENAI_API_KEY=your-openai-key
 ```
 
-#### Background Worker (LiveKit Agent)
-```yaml
-  - type: worker
-    name: sage-ai-backend-moderator
-    env: docker
-    dockerfilePath: ./Dockerfile
-    dockerCommand: python debate_moderator_agent.py start
-    envVars:
-      - key: ENABLE_TURN_DETECTION
-        value: false
-      - key: MODERATOR_PERSONA
-        value: Aristotle
-      - key: DEBATE_TOPIC
-        value: Philosophy and Ethics
-      # ... other env vars
+### For Background Worker (sage-ai-backend-moderator)
+```bash
+# Build Command
+(leave empty - uses Dockerfile)
+
+# Start Command
+python debate_moderator_agent.py start
+
+# Environment Variables (same as above plus)
+DEBATE_TOPIC=Technology and Innovation
+MODERATOR_PERSONA=neutral-facilitator
 ```
 
-## Multi-Agent Deployment
+## Available Moderator Personas
 
-### Deploy Multiple Agent Personas
+The system supports dynamic persona switching within a single agent service:
 
-Create separate Render services for each agent persona:
+### Core Personas
+- **neutral-facilitator**: Balanced, fair moderation
+- **socratic-questioner**: Deep questioning and critical thinking
+- **devils-advocate**: Challenge assumptions and explore counterarguments
+- **topic-expert**: Subject matter expertise and fact-checking
+- **time-keeper**: Structure and time management focus
 
-#### Agent 1: Aristotle (Philosophy)
-```yaml
-- type: worker
-  name: sage-ai-aristotle-agent
-  env: docker
-  dockerCommand: python debate_moderator_agent.py start
-  envVars:
-    - key: MODERATOR_PERSONA
-      value: Aristotle
-    - key: DEBATE_TOPIC
-      value: Philosophy and Ethics
-    - key: ENABLE_TURN_DETECTION
-      value: false
+### Persona Selection
+Personas are set via environment variable `MODERATOR_PERSONA` or can be dynamically changed by room participants during the session.
+
+## Turn Detection Fix
+
+### What Was Fixed
+- **Issue**: Turn detector models failing to download during runtime due to disk space
+- **Solution**: Pre-download models during Docker build phase
+- **Optimization**: Use `EnglishModel()` instead of `MultilingualModel()` for smaller size
+- **Build Process**: Added `python debate_moderator_agent.py download-files` to Dockerfile
+
+### Technical Details
+```dockerfile
+# Pre-download LiveKit models to avoid runtime downloads
+RUN python debate_moderator_agent.py download-files || echo "Model download failed but continuing build"
 ```
 
-#### Agent 2: Einstein (Science)
-```yaml
-- type: worker
-  name: sage-ai-einstein-agent
-  env: docker
-  dockerCommand: python debate_moderator_agent.py start
-  envVars:
-    - key: MODERATOR_PERSONA
-      value: Einstein
-    - key: DEBATE_TOPIC
-      value: Science and Technology
-    - key: ENABLE_TURN_DETECTION
-      value: false
-```
-
-#### Agent 3: Socrates (Critical Thinking)
-```yaml
-- type: worker
-  name: sage-ai-socrates-agent
-  env: docker
-  dockerCommand: python debate_moderator_agent.py start
-  envVars:
-    - key: MODERATOR_PERSONA
-      value: Socrates
-    - key: DEBATE_TOPIC
-      value: Critical Thinking
-    - key: ENABLE_TURN_DETECTION
-      value: false
-```
-
-## Docker Optimizations Applied
-
-### Multi-Stage Build
-- Separated build and runtime stages
-- Minimal python:3.11-slim base image
-- Removed unnecessary build dependencies from final image
-
-### Space Optimization
-- Comprehensive .dockerignore file
-- Disabled model pre-downloading
-- Python optimization flags
-- Cleaned up package caches
+The agent now uses the smaller English-only turn detection model that is pre-downloaded during the container build process, eliminating runtime download failures.
 
 ## Troubleshooting
 
-### If Agent Still Crashes
-1. Check disk space: `df -h` in Render shell
-2. Verify `ENABLE_TURN_DETECTION=false` is set
-3. Check logs for specific error messages
-4. Verify all required API keys are present
+### "No space left on device" Errors
+✅ **FIXED**: Models are now pre-downloaded during build
+- Ensure Dockerfile includes model pre-download step
+- Use English-only model for smaller footprint
+- Models cached in container image, not downloaded at runtime
 
-### Model Loading Issues
-The agent now gracefully handles:
-- Turn detector failures → Basic silence detection
-- VAD failures → No VAD (optional)
-- STT failures → OpenAI STT fallback
-- TTS failures → OpenAI TTS fallback
-- LLM failures → OpenAI GPT fallback
+### Agent Won't Start
+1. Check environment variables are set correctly
+2. Verify LiveKit credentials are valid
+3. Check logs for specific model loading errors
+4. Ensure `python debate_moderator_agent.py download-files` succeeded during build
 
 ### Performance Optimization
-- Turn detection disabled saves ~500MB+ model download
-- Multi-stage Docker build reduces image size by ~60%
-- Graceful fallbacks prevent restart loops
+- Multi-stage Docker build reduces final image size
+- Pre-downloaded models eliminate startup delays
+- Graceful fallbacks prevent service interruption
+- Memory management with Supabase persistence
+
+## Model Fallback Chain
+
+1. **STT**: Deepgram → OpenAI STT
+2. **TTS**: Cartesia → OpenAI TTS  
+3. **LLM**: Perplexity → OpenAI GPT-4o-mini
+4. **VAD**: Silero (optional, graceful degradation)
+5. **Turn Detection**: EnglishModel (pre-downloaded, required)
+
+All components except turn detection can gracefully degrade. Turn detection is essential for natural conversation flow and is now properly pre-installed.
 
 ## Monitoring
 
