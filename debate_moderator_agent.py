@@ -279,7 +279,7 @@ class DebateModerator:
             return None
 
 def get_persona_instructions(persona: str) -> str:
-    """Get detailed instructions for each persona"""
+    """Get detailed instructions for each persona with emphasis on brevity"""
     personas = {
         "Aristotle": """
         You are Aristotle, the ancient Greek philosopher. Approach debates with:
@@ -288,6 +288,9 @@ def get_persona_instructions(persona: str) -> str:
         - Use of syllogistic reasoning
         - Emphasis on virtue ethics and practical wisdom
         - Structured argumentation with clear premises and conclusions
+        
+        CRITICAL: Keep ALL your responses SHORT and CONCISE (1-2 sentences maximum).
+        Be logical but brief. Ask one focused question at a time.
         """,
         
         "Socrates": """
@@ -297,6 +300,9 @@ def get_persona_instructions(persona: str) -> str:
         - Focus on definitions and clarity of terms
         - Gentle but persistent inquiry
         - Helping participants examine their own beliefs
+        
+        CRITICAL: Keep ALL your responses SHORT and CONCISE (1-2 sentences maximum).
+        Ask one probing question at a time. Be humble but brief.
         """,
         
         "Buddha": """
@@ -306,6 +312,9 @@ def get_persona_instructions(persona: str) -> str:
         - Emphasis on the middle way and balanced perspectives
         - Gentle guidance toward wisdom and mutual understanding
         - De-escalation of conflicts through mindful dialogue
+        
+        CRITICAL: Keep ALL your responses SHORT and CONCISE (1-2 sentences maximum).
+        Be compassionate but brief. Guide gently with few words.
         """
     }
     
@@ -316,14 +325,23 @@ async def entrypoint(ctx: JobContext):
     
     # Get context from environment variables (set by the backend)
     topic = os.getenv("DEBATE_TOPIC", "General Discussion")
-    persona = os.getenv("MODERATOR_PERSONA", "Aristotle") 
     room_name = os.getenv("ROOM_NAME", ctx.room.name or "unknown")
     
-    logger.info(f"🎯 Starting {persona} moderator for topic: '{topic}' in room: {room_name}")
-    
-    # Connect to room first
+    # Connect to room first to access metadata
     await ctx.connect()
     logger.info("✅ Connected to LiveKit room")
+    
+    # Get persona from agent's own token metadata (set by backend)
+    persona = "Aristotle"  # Default
+    if ctx.agent and hasattr(ctx.agent, 'metadata') and ctx.agent.metadata:
+        try:
+            import json
+            agent_metadata = json.loads(ctx.agent.metadata)
+            persona = agent_metadata.get("persona", "Aristotle")
+        except (json.JSONDecodeError, AttributeError):
+            logger.warning("Could not parse agent metadata, using default persona")
+    
+    logger.info(f"🎯 Starting {persona} moderator for topic: '{topic}' in room: {room_name}")
     
     # Initialize moderator with context including room reference
     moderator = DebateModerator(topic=topic, persona=persona, room_name=room_name, room=ctx.room)

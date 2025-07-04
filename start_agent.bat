@@ -1,12 +1,11 @@
 @echo off
 echo 🚀 Starting Sage AI Agent...
-echo Environment Check:
+echo 🔧 Environment Variables:
 echo   LIVEKIT_URL: %LIVEKIT_URL%
-echo   LIVEKIT_TOKEN: %LIVEKIT_TOKEN%
-echo   DEBATE_TOPIC: %DEBATE_TOPIC%
-echo   MODERATOR_PERSONA: %MODERATOR_PERSONA%
-echo   ROOM_NAME: %ROOM_NAME%
+echo   LIVEKIT_API_KEY: %LIVEKIT_API_KEY%
 echo   OPENAI_API_KEY: %OPENAI_API_KEY%
+echo   DEBATE_TOPIC: %DEBATE_TOPIC%
+echo   ROOM_NAME: %ROOM_NAME%
 echo   PERPLEXITY_API_KEY: %PERPLEXITY_API_KEY%
 
 if "%LIVEKIT_URL%"=="" (

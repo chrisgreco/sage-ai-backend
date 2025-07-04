@@ -56,7 +56,7 @@ Required:
 - `DEEPGRAM_API_KEY` - Deepgram API key for STT
 
 Optional:
-- `MODERATOR_PERSONA` - AI persona (default: "Aristotle")
+
 - `PERPLEXITY_MODEL` - Perplexity model (default: "llama-3.1-sonar-small-128k-online")
 
 ## Deployment

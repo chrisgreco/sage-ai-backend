@@ -27,7 +27,6 @@ CARTESIA_API_KEY=your-cartesia-key (optional)
 
 # Agent Configuration
 DEBATE_TOPIC=General Discussion
-MODERATOR_PERSONA=neutral-facilitator
 
 # Database (Optional - for memory persistence)
 SUPABASE_URL=https://your-project.supabase.co
@@ -63,22 +62,19 @@ python debate_moderator_agent.py start
 
 # Environment Variables (same as above plus)
 DEBATE_TOPIC=Technology and Innovation
-MODERATOR_PERSONA=neutral-facilitator
 ```
 
 ## Available Moderator Personas
 
-The system supports dynamic persona switching within a single agent service:
+The system supports three philosophical personas that are selected dynamically via the frontend:
 
 ### Core Personas
-- **neutral-facilitator**: Balanced, fair moderation
-- **socratic-questioner**: Deep questioning and critical thinking
-- **devils-advocate**: Challenge assumptions and explore counterarguments
-- **topic-expert**: Subject matter expertise and fact-checking
-- **time-keeper**: Structure and time management focus
+- **Aristotle**: Logical reasoning, finding the golden mean, virtue ethics
+- **Socrates**: Socratic questioning, humble inquiry, seeking clarity
+- **Buddha**: Mindful communication, compassion, finding common ground
 
 ### Persona Selection
-Personas are set via environment variable `MODERATOR_PERSONA` or can be dynamically changed by room participants during the session.
+Personas are selected via the frontend interface when launching AI agents. The backend receives the persona choice and passes it to the agent automatically - no environment configuration needed.
 
 ## Turn Detection Fix
 

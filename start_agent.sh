@@ -4,14 +4,13 @@
 # This script helps debug agent startup issues
 
 echo "🚀 Starting Sage AI Agent..."
-echo "Environment Check:"
+echo "🔧 Environment Variables:"
 echo "  LIVEKIT_URL: ${LIVEKIT_URL:-'NOT SET'}"
-echo "  LIVEKIT_TOKEN: ${LIVEKIT_TOKEN:+'SET'}"
+echo "  LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:+SET}"
+echo "  LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET:+SET}"
+echo "  OPENAI_API_KEY: ${OPENAI_API_KEY:+SET}"
+echo "  PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:+SET}"
 echo "  DEBATE_TOPIC: ${DEBATE_TOPIC:-'NOT SET'}"
-echo "  MODERATOR_PERSONA: ${MODERATOR_PERSONA:-'NOT SET'}"
-echo "  ROOM_NAME: ${ROOM_NAME:-'NOT SET'}"
-echo "  OPENAI_API_KEY: ${OPENAI_API_KEY:+'SET'}"
-echo "  PERPLEXITY_API_KEY: ${PERPLEXITY_API_KEY:+'SET'}"
 
 # Check if required environment variables are set
 if [ -z "$LIVEKIT_URL" ] || [ -z "$LIVEKIT_TOKEN" ] || [ -z "$OPENAI_API_KEY" ]; then
