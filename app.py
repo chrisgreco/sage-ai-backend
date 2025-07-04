@@ -254,6 +254,7 @@ async def start_agent_process(room_name: str, topic: str, persona: str):
             
             # Debate context
             "DEBATE_TOPIC": topic,
+            "DEBATE_PERSONA": persona,
             "ROOM_NAME": room_name,
             
             # AI provider API keys
@@ -275,7 +276,7 @@ async def start_agent_process(room_name: str, topic: str, persona: str):
         cmd = [sys.executable, "debate_moderator_agent.py", "start"]
         
         logger.info(f"Starting agent with command: {' '.join(cmd)}")
-        logger.info(f"Environment variables set: LIVEKIT_URL, DEBATE_TOPIC={topic}, PERSONA={persona}")
+        logger.info(f"Environment variables set: LIVEKIT_URL, DEBATE_TOPIC={topic}, DEBATE_PERSONA={persona}")
         
         process = subprocess.Popen(
             cmd,

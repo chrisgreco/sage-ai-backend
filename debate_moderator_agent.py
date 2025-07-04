@@ -321,25 +321,16 @@ def get_persona_instructions(persona: str) -> str:
     return personas.get(persona, personas["Aristotle"])
 
 async def entrypoint(ctx: JobContext):
-    """Enhanced entrypoint with topic and persona from environment"""
+    """Enhanced entrypoint with topic and persona from environment variables"""
     
-    # Get context from environment variables (set by the backend)
-    topic = os.getenv("DEBATE_TOPIC", "General Discussion")
-    room_name = os.getenv("ROOM_NAME", ctx.room.name or "unknown")
-    
-    # Connect to room first to access metadata
+    # Connect to room first 
     await ctx.connect()
     logger.info("✅ Connected to LiveKit room")
     
-    # Get persona from agent's own token metadata (set by backend)
-    persona = "Aristotle"  # Default
-    if ctx.agent and hasattr(ctx.agent, 'metadata') and ctx.agent.metadata:
-        try:
-            import json
-            agent_metadata = json.loads(ctx.agent.metadata)
-            persona = agent_metadata.get("persona", "Aristotle")
-        except (json.JSONDecodeError, AttributeError):
-            logger.warning("Could not parse agent metadata, using default persona")
+    # Get context from environment variables (set by the backend)
+    topic = os.getenv("DEBATE_TOPIC", "General Discussion")
+    persona = os.getenv("DEBATE_PERSONA", "Aristotle")
+    room_name = os.getenv("ROOM_NAME", ctx.room.name or "unknown")
     
     logger.info(f"🎯 Starting {persona} moderator for topic: '{topic}' in room: {room_name}")
     
@@ -353,22 +344,25 @@ async def entrypoint(ctx: JobContext):
     # Get persona instructions
     instructions = get_persona_instructions(persona)
     
-    # Create agent with enhanced tools
+    # Create agent with enhanced tools and MINIMAL intervention instructions
     agent = Agent(
         instructions=f"""
         You are {persona}, moderating a debate about: "{topic}"
         
         {instructions}
         
-        CRITICAL: Keep ALL responses SHORT and TO THE POINT (1-2 sentences maximum).
-        Be precise, not verbose. Quality over quantity.
+        CRITICAL BEHAVIOR RULES:
+        1. Keep ALL responses SHORT and TO THE POINT (1-2 sentences maximum)
+        2. ONLY SPEAK WHEN:
+           - Directly asked a question by participants
+           - Discussion becomes hostile or unproductive
+           - Factual misinformation needs correction
+           - Participants explicitly request moderation
+        3. DO NOT interrupt natural conversation flow
+        4. Let participants lead the discussion - you are a GUIDE, not a participant
+        5. Be present but not intrusive
         
-        Use your tools to:
-        - Moderate discussions with brief, targeted interventions
-        - Fact-check claims with specific sources: "According to [source], the data shows..."
-        - Ask concise questions to guide the discussion
-        
-        Always respond in character as {persona} would, but BRIEFLY.
+        When you do speak, be precise and helpful, then step back.
         """,
         tools=[
             moderator.set_debate_topic,
