@@ -454,12 +454,26 @@ async def entrypoint(ctx: JobContext):
             'stt': stt,
             'llm': llm,
             'tts': tts,
-            'turn_detection': MultilingualModel(),
         }
         
         # Only add VAD if it loaded successfully
         if vad:
             session_kwargs['vad'] = vad
+            
+        # Try to add turn detection, but make it optional based on environment variable
+        enable_turn_detection = os.getenv("ENABLE_TURN_DETECTION", "true").lower() == "true"
+        
+        if enable_turn_detection:
+            try:
+                turn_detector = MultilingualModel()
+                session_kwargs['turn_detection'] = turn_detector
+                logger.info("🎯 Turn detection (MultilingualModel) loaded successfully")
+            except Exception as turn_error:
+                logger.warning(f"⚠️ Turn detection failed to load: {turn_error}")
+                logger.info("🎯 Continuing without advanced turn detection - using basic silence detection")
+                # Continue without turn detection - LiveKit will use basic silence detection
+        else:
+            logger.info("🎯 Turn detection disabled via ENABLE_TURN_DETECTION=false - using basic silence detection")
             
         session = AgentSession(**session_kwargs)
         logger.info("🎧 Agent session components initialized")
