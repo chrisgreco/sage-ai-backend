@@ -48,7 +48,6 @@ ENV PATH=/root/.local/bin:$PATH
 COPY app.py .
 COPY debate_moderator_agent.py .
 COPY supabase_memory_manager.py .
-COPY example.env .env
 
 # Pre-download LiveKit models to avoid runtime downloads and space issues
 # This must be done as root before switching to appuser
