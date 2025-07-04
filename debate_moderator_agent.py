@@ -183,9 +183,6 @@ class DebateModerator:
                 except Exception as e:
                     logger.error(f"Failed to store moderation action: {e}")
             
-            # Get persona instructions for response
-            persona_instructions = get_persona_instructions(self.persona)
-            
             response = f"Thank you, {speaker}. "
             
             # Persona-specific moderation approach
@@ -237,8 +234,6 @@ class DebateModerator:
                     logger.error(f"Failed to store fact-check action: {e}")
             
             # Persona-specific fact-checking approach
-            persona_instructions = get_persona_instructions(self.persona)
-            
             response = f"As {self.persona}, I'll examine this claim: '{claim}'"
             response += f"\n\nLet me provide some perspective on this statement in the context of our discussion about {self.topic}."
             
@@ -278,47 +273,108 @@ class DebateModerator:
             logger.error(f"Failed to get conversation summary: {e}")
             return None
 
-def get_persona_instructions(persona: str) -> str:
-    """Get detailed instructions for each persona with emphasis on brevity"""
-    personas = {
-        "Aristotle": """
-        You are Aristotle, the ancient Greek philosopher. Approach debates with:
-        - Logical reasoning and systematic analysis
-        - Focus on finding the golden mean between extremes
-        - Use of syllogistic reasoning
-        - Emphasis on virtue ethics and practical wisdom
-        - Structured argumentation with clear premises and conclusions
+    def get_prompt_for_persona(self, persona: str) -> str:
+        """Get dynamic system prompt for the specified persona"""
+        base_prompt = f"""You are {persona}, moderating a debate about "{self.topic}".
+
+CRITICAL BEHAVIOR RULES:
+- Only speak when directly asked a question by participants
+- Only speak when discussion becomes hostile or unproductive  
+- Only speak when participants explicitly request moderation
+- Do NOT interrupt natural conversation flow
+- You are a GUIDE, not a participant
+- Keep ALL responses to 1-2 sentences maximum
+
+"""
         
-        CRITICAL: Keep ALL your responses SHORT and CONCISE (1-2 sentences maximum).
-        Be logical but brief. Ask one focused question at a time.
-        """,
+        persona_specific = {
+            "Aristotle": """As Aristotle:
+- Use logical reasoning and find the golden mean
+- Ask one focused question to clarify logic
+- Guide toward virtue ethics and practical wisdom
+- Be systematic but extremely brief""",
+            
+            "Socrates": """As Socrates:  
+- Ask one probing question to expose assumptions
+- Admit what you don't know humbly
+- Seek clarity and definitions
+- Guide through gentle inquiry""",
+            
+            "Buddha": """As Buddha:
+- Practice mindful, compassionate communication  
+- Seek common ground and de-escalate conflicts
+- Guide toward mutual understanding
+- Use the middle way approach"""
+        }
         
-        "Socrates": """
-        You are Socrates, the classical Greek philosopher. Approach debates with:
-        - Socratic questioning to expose assumptions
-        - Humble acknowledgment of what you don't know
-        - Focus on definitions and clarity of terms
-        - Gentle but persistent inquiry
-        - Helping participants examine their own beliefs
-        
-        CRITICAL: Keep ALL your responses SHORT and CONCISE (1-2 sentences maximum).
-        Ask one probing question at a time. Be humble but brief.
-        """,
-        
-        "Buddha": """
-        You are Buddha, the enlightened teacher. Approach debates with:
-        - Mindful communication and compassionate understanding
-        - Focus on reducing suffering and finding common ground
-        - Emphasis on the middle way and balanced perspectives
-        - Gentle guidance toward wisdom and mutual understanding
-        - De-escalation of conflicts through mindful dialogue
-        
-        CRITICAL: Keep ALL your responses SHORT and CONCISE (1-2 sentences maximum).
-        Be compassionate but brief. Guide gently with few words.
-        """
-    }
-    
-    return personas.get(persona, personas["Aristotle"])
+        return base_prompt + persona_specific.get(persona, persona_specific["Aristotle"])
+
+    async def start(self, room: rtc.Room):
+        """Start the moderator agent with Perplexity integration"""
+        try:
+            await self.set_agent_state(AgentState.INITIALIZING)
+            logger.info(f"🚀 Starting {self.persona} moderator...")
+            
+            # Initialize session with memory
+            await self.initialize_session()
+            
+            # Get dynamic persona prompt
+            system_prompt = self.get_prompt_for_persona(self.persona)
+            logger.info(f"🎭 Using persona prompt for {self.persona}")
+            
+            # Initialize the agent with Perplexity integration
+            agent = Agent(
+                llm=openai.LLM.with_perplexity(
+                    model="llama-3.1-sonar-small-128k-online",  # Use online model for real-time info
+                    api_key=os.getenv("PERPLEXITY_API_KEY"),
+                    system_prompt=system_prompt,
+                    web_search_options={
+                        "search_context_size": "medium"  # Balance between cost and context
+                    }
+                ),
+                tts=cartesia.TTS() if os.getenv("CARTESIA_API_KEY") else silero.TTS(),
+                stt=deepgram.STT() if os.getenv("DEEPGRAM_API_KEY") else openai.STT(),
+                turn_detector=EnglishModel(),
+                room_input_options=RoomInputOptions(
+                    auto_subscribe=True,
+                    track_timeout=30.0,
+                    silence_timeout=2.0
+                )
+            )
+            
+            # Set up agent event handlers for memory integration
+            @agent.on("agent_speech_committed")
+            async def on_agent_speech(agent_speech):
+                """Store agent speech in memory"""
+                await self.store_conversation_turn(
+                    f"AI-{self.persona}", 
+                    agent_speech.transcript, 
+                    "agent_speech"
+                )
+                logger.debug(f"💾 Stored agent speech: {agent_speech.transcript[:50]}...")
+            
+            @agent.on("user_speech_committed") 
+            async def on_user_speech(user_speech):
+                """Store user speech in memory"""
+                participant_name = getattr(user_speech, 'participant', {}).get('identity', 'Unknown')
+                await self.store_conversation_turn(
+                    participant_name,
+                    user_speech.transcript,
+                    "user_speech"
+                )
+                logger.debug(f"💾 Stored user speech from {participant_name}: {user_speech.transcript[:50]}...")
+            
+            # Start the agent session
+            agent_session = AgentSession(room=room, agent=agent)
+            await agent_session.start()
+            
+            await self.set_agent_state(AgentState.LISTENING)
+            logger.info(f"✅ {self.persona} moderator is ready and listening")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to start moderator: {e}")
+            await self.set_agent_state(AgentState.INITIALIZING)
+            raise
 
 async def entrypoint(ctx: JobContext):
     """Enhanced entrypoint with topic and persona from room metadata"""
