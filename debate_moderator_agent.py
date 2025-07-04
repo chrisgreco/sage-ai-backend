@@ -309,71 +309,45 @@ CRITICAL BEHAVIOR RULES:
         
         return base_prompt + persona_specific.get(persona, persona_specific["Aristotle"])
 
-    async def start(self, room: rtc.Room):
-        """Start the moderator agent with Perplexity integration"""
+    async def start(self):
+        """Start the agent with proper LiveKit pattern using Perplexity integration"""
         try:
-            await self.set_agent_state(AgentState.INITIALIZING)
-            logger.info(f"🚀 Starting {self.persona} moderator...")
-            
-            # Initialize session with memory
-            await self.initialize_session()
-            
-            # Get dynamic persona prompt
-            system_prompt = self.get_prompt_for_persona(self.persona)
-            logger.info(f"🎭 Using persona prompt for {self.persona}")
-            
-            # Initialize the agent with Perplexity integration
+            # Create agent with dynamic persona instructions
             agent = Agent(
-                llm=openai.LLM.with_perplexity(
-                    model="llama-3.1-sonar-small-128k-online",  # Use online model for real-time info
-                    api_key=os.getenv("PERPLEXITY_API_KEY"),
-                    system_prompt=system_prompt,
-                    web_search_options={
-                        "search_context_size": "medium"  # Balance between cost and context
-                    }
-                ),
-                tts=cartesia.TTS() if os.getenv("CARTESIA_API_KEY") else silero.TTS(),
-                stt=deepgram.STT() if os.getenv("DEEPGRAM_API_KEY") else openai.STT(),
-                turn_detector=EnglishModel(),
-                room_input_options=RoomInputOptions(
-                    auto_subscribe=True,
-                    track_timeout=30.0,
-                    silence_timeout=2.0
-                )
+                instructions=self.get_prompt_for_persona(self.persona),
+                tools=[]  # Add function tools here if needed
             )
             
-            # Set up agent event handlers for memory integration
-            @agent.on("agent_speech_committed")
-            async def on_agent_speech(agent_speech):
-                """Store agent speech in memory"""
-                await self.store_conversation_turn(
-                    f"AI-{self.persona}", 
-                    agent_speech.transcript, 
-                    "agent_speech"
-                )
-                logger.debug(f"💾 Stored agent speech: {agent_speech.transcript[:50]}...")
+            # Create session with Perplexity integration for real-time research
+            session = AgentSession(
+                vad=silero.VAD.load(),
+                stt=deepgram.STT(model="nova-2"),
+                llm=openai.LLM.with_perplexity(
+                    model="llama-3.1-sonar-small-128k-online",
+                    api_key=os.getenv("PERPLEXITY_API_KEY")
+                ),
+                tts=openai.TTS(voice="alloy"),
+                turn_detection=EnglishModel(),
+            )
             
-            @agent.on("user_speech_committed") 
-            async def on_user_speech(user_speech):
-                """Store user speech in memory"""
-                participant_name = getattr(user_speech, 'participant', {}).get('identity', 'Unknown')
-                await self.store_conversation_turn(
-                    participant_name,
-                    user_speech.transcript,
-                    "user_speech"
-                )
-                logger.debug(f"💾 Stored user speech from {participant_name}: {user_speech.transcript[:50]}...")
+            # Set up event handlers for memory storage
+            session.on("agent_speech_committed", self._on_agent_speech)
+            session.on("user_speech_committed", self._on_user_speech)
             
-            # Start the agent session
-            agent_session = AgentSession(room=room, agent=agent)
-            await agent_session.start()
+            logger.info(f"🤖 Starting {self.persona} agent with Perplexity integration")
+            logger.info(f"📝 Instructions: {self.get_prompt_for_persona(self.persona)[:100]}...")
             
-            await self.set_agent_state(AgentState.LISTENING)
-            logger.info(f"✅ {self.persona} moderator is ready and listening")
+            # Start the session with the agent
+            await session.start(agent=agent, room=self.room)
+            
+            # Generate initial greeting
+            await session.generate_reply(
+                instructions=f"Greet the users as {self.persona} and introduce the debate topic: '{self.topic}'. Keep it brief."
+            )
             
         except Exception as e:
-            logger.error(f"❌ Failed to start moderator: {e}")
-            await self.set_agent_state(AgentState.INITIALIZING)
+            logger.error(f"Failed to start agent: {e}")
+            await self.set_agent_state(AgentState.ERROR)
             raise
 
 async def entrypoint(ctx: JobContext):
@@ -407,7 +381,7 @@ async def entrypoint(ctx: JobContext):
     
     # Initialize moderator with context including room reference
     moderator = DebateModerator(topic=topic, persona=persona, room_name=room_name, room=ctx.room)
-    await moderator.start(ctx.room)
+    await moderator.start()
 
 if __name__ == "__main__":
     cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint)) 
