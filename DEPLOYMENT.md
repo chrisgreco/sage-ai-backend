@@ -30,8 +30,9 @@ DEBATE_TOPIC=General Discussion
 MODERATOR_PERSONA=neutral-facilitator
 
 # Database (Optional - for memory persistence)
-SUPABASE_URL=your-supabase-url
-SUPABASE_ANON_KEY=your-supabase-key
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your-supabase-anon-key
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key
 ```
 
 ## Render Deployment Configuration

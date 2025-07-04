@@ -50,8 +50,7 @@ COPY debate_moderator_agent.py .
 COPY supabase_memory_manager.py .
 
 # Pre-download LiveKit models to avoid runtime downloads and space issues
-# This must be done as root before switching to appuser
-USER root
+# This must be done AFTER dependencies are installed but BEFORE switching to non-root user
 RUN python debate_moderator_agent.py download-files || echo "Model download failed but continuing build"
 
 # Create non-root user for security

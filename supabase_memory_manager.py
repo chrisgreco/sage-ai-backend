@@ -25,18 +25,34 @@ class SupabaseMemoryManager:
     
     def __init__(self):
         self.supabase_url = os.getenv("SUPABASE_URL")
-        self.supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+        # Try service role key first (for server-side operations), fallback to anon key
+        self.supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_ANON_KEY")
         
         if not self.supabase_url or not self.supabase_key:
-            logger.warning("Supabase credentials not found. Memory features will be disabled.")
+            logger.warning("Supabase credentials not found. Required: SUPABASE_URL and either SUPABASE_SERVICE_ROLE_KEY or SUPABASE_KEY")
+            logger.info("Memory features will be disabled. Agent will continue without persistent memory.")
             self.client = None
             return
             
         try:
             self.client: Client = create_client(self.supabase_url, self.supabase_key)
-            logger.info("Supabase memory manager initialized successfully")
+            
+            # Test the connection by trying to access the auth service
+            auth_user = self.client.auth.get_user()
+            logger.info("✅ Supabase memory manager initialized and connected successfully")
+            
+            # Test database access (this will help verify RLS policies)
+            try:
+                # Try a simple select to test database connectivity
+                result = self.client.table("debate_sessions").select("id").limit(1).execute()
+                logger.info("✅ Database table access verified - debate_sessions table accessible")
+            except Exception as db_error:
+                logger.warning(f"⚠️ Database table access limited: {db_error}")
+                logger.info("This may be due to Row Level Security. Ensure your Supabase key has appropriate permissions.")
+                
         except Exception as e:
-            logger.error(f"Failed to initialize Supabase client: {e}")
+            logger.error(f"❌ Failed to initialize Supabase client: {e}")
+            logger.error("Verify your SUPABASE_URL and SUPABASE_KEY environment variables")
             self.client = None
 
     async def store_debate_session(self, room_name: str, topic: str, persona: str, participants: List[str]) -> Optional[str]:
