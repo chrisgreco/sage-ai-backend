@@ -1,345 +1,350 @@
 #!/usr/bin/env python3
 
 """
-Supabase Memory Manager for Sage AI Debate Moderator
-Handles persistent storage of debate context, participant memory, and conversation history
+Supabase Memory Manager - Enhanced Memory System for LiveKit Agents
+Provides conversation memory, participant memory, and session management with Supabase
+Backward compatible with existing schema and supports new optimized schema
 """
 
 import os
-import asyncio
-import logging
-from typing import Optional, Dict, List, Any
-from datetime import datetime, timedelta
 import json
-
+import logging
+from typing import Optional, List, Dict, Any, Union
+from datetime import datetime, timezone
 from supabase import create_client, Client
-from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
-
+# Configure logging
 logger = logging.getLogger(__name__)
 
 class SupabaseMemoryManager:
-    """Manages debate memory and context using Supabase"""
+    """
+    Enhanced memory manager using Supabase for persistent storage.
+    Supports both legacy schema (debate_rooms, conversation_memory, personality_memory)
+    and new optimized schema (debate_sessions, conversation_turns, participant_memory)
+    """
     
     def __init__(self):
-        self.supabase_url = os.getenv("SUPABASE_URL")
-        # Try service role key first (for server-side operations), fallback to anon key
-        self.supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_KEY") or os.getenv("SUPABASE_ANON_KEY")
-        
-        if not self.supabase_url or not self.supabase_key:
-            logger.warning("Supabase credentials not found. Required: SUPABASE_URL and either SUPABASE_SERVICE_ROLE_KEY or SUPABASE_KEY")
+        """Initialize Supabase client with environment variables."""
+        self.client: Optional[Client] = None
+        self.schema_type: Optional[str] = None  # 'legacy' or 'new'
+        self._initialize_client()
+    
+    def _initialize_client(self):
+        """Initialize the Supabase client and detect schema type."""
+        try:
+            # Get Supabase credentials from environment variables
+            # Render sets these automatically - no need for dotenv
+            supabase_url = os.getenv('SUPABASE_URL')
+            
+            # Support both service role key and regular key
+            supabase_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY') or os.getenv('SUPABASE_KEY')
+            
+            if not supabase_url or not supabase_key:
+                logger.warning("Supabase credentials not found. Required: SUPABASE_URL and either SUPABASE_SERVICE_ROLE_KEY or SUPABASE_KEY")
+                logger.info("Memory features will be disabled. Agent will continue without persistent memory.")
+                return
+            
+            # Create Supabase client
+            self.client = create_client(supabase_url, supabase_key)
+            
+            # Test connection and detect schema type
+            self._test_connection_and_detect_schema()
+            
+            logger.info(f"✅ Supabase Memory Manager initialized successfully with {self.schema_type} schema")
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize Supabase client: {e}")
             logger.info("Memory features will be disabled. Agent will continue without persistent memory.")
             self.client = None
+    
+    def _test_connection_and_detect_schema(self):
+        """Test connection and detect which schema is available."""
+        if not self.client:
             return
             
         try:
-            self.client: Client = create_client(self.supabase_url, self.supabase_key)
-            
-            # Test the connection by trying to access the auth service
-            auth_user = self.client.auth.get_user()
-            logger.info("✅ Supabase memory manager initialized and connected successfully")
-            
-            # Test database access (this will help verify RLS policies)
+            # Try to query new schema first
             try:
-                # Try a simple select to test database connectivity
-                result = self.client.table("debate_sessions").select("id").limit(1).execute()
-                logger.info("✅ Database table access verified - debate_sessions table accessible")
-            except Exception as db_error:
-                logger.warning(f"⚠️ Database table access limited: {db_error}")
-                logger.info("This may be due to Row Level Security. Ensure your Supabase key has appropriate permissions.")
+                result = self.client.table('debate_sessions').select('id').limit(1).execute()
+                self.schema_type = 'new'
+                logger.info("Detected new optimized database schema")
+                return
+            except Exception:
+                pass
+                
+            # Fall back to legacy schema
+            try:
+                result = self.client.table('debate_rooms').select('id').limit(1).execute()
+                self.schema_type = 'legacy'
+                logger.info("Detected legacy database schema")
+                return
+            except Exception:
+                pass
+                
+            # If neither works, throw error
+            raise Exception("No compatible database schema found")
+            
+        except Exception as e:
+            raise Exception(f"Database connection test failed: {e}")
+    
+    def is_available(self) -> bool:
+        """Check if memory manager is available."""
+        return self.client is not None and self.schema_type is not None
+    
+    async def create_session(self, room_name: str, topic: str, persona: str) -> Optional[str]:
+        """Create a new debate session and return session ID."""
+        if not self.is_available():
+            logger.warning("Memory manager not available - session will not be persisted")
+            return None
+            
+        try:
+            if self.schema_type == 'new':
+                # Use new schema
+                response = self.client.table('debate_sessions').insert({
+                    'room_name': room_name,
+                    'topic': topic,
+                    'persona': persona,
+                    'participants': [],
+                    'status': 'active'
+                }).execute()
+                
+                session_id = response.data[0]['id']
+                logger.info(f"Created new debate session: {session_id}")
+                return session_id
+                
+            else:  # legacy schema
+                # Use legacy schema
+                response = self.client.table('debate_rooms').insert({
+                    'room_name': room_name,
+                    'debate_topic': topic,
+                    'livekit_token_hash': f"persona_{persona}",  # Use persona as token hash
+                    'status': 'active',
+                    'participants': []
+                }).execute()
+                
+                session_id = response.data[0]['id']
+                logger.info(f"Created new debate room (legacy): {session_id}")
+                return session_id
                 
         except Exception as e:
-            logger.error(f"❌ Failed to initialize Supabase client: {e}")
-            logger.error("Verify your SUPABASE_URL and SUPABASE_KEY environment variables")
-            self.client = None
-
-    async def store_debate_session(self, room_name: str, topic: str, persona: str, participants: List[str]) -> Optional[str]:
-        """Store a new debate session"""
-        if not self.client:
+            logger.error(f"Failed to create session: {e}")
             return None
-            
-        try:
-            data = {
-                "room_name": room_name,
-                "topic": topic,
-                "moderator_persona": persona,
-                "participants": participants,
-                "created_at": datetime.utcnow().isoformat(),
-                "status": "active"
-            }
-            
-            result = self.client.table("debate_sessions").insert(data).execute()
-            session_id = result.data[0]["id"] if result.data else None
-            
-            logger.info(f"Stored debate session {session_id} for room {room_name}")
-            return session_id
-            
-        except Exception as e:
-            logger.error(f"Failed to store debate session: {e}")
-            return None
-
-    async def get_debate_session(self, room_name: str) -> Optional[Dict[str, Any]]:
-        """Get debate session by room name"""
-        if not self.client:
-            return None
-            
-        try:
-            result = self.client.table("debate_sessions") \
-                .select("*") \
-                .eq("room_name", room_name) \
-                .eq("status", "active") \
-                .execute()
-            
-            return result.data[0] if result.data else None
-            
-        except Exception as e:
-            logger.error(f"Failed to get debate session: {e}")
-            return None
-
-    async def store_conversation_turn(self, session_id: str, speaker: str, content: str, turn_type: str = "speech") -> bool:
-        """Store a conversation turn"""
-        if not self.client:
+    
+    async def add_conversation_turn(self, session_id: str, speaker: str, content: str, turn_type: str = "speech") -> bool:
+        """Add a conversation turn to the session."""
+        if not self.is_available() or not session_id:
             return False
             
         try:
-            data = {
-                "session_id": session_id,
-                "speaker": speaker,
-                "content": content,
-                "turn_type": turn_type,
-                "timestamp": datetime.utcnow().isoformat()
-            }
+            if self.schema_type == 'new':
+                # Use new schema
+                self.client.table('conversation_turns').insert({
+                    'session_id': session_id,
+                    'speaker': speaker,
+                    'content': content,
+                    'turn_type': turn_type
+                }).execute()
+                
+            else:  # legacy schema
+                # Use legacy schema
+                self.client.table('conversation_memory').insert({
+                    'room_id': session_id,
+                    'speaker_role': 'ai' if speaker.startswith('AI-') else 'human',
+                    'speaker_name': speaker,
+                    'content_text': content,
+                    'content_summary': content[:200],  # Truncate for summary
+                    'timestamp_start': datetime.now(timezone.utc).isoformat()
+                }).execute()
             
-            self.client.table("conversation_turns").insert(data).execute()
-            logger.debug(f"Stored conversation turn from {speaker}")
+            logger.debug(f"Added conversation turn for {speaker}")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to store conversation turn: {e}")
+            logger.error(f"Failed to add conversation turn: {e}")
             return False
-
-    async def get_recent_conversation(self, session_id: str, limit: int = 10) -> List[Dict[str, Any]]:
-        """Get recent conversation turns"""
-        if not self.client:
-            return []
-            
-        try:
-            result = self.client.table("conversation_turns") \
-                .select("*") \
-                .eq("session_id", session_id) \
-                .order("timestamp", desc=True) \
-                .limit(limit) \
-                .execute()
-            
-            # Reverse to get chronological order
-            return list(reversed(result.data)) if result.data else []
-            
-        except Exception as e:
-            logger.error(f"Failed to get recent conversation: {e}")
-            return []
-
-    async def store_participant_memory(self, session_id: str, participant: str, memory_type: str, content: str) -> bool:
-        """Store participant-specific memory"""
-        if not self.client:
+    
+    async def add_participant_memory(self, session_id: str, participant: str, memory_type: str, content: str) -> bool:
+        """Add participant-specific memory."""
+        if not self.is_available() or not session_id:
             return False
             
         try:
-            data = {
-                "session_id": session_id,
-                "participant": participant,
-                "memory_type": memory_type,
-                "content": content,
-                "created_at": datetime.utcnow().isoformat()
-            }
+            if self.schema_type == 'new':
+                # Use new schema
+                self.client.table('participant_memory').insert({
+                    'session_id': session_id,
+                    'participant': participant,
+                    'memory_type': memory_type,
+                    'content': content
+                }).execute()
+                
+            else:  # legacy schema
+                # Use legacy schema - map to personality_memory
+                personality_map = {
+                    'socrates': 'socrates',
+                    'aristotle': 'aristotle', 
+                    'buddha': 'buddha',
+                    'hermes': 'hermes',
+                    'solon': 'solon'
+                }
+                
+                personality = personality_map.get(participant.lower(), 'socrates')
+                
+                self.client.table('personality_memory').insert({
+                    'room_id': session_id,
+                    'personality': personality,
+                    'memory_type': memory_type,
+                    'content': content,
+                    'session_number': 1
+                }).execute()
             
-            self.client.table("participant_memory").insert(data).execute()
-            logger.debug(f"Stored {memory_type} memory for {participant}")
+            logger.debug(f"Added participant memory for {participant}")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to store participant memory: {e}")
+            logger.error(f"Failed to add participant memory: {e}")
             return False
-
-    async def get_participant_memory(self, session_id: str, participant: str, memory_type: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Get participant memory"""
-        if not self.client:
-            return []
-            
-        try:
-            query = self.client.table("participant_memory") \
-                .select("*") \
-                .eq("session_id", session_id) \
-                .eq("participant", participant)
-            
-            if memory_type:
-                query = query.eq("memory_type", memory_type)
-            
-            result = query.order("created_at", desc=True).execute()
-            return result.data if result.data else []
-            
-        except Exception as e:
-            logger.error(f"Failed to get participant memory: {e}")
-            return []
-
-    async def store_moderation_action(self, session_id: str, action_type: str, details: Dict[str, Any]) -> bool:
-        """Store AI moderation action"""
-        if not self.client:
+    
+    async def add_moderation_action(self, session_id: str, action_type: str, details: Dict[str, Any]) -> bool:
+        """Add a moderation action record."""
+        if not self.is_available() or not session_id:
             return False
             
         try:
-            data = {
-                "session_id": session_id,
-                "action_type": action_type,
-                "details": json.dumps(details),
-                "timestamp": datetime.utcnow().isoformat()
-            }
+            if self.schema_type == 'new':
+                # Use new schema
+                self.client.table('moderation_actions').insert({
+                    'session_id': session_id,
+                    'action_type': action_type,
+                    'details': json.dumps(details)
+                }).execute()
+                
+            else:  # legacy schema
+                # For legacy schema, store in debate_context
+                self.client.table('debate_context').insert({
+                    'room_id': session_id,
+                    'session_number': 1,
+                    'context_type': 'session_summary',  # Use existing enum value
+                    'content': f"Moderation Action: {action_type} - {json.dumps(details)}",
+                    'importance_score': 7
+                }).execute()
             
-            self.client.table("moderation_actions").insert(data).execute()
-            logger.debug(f"Stored moderation action: {action_type}")
+            logger.debug(f"Added moderation action: {action_type}")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to store moderation action: {e}")
+            logger.error(f"Failed to add moderation action: {e}")
             return False
-
-    async def get_debate_context(self, session_id: str) -> Dict[str, Any]:
-        """Get comprehensive debate context for AI agents"""
-        if not self.client:
-            return {}
-            
-        try:
-            # Get session info
-            session = await self.get_debate_session_by_id(session_id)
-            if not session:
-                return {}
-            
-            # Get recent conversation
-            recent_conversation = await self.get_recent_conversation(session_id, limit=20)
-            
-            # Get all participant memories
-            participants = session.get("participants", [])
-            participant_memories = {}
-            for participant in participants:
-                memories = await self.get_participant_memory(session_id, participant)
-                participant_memories[participant] = memories
-            
-            # Get recent moderation actions
-            moderation_actions = await self.get_recent_moderation_actions(session_id, limit=10)
-            
-            return {
-                "session": session,
-                "recent_conversation": recent_conversation,
-                "participant_memories": participant_memories,
-                "moderation_actions": moderation_actions,
-                "context_retrieved_at": datetime.utcnow().isoformat()
-            }
-            
-        except Exception as e:
-            logger.error(f"Failed to get debate context: {e}")
-            return {}
-
-    async def get_debate_session_by_id(self, session_id: str) -> Optional[Dict[str, Any]]:
-        """Get debate session by ID"""
-        if not self.client:
-            return None
-            
-        try:
-            result = self.client.table("debate_sessions") \
-                .select("*") \
-                .eq("id", session_id) \
-                .execute()
-            
-            return result.data[0] if result.data else None
-            
-        except Exception as e:
-            logger.error(f"Failed to get debate session by ID: {e}")
-            return None
-
-    async def get_recent_moderation_actions(self, session_id: str, limit: int = 10) -> List[Dict[str, Any]]:
-        """Get recent moderation actions"""
-        if not self.client:
+    
+    async def get_conversation_history(self, session_id: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """Retrieve recent conversation history."""
+        if not self.is_available() or not session_id:
             return []
             
         try:
-            result = self.client.table("moderation_actions") \
-                .select("*") \
-                .eq("session_id", session_id) \
-                .order("timestamp", desc=True) \
-                .limit(limit) \
-                .execute()
-            
-            # Parse JSON details
-            actions = []
-            for action in result.data or []:
-                try:
-                    action["details"] = json.loads(action["details"])
-                except:
-                    pass
-                actions.append(action)
-            
-            return actions
-            
+            if self.schema_type == 'new':
+                # Use new schema
+                response = self.client.table('conversation_turns') \
+                    .select('speaker, content, turn_type, timestamp') \
+                    .eq('session_id', session_id) \
+                    .order('timestamp', desc=True) \
+                    .limit(limit) \
+                    .execute()
+                
+                return response.data
+                
+            else:  # legacy schema
+                # Use legacy schema
+                response = self.client.table('conversation_memory') \
+                    .select('speaker_name, content_text, speaker_role, timestamp_start') \
+                    .eq('room_id', session_id) \
+                    .order('timestamp_start', desc=True) \
+                    .limit(limit) \
+                    .execute()
+                
+                # Convert to standard format
+                history = []
+                for item in response.data:
+                    history.append({
+                        'speaker': item['speaker_name'],
+                        'content': item['content_text'],
+                        'turn_type': item['speaker_role'],
+                        'timestamp': item['timestamp_start']
+                    })
+                return history
+                
         except Exception as e:
-            logger.error(f"Failed to get recent moderation actions: {e}")
+            logger.error(f"Failed to retrieve conversation history: {e}")
             return []
-
-    async def end_debate_session(self, session_id: str) -> bool:
-        """Mark debate session as ended"""
-        if not self.client:
+    
+    async def get_participant_memories(self, session_id: str, participant: str) -> List[Dict[str, Any]]:
+        """Get memories for a specific participant."""
+        if not self.is_available() or not session_id:
+            return []
+            
+        try:
+            if self.schema_type == 'new':
+                # Use new schema
+                response = self.client.table('participant_memory') \
+                    .select('memory_type, content, created_at') \
+                    .eq('session_id', session_id) \
+                    .eq('participant', participant) \
+                    .order('created_at', desc=True) \
+                    .execute()
+                
+                return response.data
+                
+            else:  # legacy schema
+                # Use legacy schema
+                personality_map = {
+                    'socrates': 'socrates',
+                    'aristotle': 'aristotle', 
+                    'buddha': 'buddha',
+                    'hermes': 'hermes',
+                    'solon': 'solon'
+                }
+                
+                personality = personality_map.get(participant.lower(), 'socrates')
+                
+                response = self.client.table('personality_memory') \
+                    .select('memory_type, content, created_at') \
+                    .eq('room_id', session_id) \
+                    .eq('personality', personality) \
+                    .order('created_at', desc=True) \
+                    .execute()
+                
+                return response.data
+                
+        except Exception as e:
+            logger.error(f"Failed to retrieve participant memories: {e}")
+            return []
+    
+    async def end_session(self, session_id: str) -> bool:
+        """Mark a session as ended."""
+        if not self.is_available() or not session_id:
             return False
             
         try:
-            self.client.table("debate_sessions") \
-                .update({"status": "ended", "ended_at": datetime.utcnow().isoformat()}) \
-                .eq("id", session_id) \
-                .execute()
+            if self.schema_type == 'new':
+                # Use new schema
+                self.client.table('debate_sessions') \
+                    .update({'status': 'ended', 'ended_at': datetime.now(timezone.utc).isoformat()}) \
+                    .eq('id', session_id) \
+                    .execute()
+                    
+            else:  # legacy schema
+                # Use legacy schema
+                self.client.table('debate_rooms') \
+                    .update({'status': 'completed'}) \
+                    .eq('id', session_id) \
+                    .execute()
             
-            logger.info(f"Ended debate session {session_id}")
+            logger.info(f"Ended session: {session_id}")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to end debate session: {e}")
+            logger.error(f"Failed to end session: {e}")
             return False
-
-    async def cleanup_old_sessions(self, days_old: int = 7) -> int:
-        """Clean up old debate sessions"""
-        if not self.client:
-            return 0
-            
-        try:
-            cutoff_date = (datetime.utcnow() - timedelta(days=days_old)).isoformat()
-            
-            # Get old sessions
-            result = self.client.table("debate_sessions") \
-                .select("id") \
-                .lt("created_at", cutoff_date) \
-                .execute()
-            
-            old_session_ids = [session["id"] for session in result.data or []]
-            
-            if not old_session_ids:
-                return 0
-            
-            # Delete related data
-            for session_id in old_session_ids:
-                # Delete conversation turns
-                self.client.table("conversation_turns").delete().eq("session_id", session_id).execute()
-                # Delete participant memory
-                self.client.table("participant_memory").delete().eq("session_id", session_id).execute()
-                # Delete moderation actions
-                self.client.table("moderation_actions").delete().eq("session_id", session_id).execute()
-            
-            # Delete sessions
-            self.client.table("debate_sessions").delete().in_("id", old_session_ids).execute()
-            
-            logger.info(f"Cleaned up {len(old_session_ids)} old debate sessions")
-            return len(old_session_ids)
-            
-        except Exception as e:
-            logger.error(f"Failed to cleanup old sessions: {e}")
-            return 0
 
 # Global instance
 memory_manager = SupabaseMemoryManager() 
