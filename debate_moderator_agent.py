@@ -32,29 +32,21 @@ from livekit import api, rtc
 from supabase_memory_manager import SupabaseMemoryManager
 
 # Environment variables are managed by Render directly - no need for dotenv
-# load_dotenv() removed since Render sets environment variables
+# Render automatically sets environment variables in the container runtime
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize memory manager with error handling
-try:
-    memory_manager = SupabaseMemoryManager()
-    logger.info("✅ Supabase memory manager initialized successfully")
-except Exception as e:
-    logger.warning(f"⚠️ Memory manager initialization failed: {e}")
-    memory_manager = None
-
-# Agent state constants matching frontend expectations
 class AgentState:
+    """Agent state constants for tracking current activity"""
     INITIALIZING = "initializing"
     LISTENING = "listening" 
     THINKING = "thinking"
     SPEAKING = "speaking"
 
 class DebateModerator:
-    """Enhanced Debate Moderator with Memory and Context"""
+    """Enhanced debate moderator with persistent memory and context awareness"""
     
     def __init__(self, topic: str, persona: str, room_name: str, room: rtc.Room):
         self.topic = topic
@@ -62,75 +54,73 @@ class DebateModerator:
         self.room_name = room_name
         self.room = room
         self.session_id: Optional[str] = None
-        self.participants: List[str] = []
         self.conversation_count = 0
         self.current_state = AgentState.INITIALIZING
         
-        logger.info(f"Initialized {persona} moderator for topic: '{topic}' in room: {room_name}")
-
-    async def set_agent_state(self, state: str):
-        """Update agent state and broadcast to room participants"""
-        self.current_state = state
-        logger.info(f"Agent state changed to: {state}")
+        # Initialize memory manager
+        self.memory_manager = SupabaseMemoryManager()
         
+        logger.info(f"🎯 Initialized {persona} moderator for topic: '{topic}' in room: {room_name}")
+        
+    async def set_agent_state(self, state: str):
+        """Update agent state and broadcast to room"""
+        self.current_state = state
+        logger.info(f"🤖 Agent state: {state}")
+        
+        # Broadcast state to room participants
         try:
-            import json
-            
-            # Update participant metadata with agent state
-            metadata = {
-                "agent_state": state,
-                "persona": self.persona,
-                "topic": self.topic,
-                "participant_type": "agent"
-            }
-            await self.room.local_participant.update_metadata(json.dumps(metadata))
-            
-            # Also send state update via data message for immediate frontend feedback
-            state_message = {
-                "type": "agent_state_change",
-                "state": state,
-                "persona": self.persona,
-                "timestamp": datetime.utcnow().isoformat()
-            }
-            
             await self.room.local_participant.publish_data(
-                data=json.dumps(state_message).encode('utf-8'),
+                f'{{"type": "agent_state", "state": "{state}", "persona": "{self.persona}"}}',
                 reliable=True
             )
-            
         except Exception as e:
-            logger.error(f"Failed to update agent state: {e}")
+            logger.warning(f"Failed to broadcast agent state: {e}")
+    
+    async def store_conversation_turn(self, speaker: str, content: str, turn_type: str = "speech"):
+        """Store conversation turn in memory system"""
+        if self.session_id and self.memory_manager.is_available():
+            success = await self.memory_manager.add_conversation_turn(
+                self.session_id, speaker, content, turn_type
+            )
+            if success:
+                logger.debug(f"💾 Stored conversation turn: {speaker}")
+            else:
+                logger.warning(f"Failed to store conversation turn: {speaker}")
+    
+    async def store_agent_memory(self, memory_type: str, content: str):
+        """Store agent-specific memory (insights, decisions, etc.)"""
+        if self.session_id and self.memory_manager.is_available():
+            success = await self.memory_manager.add_participant_memory(
+                self.session_id, f"AI-{self.persona}", memory_type, content
+            )
+            if success:
+                logger.debug(f"💾 Stored agent memory: {memory_type}")
 
     async def initialize_session(self):
-        """Initialize debate session in memory system"""
-        if not memory_manager:
-            logger.warning("Memory manager not available, skipping session initialization")
-            return
-            
+        """Initialize session with Supabase memory"""
         try:
-            self.session_id = await memory_manager.store_debate_session(
-                room_name=self.room_name,
-                topic=self.topic,
-                persona=self.persona,
-                participants=self.participants
-            )
-            if self.session_id:
-                logger.info(f"Debate session {self.session_id} initialized in memory system")
-                
-                # Store initial context
-                await memory_manager.store_moderation_action(
-                    session_id=self.session_id,
-                    action_type="session_start",
-                    details={
-                        "topic": self.topic,
-                        "persona": self.persona,
-                        "room_name": self.room_name
-                    }
+            if self.memory_manager.is_available():
+                self.session_id = await self.memory_manager.create_session(
+                    room_name=self.room_name,
+                    topic=self.topic,
+                    persona=self.persona
                 )
+                
+                if self.session_id:
+                    logger.info(f"✅ Session created: {self.session_id}")
+                    
+                    # Store initial agent memory
+                    await self.store_agent_memory(
+                        "session_start",
+                        f"Started debate session as {self.persona} moderator for topic: {self.topic}"
+                    )
+                else:
+                    logger.warning("⚠️ Session creation failed, continuing without persistence")
             else:
-                logger.warning("Failed to initialize session in memory system - continuing without memory")
+                logger.info("💿 Memory manager not available, running without persistence")
+                
         except Exception as e:
-            logger.error(f"Failed to initialize session: {e}")
+            logger.error(f"❌ Session initialization error: {e}")
 
     @function_tool
     async def set_debate_topic(
@@ -140,26 +130,23 @@ class DebateModerator:
         context_info: Optional[str] = None
     ) -> str:
         """Set or update the debate topic"""
-        old_topic = self.topic
-        self.topic = topic
-        
-        response = f"Debate topic updated from '{old_topic}' to '{topic}'"
-        if context_info:
-            response += f"\n\nAdditional context: {context_info}"
-        
-        # Store in memory if available
-        if memory_manager and self.session_id:
-            try:
-                await memory_manager.store_moderation_action(
-                    session_id=self.session_id,
-                    action_type="topic_change",
-                    details={"old_topic": old_topic, "new_topic": topic, "context": context_info}
-                )
-            except Exception as e:
-                logger.error(f"Failed to store topic change: {e}")
-        
-        logger.info(f"Topic updated to: {topic}")
-        return response
+        try:
+            await self.set_agent_state(AgentState.THINKING)
+            
+            self.topic = topic
+            logger.info(f"📋 Topic updated to: {topic}")
+            
+            # Store topic change in memory
+            await self.store_agent_memory(
+                "topic_change", 
+                f"Updated topic to: {topic}. Context: {context_info or 'None provided'}"
+            )
+            
+            return f"Topic has been set to: '{topic}'. Let's begin our structured discussion."
+            
+        except Exception as e:
+            logger.error(f"Error in set_debate_topic: {e}")
+            return f"I acknowledge the topic '{topic}' but encountered an issue updating it."
 
     @function_tool
     async def moderate_discussion(
@@ -168,63 +155,55 @@ class DebateModerator:
         participant_statement: str,
         speaker_name: Optional[str] = None
     ) -> str:
-        """Moderate the discussion based on the current topic and persona"""
+        """Moderate the discussion with persona-specific approach"""
         try:
-            # Set state to thinking
             await self.set_agent_state(AgentState.THINKING)
             
             self.conversation_count += 1
+            speaker = speaker_name or f"Participant-{self.conversation_count}"
             
-            # Store conversation turn if memory is available
-            if memory_manager and self.session_id and speaker_name:
+            logger.info(f"🎙️ Moderating statement from {speaker}")
+            
+            # Store the participant's statement
+            await self.store_conversation_turn(speaker, participant_statement, "speech")
+            
+            # Store moderation action in memory
+            if self.session_id and self.memory_manager.is_available():
                 try:
-                    await memory_manager.store_conversation_turn(
-                        session_id=self.session_id,
-                        speaker=speaker_name,
-                        content=participant_statement,
-                        turn_type="speech"
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to store conversation turn: {e}")
-            
-            # Get recent context for informed moderation
-            recent_context = []
-            if memory_manager and self.session_id:
-                try:
-                    recent_conversation = await memory_manager.get_recent_conversation(self.session_id, limit=5)
-                    recent_context = [f"{turn['speaker']}: {turn['content']}" for turn in recent_conversation]
-                except Exception as e:
-                    logger.error(f"Failed to get recent context: {e}")
-            
-            # Persona-specific moderation approach
-            persona_instructions = get_persona_instructions(self.persona)
-            
-            context_text = f"Topic: {self.topic}\n"
-            if recent_context:
-                context_text += f"Recent conversation:\n" + "\n".join(recent_context[-3:]) + "\n"
-            context_text += f"Current statement: {participant_statement}\n"
-            context_text += f"Respond as {self.persona} would, following these guidelines: {persona_instructions}"
-            
-            # Store moderation action if memory is available
-            if memory_manager and self.session_id:
-                try:
-                    await memory_manager.store_moderation_action(
-                        session_id=self.session_id,
-                        action_type="moderation_response",
-                        details={
-                            "speaker": speaker_name,
+                    await self.memory_manager.add_moderation_action(
+                        self.session_id,
+                        "statement_review",
+                        {
+                            "speaker": speaker,
                             "statement": participant_statement,
-                            "conversation_count": self.conversation_count
+                            "persona": self.persona,
+                            "topic": self.topic
                         }
                     )
                 except Exception as e:
                     logger.error(f"Failed to store moderation action: {e}")
             
-            return f"As {self.persona}, I acknowledge your statement about {self.topic}. Let me provide some guidance on this perspective."
+            # Get persona instructions for response
+            persona_instructions = get_persona_instructions(self.persona)
+            
+            response = f"Thank you, {speaker}. "
+            
+            # Persona-specific moderation approach
+            if self.persona == "Socrates":
+                response += "That's an interesting perspective. What led you to that conclusion?"
+            elif self.persona == "Aristotle":
+                response += "Let's examine the logic of that argument systematically."
+            else:  # Modern
+                response += "Can you elaborate on that point with specific examples?"
+            
+            # Store our response
+            await self.store_conversation_turn(f"AI-{self.persona}", response, "moderation")
+            
+            return response
             
         except Exception as e:
             logger.error(f"Error in moderate_discussion: {e}")
-            return f"I apologize, but I encountered an issue processing that statement. Please continue the discussion."
+            return "I acknowledge your point. Please continue the discussion."
 
     @function_tool
     async def fact_check_statement(
@@ -233,20 +212,22 @@ class DebateModerator:
         claim: str,
         speaker: Optional[str] = None
     ) -> str:
-        """Fact-check a specific claim made during the debate"""
+        """Fact-check a statement with research if available"""
         try:
-            # Set state to thinking
             await self.set_agent_state(AgentState.THINKING)
             
-            # Store fact-check request if memory is available
-            if memory_manager and self.session_id:
+            logger.info(f"🔍 Fact-checking claim: {claim[:100]}...")
+            
+            # Store fact-check action in memory
+            if self.session_id and self.memory_manager.is_available():
                 try:
-                    await memory_manager.store_moderation_action(
-                        session_id=self.session_id,
-                        action_type="fact_check",
-                        details={
+                    await self.memory_manager.add_moderation_action(
+                        self.session_id,
+                        "fact_check",
+                        {
                             "claim": claim,
                             "speaker": speaker,
+                            "persona": self.persona,
                             "topic": self.topic
                         }
                     )
@@ -258,6 +239,9 @@ class DebateModerator:
             
             response = f"As {self.persona}, I'll examine this claim: '{claim}'"
             response += f"\n\nLet me provide some perspective on this statement in the context of our discussion about {self.topic}."
+            
+            # Store our fact-check response
+            await self.store_conversation_turn(f"AI-{self.persona}", response, "fact_check")
             
             return response
             
@@ -273,8 +257,24 @@ class DebateModerator:
             "persona": self.persona,
             "room_name": self.room_name,
             "conversation_count": self.conversation_count,
-            "current_state": self.current_state
+            "current_state": self.current_state,
+            "memory_available": self.memory_manager.is_available()
         }
+
+    async def get_conversation_summary(self) -> Optional[str]:
+        """Get a summary of the conversation so far"""
+        if not self.session_id or not self.memory_manager.is_available():
+            return None
+            
+        try:
+            history = await self.memory_manager.get_conversation_history(self.session_id, limit=10)
+            if history:
+                return f"Recent conversation: {len(history)} turns recorded"
+            else:
+                return "No conversation history found"
+        except Exception as e:
+            logger.error(f"Failed to get conversation summary: {e}")
+            return None
 
 def get_persona_instructions(persona: str) -> str:
     """Get detailed instructions for each persona"""
@@ -448,137 +448,84 @@ async def entrypoint(ctx: JobContext):
             logger.info("🎙️ OpenAI STT configured (fallback)")
     except Exception as e:
         logger.error(f"❌ STT setup failed: {e}")
-        # Last resort fallback
+        # Final fallback to OpenAI STT
         stt = openai.STT(api_key=openai_key)
         logger.info("🎙️ Using OpenAI STT as fallback")
     
-    # Configure VAD with error handling and retry logic
-    vad = None
-    max_retries = 2
-    
-    for attempt in range(max_retries):
-        try:
-            logger.info(f"🔊 Loading Silero VAD (attempt {attempt + 1}/{max_retries})...")
-            vad = silero.VAD.load()
-            logger.info("🔊 Silero VAD loaded successfully")
-            break
-        except Exception as e:
-            logger.warning(f"⚠️ VAD loading attempt {attempt + 1} failed: {e}")
-            if attempt == max_retries - 1:
-                logger.error(f"❌ VAD loading failed after {max_retries} attempts")
-                logger.info("🔊 Continuing without VAD - LiveKit can handle this")
-                # Continue without VAD - LiveKit can handle this
-                vad = None
-            else:
-                # Wait a bit before retrying
-                await asyncio.sleep(1)
-    
-    # Create enhanced session with all recommended components
+    # Configure turn detector - Use English model for efficiency
     try:
-        session_kwargs = {
-            'stt': stt,
-            'llm': llm,
-            'tts': tts,
-        }
-        
-        # Only add VAD if it loaded successfully
-        if vad:
-            session_kwargs['vad'] = vad
-            
-        # Use the smaller English-only turn detection model (pre-downloaded during build)
-        try:
-            logger.info("🎯 Loading turn detection model (EnglishModel - optimized for space)...")
-            turn_detector = EnglishModel()
-            session_kwargs['turn_detection'] = turn_detector
-            logger.info("🎯 Turn detection (EnglishModel) loaded successfully")
-        except Exception as turn_error:
-            logger.error(f"❌ Turn detection model loading failed: {turn_error}")
-            logger.error("💡 SOLUTION: Ensure models are downloaded during build phase with 'python debate_moderator_agent.py download-files'")
-            raise  # Don't continue without turn detection - this should be fixed properly
-            
-        session = AgentSession(**session_kwargs)
-        logger.info("🎧 Agent session components initialized")
+        turn_detector = EnglishModel()
+        logger.info("🎯 English turn detector configured")
     except Exception as e:
-        logger.error(f"❌ Session initialization failed: {e}")
-        raise
+        logger.error(f"❌ Turn detector setup failed: {e}")
+        turn_detector = None
+        logger.warning("⚠️ Continuing without turn detector")
+        
+    # Create agent session with enhanced memory integration
+    session = AgentSession(
+        llm=llm,
+        tts=tts,
+        stt=stt,
+        vad=silero.VAD.load(activation_threshold=0.6),
+        turn_detector=turn_detector,
+        min_endpointing_delay=0.8,  # Slightly longer for better turn detection
+        max_endpointing_delay=2.5,  # Reasonable max
+    )
     
-    # Add session event handlers for state management
+    # Enhanced event handlers for automatic memory storage
     @session.on("agent_speech_committed")
-    async def on_agent_speech_committed():
-        """Called when agent finishes speaking"""
-        logger.info("Agent finished speaking, returning to listening state")
-        await moderator.set_agent_state(AgentState.LISTENING)
-
-    @session.on("user_speech_committed")  
-    async def on_user_speech_committed():
-        """Called when user finishes speaking"""
-        logger.info("User speech detected, agent is listening")
-        await moderator.set_agent_state(AgentState.LISTENING)
-
-    # Start the session with enhanced room input options
-    try:
-        await session.start(
-            agent=agent, 
-            room=ctx.room,
-        )
-        logger.info("🚀 Agent session started successfully")
-        
-        # Set agent state to listening after successful start
-        await moderator.set_agent_state(AgentState.LISTENING)
-        
-        # Generate contextual greeting with error handling
+    async def on_agent_speech_committed(speech):
+        """Store agent speech in memory automatically"""
         try:
-            await moderator.set_agent_state(AgentState.SPEAKING)
-            greeting = f"Greetings! I am {persona}, your debate moderator for today's discussion on: {topic}. I'm here to facilitate a thoughtful dialogue. Please feel free to share your perspectives."
-            
-            await session.generate_reply(instructions=greeting)
-            logger.info("💬 Contextual greeting sent")
-            
-            # Store initial greeting if memory is available
-            if memory_manager and moderator.session_id:
-                try:
-                    await memory_manager.store_conversation_turn(
-                        session_id=moderator.session_id,
-                        speaker=f"AI-{persona}",
-                        content=greeting,
-                        turn_type="greeting"
-                    )
-                except Exception as e:
-                    logger.error(f"Failed to store greeting: {e}")
-            
-            # Return to listening state after greeting
-            await moderator.set_agent_state(AgentState.LISTENING)
-            
+            if speech.text and speech.text.strip():
+                await moderator.store_conversation_turn(
+                    f"AI-{moderator.persona}", 
+                    speech.text, 
+                    "speech"
+                )
+                logger.debug(f"💾 Stored agent speech: {speech.text[:50]}...")
         except Exception as e:
-            logger.error(f"❌ Greeting generation failed: {e}")
-            # Continue without greeting - agent is still functional
-            await moderator.set_agent_state(AgentState.LISTENING)
-        
-    except Exception as e:
-        logger.error(f"❌ Session start failed: {e}")
-        raise
+            logger.error(f"Failed to store agent speech: {e}")
+    
+    @session.on("user_speech_committed")  
+    async def on_user_speech_committed(speech):
+        """Store user speech in memory automatically"""
+        try:
+            if speech.text and speech.text.strip():
+                # Use participant identity if available, otherwise generic
+                speaker_name = getattr(speech, 'participant', None)
+                if speaker_name:
+                    speaker = f"User-{speaker_name.identity}"
+                else:
+                    speaker = f"User-{moderator.conversation_count + 1}"
+                
+                await moderator.store_conversation_turn(
+                    speaker, 
+                    speech.text, 
+                    "speech"
+                )
+                logger.debug(f"💾 Stored user speech: {speech.text[:50]}...")
+        except Exception as e:
+            logger.error(f"Failed to store user speech: {e}")
+    
+    # Start the session
+    await session.start(agent=agent, room=ctx.room)
+    
+    # Initial greeting with persona context
+    await moderator.set_agent_state(AgentState.SPEAKING)
+    
+    greeting = f"""Hello! I'm {persona}, and I'll be moderating our discussion about {topic}. 
+    
+    I'm here to facilitate a thoughtful exchange of ideas. Please feel free to share your thoughts, and I'll help guide our conversation."""
+    
+    # Store the initial greeting
+    await moderator.store_conversation_turn(f"AI-{persona}", greeting, "greeting")
+    
+    # Generate the greeting reply
+    await session.generate_reply(instructions=f"Greet participants as {persona} and invite them to begin discussing {topic}. Be warm but brief.")
+    
+    logger.info(f"🎤 {persona} moderator is ready and listening...")
+    await moderator.set_agent_state(AgentState.LISTENING)
 
 if __name__ == "__main__":
-    import sys
-    
-    # Handle download-files command for Docker optimization
-    if len(sys.argv) > 1 and sys.argv[1] == "download-files":
-        logger.info("📦 Pre-downloading model files...")
-        try:
-            # Pre-load models to speed up startup
-            silero.VAD.load()
-            logger.info("✅ Models downloaded successfully")
-        except Exception as e:
-            logger.warning(f"⚠️ Model download failed (optional): {e}")
-        sys.exit(0)
-    
-    # Standard LiveKit Agents CLI pattern
-    logger.info("🚀 Starting LiveKit Agent with CLI")
-    
-    cli.run_app(
-        WorkerOptions(
-            entrypoint_fnc=entrypoint,
-            prewarm_fnc=None,
-            port=8081,
-        )
-    ) 
+    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint)) 
