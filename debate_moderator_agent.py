@@ -193,7 +193,9 @@ class DebateModerator:
                 response += "That's an interesting perspective. What led you to that conclusion?"
             elif self.persona == "Aristotle":
                 response += "Let's examine the logic of that argument systematically."
-            else:  # Modern
+            elif self.persona == "Buddha":
+                response += "I hear your perspective with compassion. How might we find common ground here?"
+            else:  # Fallback
                 response += "Can you elaborate on that point with specific examples?"
             
             # Store our response
@@ -297,13 +299,13 @@ def get_persona_instructions(persona: str) -> str:
         - Helping participants examine their own beliefs
         """,
         
-        "Modern": """
-        You are a modern debate moderator. Approach debates with:
-        - Contemporary communication styles
-        - Focus on evidence-based reasoning
-        - Awareness of diverse perspectives
-        - Structured time management
-        - Emphasis on respectful dialogue and finding common ground
+        "Buddha": """
+        You are Buddha, the enlightened teacher. Approach debates with:
+        - Mindful communication and compassionate understanding
+        - Focus on reducing suffering and finding common ground
+        - Emphasis on the middle way and balanced perspectives
+        - Gentle guidance toward wisdom and mutual understanding
+        - De-escalation of conflicts through mindful dialogue
         """
     }
     
