@@ -318,13 +318,18 @@ CRITICAL BEHAVIOR RULES:
                 tools=[]  # Add function tools here if needed
             )
             
-            # Create session with Perplexity integration for real-time research
+            # Create session with Perplexity integration following recommended pattern
             session = AgentSession(
                 vad=silero.VAD.load(),
                 stt=deepgram.STT(model="nova-2"),
                 llm=openai.LLM.with_perplexity(
-                    model="llama-3.1-sonar-small-128k-online",
-                    api_key=os.getenv("PERPLEXITY_API_KEY")
+                    model="sonar-pro",                         # ✅ Current supported model
+                    api_key=None,                               # ✅ Pulled from PERPLEXITY_API_KEY in env
+                    base_url="https://api.perplexity.ai",      # ✅ Default Perplexity endpoint
+                    client=openai.AsyncClient(),                # ✅ Optional but safe
+                    temperature=0.7,                            # 🎛 Tune as needed
+                    parallel_tool_calls=False,                  # ⚙ Explicit default behavior
+                    tool_choice="auto"                         # 🎯 Delegate tool choice to LLM
                 ),
                 tts=openai.TTS(voice="alloy"),
                 turn_detection=EnglishModel(),
@@ -334,7 +339,7 @@ CRITICAL BEHAVIOR RULES:
             session.on("agent_speech_committed", self._on_agent_speech)
             session.on("user_speech_committed", self._on_user_speech)
             
-            logger.info(f"🤖 Starting {self.persona} agent with Perplexity integration")
+            logger.info(f"🤖 Starting {self.persona} agent with Perplexity (sonar-pro) integration")
             logger.info(f"📝 Instructions: {self.get_prompt_for_persona(self.persona)[:100]}...")
             
             # Start the session with the agent
