@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 # LiveKit imports for token generation
 from livekit import api
+from livekit.api import RoomService
 
 # Environment variables are managed by Render directly - no need for dotenv
 # load_dotenv() removed since Render sets environment variables
@@ -254,7 +255,6 @@ async def start_agent_process(room_name: str, topic: str, persona: str):
             
             # Debate context
             "DEBATE_TOPIC": topic,
-            "DEBATE_PERSONA": persona,
             "ROOM_NAME": room_name,
             
             # AI provider API keys
@@ -263,9 +263,10 @@ async def start_agent_process(room_name: str, topic: str, persona: str):
             "CARTESIA_API_KEY": os.getenv("CARTESIA_API_KEY", ""),
             "DEEPGRAM_API_KEY": os.getenv("DEEPGRAM_API_KEY", ""),
             
-            # Memory system
+            # Database (optional)
             "SUPABASE_URL": os.getenv("SUPABASE_URL", ""),
             "SUPABASE_KEY": os.getenv("SUPABASE_KEY", ""),
+            "SUPABASE_SERVICE_ROLE_KEY": os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
         })
         
         # Start the agent process with proper error handling
@@ -276,7 +277,7 @@ async def start_agent_process(room_name: str, topic: str, persona: str):
         cmd = [sys.executable, "debate_moderator_agent.py", "start"]
         
         logger.info(f"Starting agent with command: {' '.join(cmd)}")
-        logger.info(f"Environment variables set: LIVEKIT_URL, DEBATE_TOPIC={topic}, DEBATE_PERSONA={persona}")
+        logger.info(f"Environment variables set: LIVEKIT_URL, DEBATE_TOPIC={topic}")
         
         process = subprocess.Popen(
             cmd,
@@ -297,6 +298,30 @@ async def start_agent_process(room_name: str, topic: str, persona: str):
         
         # Monitor process in background (non-blocking)
         asyncio.create_task(monitor_agent_process(room_name, process))
+        
+        # Update room metadata with dynamic persona information
+        try:
+            import json
+            room_metadata = {
+                "persona": persona,
+                "topic": topic,
+                "created_at": datetime.utcnow().isoformat()
+            }
+            
+            # Update room metadata using LiveKit API
+            room_service = RoomService()
+            room_service.api_key = LIVEKIT_API_KEY
+            room_service.api_secret = LIVEKIT_API_SECRET
+            room_service.url = LIVEKIT_URL
+            
+            await room_service.update_room_metadata(
+                room=room_name,
+                metadata=json.dumps(room_metadata)
+            )
+            logger.info(f"✅ Updated room metadata with persona: {persona}")
+        except Exception as e:
+            logger.warning(f"Failed to update room metadata: {e}")
+            # Continue anyway - agent can still work with default persona
         
     except Exception as e:
         logger.error(f"❌ Failed to start agent process: {e}")

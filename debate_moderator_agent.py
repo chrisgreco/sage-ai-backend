@@ -321,225 +321,37 @@ def get_persona_instructions(persona: str) -> str:
     return personas.get(persona, personas["Aristotle"])
 
 async def entrypoint(ctx: JobContext):
-    """Enhanced entrypoint with topic and persona from environment variables"""
+    """Enhanced entrypoint with topic and persona from room metadata"""
     
-    # Connect to room first 
+    # Connect to room first to access metadata
     await ctx.connect()
     logger.info("✅ Connected to LiveKit room")
     
     # Get context from environment variables (set by the backend)
     topic = os.getenv("DEBATE_TOPIC", "General Discussion")
-    persona = os.getenv("DEBATE_PERSONA", "Aristotle")
     room_name = os.getenv("ROOM_NAME", ctx.room.name or "unknown")
+    
+    # Get persona from room metadata (dynamic per room)
+    persona = "Aristotle"  # Default fallback
+    if ctx.room and ctx.room.metadata:
+        try:
+            import json
+            room_metadata = json.loads(ctx.room.metadata)
+            persona = room_metadata.get("persona", "Aristotle")
+            # Also get topic from metadata if available (more current than env var)
+            if "topic" in room_metadata:
+                topic = room_metadata["topic"]
+            logger.info(f"📋 Got persona '{persona}' and topic '{topic}' from room metadata")
+        except (json.JSONDecodeError, Exception) as e:
+            logger.warning(f"Failed to parse room metadata: {e}, using defaults")
+    else:
+        logger.info(f"No room metadata found, using default persona: {persona}")
     
     logger.info(f"🎯 Starting {persona} moderator for topic: '{topic}' in room: {room_name}")
     
     # Initialize moderator with context including room reference
     moderator = DebateModerator(topic=topic, persona=persona, room_name=room_name, room=ctx.room)
-    await moderator.initialize_session()
-    
-    # Set initial agent state
-    await moderator.set_agent_state(AgentState.INITIALIZING)
-    
-    # Get persona instructions
-    instructions = get_persona_instructions(persona)
-    
-    # Create agent with enhanced tools and MINIMAL intervention instructions
-    agent = Agent(
-        instructions=f"""
-        You are {persona}, moderating a debate about: "{topic}"
-        
-        {instructions}
-        
-        CRITICAL BEHAVIOR RULES:
-        1. Keep ALL responses SHORT and TO THE POINT (1-2 sentences maximum)
-        2. ONLY SPEAK WHEN:
-           - Directly asked a question by participants
-           - Discussion becomes hostile or unproductive
-           - Factual misinformation needs correction
-           - Participants explicitly request moderation
-        3. DO NOT interrupt natural conversation flow
-        4. Let participants lead the discussion - you are a GUIDE, not a participant
-        5. Be present but not intrusive
-        
-        When you do speak, be precise and helpful, then step back.
-        """,
-        tools=[
-            moderator.set_debate_topic,
-            moderator.moderate_discussion,
-            moderator.fact_check_statement,
-        ],
-    )
-    
-    # Verify API keys
-    perplexity_key = os.getenv("PERPLEXITY_API_KEY")
-    openai_key = os.getenv("OPENAI_API_KEY")
-    deepgram_key = os.getenv("DEEPGRAM_API_KEY")
-    
-    if not openai_key:
-        logger.error("❌ OPENAI_API_KEY environment variable is required")
-        raise ValueError("OPENAI_API_KEY environment variable is required")
-    
-    logger.info("🔑 API keys verified")
-    
-    # Check available disk space
-    try:
-        total, used, free = shutil.disk_usage("/")
-        free_gb = free // (1024**3)
-        logger.info(f"💾 Available disk space: {free_gb}GB")
-        
-        # If less than 1GB free, disable model downloads
-        if free_gb < 1:
-            logger.warning(f"⚠️ Low disk space ({free_gb}GB), disabling advanced models to prevent crashes")
-            os.environ["ENABLE_TURN_DETECTION"] = "false"
-            # Could also disable VAD here if needed
-    except Exception as e:
-        logger.warning(f"Could not check disk space: {e}")
-    
-    # Configure LLM - Use Perplexity if available, fallback to OpenAI
-    try:
-        if perplexity_key:
-            perplexity_model = "sonar"  # Current recommended Perplexity model
-            llm = openai.LLM.with_perplexity(
-                model=perplexity_model,
-                api_key=perplexity_key,
-                temperature=0.7
-            )
-            logger.info(f"🧠 Perplexity LLM configured: {perplexity_model}")
-        else:
-            # Fallback to OpenAI
-            llm = openai.LLM(
-                model="gpt-4o-mini",
-                api_key=openai_key,
-                temperature=0.7
-            )
-            logger.info("🧠 OpenAI LLM configured (fallback)")
-        
-    except Exception as e:
-        logger.error(f"❌ LLM setup failed: {e}")
-        # Last resort fallback
-        llm = openai.LLM(
-            model="gpt-4o-mini",
-            api_key=openai_key,
-            temperature=0.7
-        )
-        logger.info("🧠 Using OpenAI LLM as last resort")
-    
-    # Configure TTS with Cartesia for better voice quality (fallback to OpenAI)
-    try:
-        cartesia_key = os.getenv("CARTESIA_API_KEY")
-        if cartesia_key:
-            tts = cartesia.TTS(
-                model="sonic-2", 
-                voice="f786b574-daa5-4673-aa0c-cbe3e8534c02",  # Default voice
-                api_key=cartesia_key
-            )
-            logger.info("🎤 Cartesia TTS configured (premium)")
-        else:
-            # Fallback to OpenAI TTS
-            tts = openai.TTS(
-                voice="alloy",
-                api_key=openai_key,
-            )
-            logger.info("🎤 OpenAI TTS configured (fallback)")
-    except Exception as e:
-        logger.error(f"❌ TTS setup failed: {e}")
-        # Fallback to OpenAI TTS
-        tts = openai.TTS(
-            voice="alloy",
-            api_key=openai_key,
-        )
-        logger.info("🎤 Using OpenAI TTS as fallback")
-    
-    # Configure STT with proper fallbacks
-    try:
-        if deepgram_key:
-            stt = deepgram.STT(model="nova-2", api_key=deepgram_key)
-            logger.info("🎙️ Deepgram STT configured")
-        else:
-            # Fallback to OpenAI STT
-            stt = openai.STT(api_key=openai_key)
-            logger.info("🎙️ OpenAI STT configured (fallback)")
-    except Exception as e:
-        logger.error(f"❌ STT setup failed: {e}")
-        # Final fallback to OpenAI STT
-        stt = openai.STT(api_key=openai_key)
-        logger.info("🎙️ Using OpenAI STT as fallback")
-    
-    # Configure turn detector - Use English model for efficiency
-    try:
-        turn_detector = EnglishModel()
-        logger.info("🎯 English turn detector configured")
-    except Exception as e:
-        logger.error(f"❌ Turn detector setup failed: {e}")
-        turn_detector = None
-        logger.warning("⚠️ Continuing without turn detector")
-        
-    # Create agent session with enhanced memory integration
-    session = AgentSession(
-        llm=llm,
-        tts=tts,
-        stt=stt,
-        vad=silero.VAD.load(activation_threshold=0.6),
-        turn_detector=turn_detector,
-        min_endpointing_delay=0.8,  # Slightly longer for better turn detection
-        max_endpointing_delay=2.5,  # Reasonable max
-    )
-    
-    # Enhanced event handlers for automatic memory storage
-    @session.on("agent_speech_committed")
-    async def on_agent_speech_committed(speech):
-        """Store agent speech in memory automatically"""
-        try:
-            if speech.text and speech.text.strip():
-                await moderator.store_conversation_turn(
-                    f"AI-{moderator.persona}", 
-                    speech.text, 
-                    "speech"
-                )
-                logger.debug(f"💾 Stored agent speech: {speech.text[:50]}...")
-        except Exception as e:
-            logger.error(f"Failed to store agent speech: {e}")
-    
-    @session.on("user_speech_committed")  
-    async def on_user_speech_committed(speech):
-        """Store user speech in memory automatically"""
-        try:
-            if speech.text and speech.text.strip():
-                # Use participant identity if available, otherwise generic
-                speaker_name = getattr(speech, 'participant', None)
-                if speaker_name:
-                    speaker = f"User-{speaker_name.identity}"
-                else:
-                    speaker = f"User-{moderator.conversation_count + 1}"
-                
-                await moderator.store_conversation_turn(
-                    speaker, 
-                    speech.text, 
-                    "speech"
-                )
-                logger.debug(f"💾 Stored user speech: {speech.text[:50]}...")
-        except Exception as e:
-            logger.error(f"Failed to store user speech: {e}")
-    
-    # Start the session
-    await session.start(agent=agent, room=ctx.room)
-    
-    # Initial greeting with persona context
-    await moderator.set_agent_state(AgentState.SPEAKING)
-    
-    greeting = f"""Hello! I'm {persona}, and I'll be moderating our discussion about {topic}. 
-    
-    I'm here to facilitate a thoughtful exchange of ideas. Please feel free to share your thoughts, and I'll help guide our conversation."""
-    
-    # Store the initial greeting
-    await moderator.store_conversation_turn(f"AI-{persona}", greeting, "greeting")
-    
-    # Generate the greeting reply
-    await session.generate_reply(instructions=f"Greet participants as {persona} and invite them to begin discussing {topic}. Be warm but brief.")
-    
-    logger.info(f"🎤 {persona} moderator is ready and listening...")
-    await moderator.set_agent_state(AgentState.LISTENING)
+    await moderator.start(ctx.room)
 
 if __name__ == "__main__":
     cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint)) 
