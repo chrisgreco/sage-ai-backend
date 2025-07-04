@@ -9,6 +9,7 @@ Integrates with Supabase for persistent memory and conversation context
 import os
 import asyncio
 import logging
+import shutil
 from dotenv import load_dotenv
 from typing import Optional, List, Dict, Any
 from datetime import datetime
@@ -368,6 +369,20 @@ async def entrypoint(ctx: JobContext):
     
     logger.info("🔑 API keys verified")
     
+    # Check available disk space
+    try:
+        total, used, free = shutil.disk_usage("/")
+        free_gb = free // (1024**3)
+        logger.info(f"💾 Available disk space: {free_gb}GB")
+        
+        # If less than 1GB free, disable model downloads
+        if free_gb < 1:
+            logger.warning(f"⚠️ Low disk space ({free_gb}GB), disabling advanced models to prevent crashes")
+            os.environ["ENABLE_TURN_DETECTION"] = "false"
+            # Could also disable VAD here if needed
+    except Exception as e:
+        logger.warning(f"Could not check disk space: {e}")
+    
     # Configure LLM - Use Perplexity if available, fallback to OpenAI
     try:
         if perplexity_key:
@@ -438,15 +453,26 @@ async def entrypoint(ctx: JobContext):
         stt = openai.STT(api_key=openai_key)
         logger.info("🎙️ Using OpenAI STT as fallback")
     
-    # Configure VAD with error handling
-    try:
-        vad = silero.VAD.load()
-        logger.info("🔊 Silero VAD loaded successfully")
-    except Exception as e:
-        logger.error(f"❌ VAD loading failed: {e}")
-        # Continue without VAD - LiveKit can handle this
-        vad = None
-        logger.info("🔊 Continuing without VAD")
+    # Configure VAD with error handling and retry logic
+    vad = None
+    max_retries = 2
+    
+    for attempt in range(max_retries):
+        try:
+            logger.info(f"🔊 Loading Silero VAD (attempt {attempt + 1}/{max_retries})...")
+            vad = silero.VAD.load()
+            logger.info("🔊 Silero VAD loaded successfully")
+            break
+        except Exception as e:
+            logger.warning(f"⚠️ VAD loading attempt {attempt + 1} failed: {e}")
+            if attempt == max_retries - 1:
+                logger.error(f"❌ VAD loading failed after {max_retries} attempts")
+                logger.info("🔊 Continuing without VAD - LiveKit can handle this")
+                # Continue without VAD - LiveKit can handle this
+                vad = None
+            else:
+                # Wait a bit before retrying
+                await asyncio.sleep(1)
     
     # Create enhanced session with all recommended components
     try:
@@ -465,11 +491,18 @@ async def entrypoint(ctx: JobContext):
         
         if enable_turn_detection:
             try:
+                logger.info("🎯 Loading turn detection model (MultilingualModel)...")
                 turn_detector = MultilingualModel()
                 session_kwargs['turn_detection'] = turn_detector
                 logger.info("🎯 Turn detection (MultilingualModel) loaded successfully")
             except Exception as turn_error:
                 logger.warning(f"⚠️ Turn detection failed to load: {turn_error}")
+                
+                # Check if it's a disk space issue
+                if "No space left on device" in str(turn_error) or "Errno 28" in str(turn_error):
+                    logger.error("💾 DISK SPACE ISSUE: Turn detection model download failed due to insufficient space")
+                    logger.info("💡 SOLUTION: Increase disk space or set ENABLE_TURN_DETECTION=false")
+                
                 logger.info("🎯 Continuing without advanced turn detection - using basic silence detection")
                 # Continue without turn detection - LiveKit will use basic silence detection
         else:
