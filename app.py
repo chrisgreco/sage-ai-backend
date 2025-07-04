@@ -14,13 +14,12 @@ from datetime import datetime, timedelta
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from dotenv import load_dotenv
 
 # LiveKit imports for token generation
 from livekit import api
 
-# Load environment variables
-load_dotenv()
+# Environment variables are managed by Render directly - no need for dotenv
+# load_dotenv() removed since Render sets environment variables
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

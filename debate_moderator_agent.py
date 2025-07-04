@@ -10,7 +10,6 @@ import os
 import asyncio
 import logging
 import shutil
-from dotenv import load_dotenv
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
@@ -32,8 +31,8 @@ from livekit import api, rtc
 # Import memory manager
 from supabase_memory_manager import SupabaseMemoryManager
 
-# Load environment variables
-load_dotenv()
+# Environment variables are managed by Render directly - no need for dotenv
+# load_dotenv() removed since Render sets environment variables
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

@@ -1,5 +1,5 @@
 # Core dependencies for LiveKit agent and backend
-python-dotenv>=1.0
+# python-dotenv removed - Render manages environment variables directly
 
 # LiveKit dependencies - ENHANCED FULL VOICE AI STACK
 # Using the recommended pattern from LiveKit documentation
