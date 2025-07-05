@@ -111,7 +111,7 @@ async def generate_participant_token(request: TokenRequest):
     """Generate LiveKit token for participant with topic context"""
     try:
         # Create token with participant permissions
-        token = api.AccessToken() \
+        token = api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET) \
             .with_identity(request.participant_name) \
             .with_name(request.participant_name) \
             .with_grants(api.VideoGrants(
@@ -221,7 +221,7 @@ async def start_agent_process(room_name: str, topic: str, persona: str):
     try:
         # Generate agent token with proper identity matching frontend expectations
         agent_identity = f"sage-ai-{persona.lower()}"  # Use consistent naming
-        agent_token = api.AccessToken() \
+        agent_token = api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET) \
             .with_identity(agent_identity) \
             .with_name(f"Sage AI - {persona}") \
             .with_grants(api.VideoGrants(
