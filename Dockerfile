@@ -1,4 +1,4 @@
-# Dockerfile for Sage AI Backend - Simplified Single Stage Build
+# syntax=docker/dockerfile:1
 FROM python:3.11-slim
 
 # Set working directory
@@ -12,22 +12,17 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-dev \
     git \
     curl \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/* \
-    && rm -rf /tmp/* \
-    && rm -rf /var/tmp/*
+    && rm -rf /var/lib/apt/lists/*
 
-# Upgrade pip first
-RUN pip install --upgrade pip
+# Upgrade pip and install wheel
+RUN pip install --upgrade pip wheel
 
-# Copy requirements and install Python dependencies
+# Copy requirements file first for better layer caching
 COPY requirements.txt .
 
-# Install FastAPI first to ensure it's available
-RUN pip install --no-cache-dir fastapi==0.104.1 uvicorn[standard]==0.24.0 pydantic==2.5.0
-
-# Install remaining dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies with cache mount for better performance
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY app.py .
@@ -51,9 +46,12 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PIP_NO_CACHE_DIR=1
 ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# Health check for web service
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
+# Expose the port the app runs on
+EXPOSE 8000
 
-# Default command runs the web service
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"] 
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Run the application
+CMD ["python", "app.py"] 
