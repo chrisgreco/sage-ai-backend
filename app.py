@@ -59,6 +59,10 @@ LIVEKIT_URL = os.getenv("LIVEKIT_URL")
 LIVEKIT_API_KEY = os.getenv("LIVEKIT_API_KEY")
 LIVEKIT_API_SECRET = os.getenv("LIVEKIT_API_SECRET")
 
+# Ensure LIVEKIT_URL is in the correct format (wss:// for WebSocket connections)
+if LIVEKIT_URL and LIVEKIT_URL.startswith("https://"):
+    LIVEKIT_URL = LIVEKIT_URL.replace("https://", "wss://")
+
 if not all([LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET]):
     raise ValueError("LiveKit configuration missing. Check LIVEKIT_URL, LIVEKIT_API_KEY, LIVEKIT_API_SECRET")
 
@@ -111,6 +115,10 @@ async def generate_participant_token(request: TokenRequest):
     """Generate LiveKit token for participant with topic context"""
     try:
         # Create token with participant permissions
+        # Ensure all required parameters are present
+        if not all([LIVEKIT_API_KEY, LIVEKIT_API_SECRET, request.room_name, request.participant_name]):
+            raise ValueError("Missing required parameters for token generation")
+            
         token = api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET) \
             .with_identity(request.participant_name) \
             .with_name(request.participant_name) \
@@ -126,6 +134,10 @@ async def generate_participant_token(request: TokenRequest):
             })
         
         jwt_token = token.to_jwt()
+        
+        # Validate token was generated successfully
+        if not jwt_token:
+            raise ValueError("Failed to generate JWT token")
         
         logger.info(f"Generated token for {request.participant_name} in room {request.room_name}")
         
@@ -219,6 +231,9 @@ async def get_all_agent_status():
 async def start_agent_process(room_name: str, topic: str, persona: str):
     """Start the LiveKit agent process with topic and persona context"""
     try:
+        # Wait a moment to ensure the room is fully established
+        await asyncio.sleep(2)
+        
         # Generate agent token with proper identity matching frontend expectations
         agent_identity = f"sage-ai-{persona.lower()}"  # Use consistent naming
         agent_token = api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET) \
