@@ -2,10 +2,8 @@ services:
   # Main web service - handles HTTP API, tokens, and agent spawning
   - type: web
     name: sage-ai-backend
-    env: python
+    env: docker
     repo: https://github.com/chrisgreco/sage-ai-backend.git
-    buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn app:app --host 0.0.0.0 --port $PORT
     plan: starter
     envVars:
       - key: PORT
@@ -34,10 +32,9 @@ services:
   # LiveKit Debate Moderator Agent - background service
   - type: background
     name: sage-ai-agent
-    env: python
+    env: docker
     repo: https://github.com/chrisgreco/sage-ai-backend.git
-    buildCommand: pip install -r requirements.txt
-    startCommand: python debate_moderator_agent.py
+    dockerCommand: python debate_moderator_agent.py
     plan: starter
     envVars:
       - key: LIVEKIT_URL

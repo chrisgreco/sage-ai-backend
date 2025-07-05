@@ -1,15 +1,15 @@
 # Core dependencies for LiveKit agent and backend
 # python-dotenv removed - Render manages environment variables directly
 
+# FastAPI backend dependencies - EXPLICIT VERSIONS FOR STABILITY
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+pydantic==2.5.0
+
 # LiveKit dependencies - ENHANCED FULL VOICE AI STACK
 # Using the recommended pattern from LiveKit documentation
 livekit-agents[deepgram,openai,cartesia,silero,turn-detector]>=1.0
 livekit-api>=1.0.0
-
-# FastAPI backend dependencies
-fastapi>=0.104.0
-uvicorn[standard]>=0.24.0
-pydantic>=2.5.0
 
 # Audio/Video processing required by LiveKit
 av>=10.0.0
