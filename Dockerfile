@@ -28,9 +28,14 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 COPY app.py .
 COPY debate_moderator_agent.py .
 COPY supabase_memory_manager.py .
+COPY download_models.py .
 
 # Copy knowledge documents for the AI agents
 COPY knowledge_documents/ ./knowledge_documents/
+
+# Download turn-detector model files (CRITICAL for LiveKit agents)
+# This downloads the English turn detection model required by the agent
+RUN python download_models.py
 
 # Create non-root user for security
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
@@ -46,8 +51,8 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1
 EXPOSE 8000
 
 # Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Run the application
-CMD ["python", "app.py"] 
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"] 
