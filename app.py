@@ -307,16 +307,20 @@ async def start_agent_process(room_name: str, topic: str, persona: str):
                 "created_at": datetime.utcnow().isoformat()
             }
             
-            # Update room metadata using LiveKit API
-            room_service = RoomService()
-            room_service.api_key = LIVEKIT_API_KEY
-            room_service.api_secret = LIVEKIT_API_SECRET
-            room_service.url = LIVEKIT_URL
-            
-            await room_service.update_room_metadata(
-                room=room_name,
-                metadata=json.dumps(room_metadata)
+            # Update room metadata using LiveKit API (correct pattern from Context7 docs)
+            lkapi = api.LiveKitAPI(
+                url=LIVEKIT_URL,
+                api_key=LIVEKIT_API_KEY,
+                api_secret=LIVEKIT_API_SECRET
             )
+            
+            await lkapi.room.update_room_metadata(
+                api.UpdateRoomMetadataRequest(
+                    room=room_name,
+                    metadata=json.dumps(room_metadata)
+                )
+            )
+            await lkapi.aclose()
             logger.info(f"✅ Updated room metadata with persona: {persona}")
         except Exception as e:
             logger.warning(f"Failed to update room metadata: {e}")
