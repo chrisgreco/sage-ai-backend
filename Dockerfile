@@ -28,13 +28,9 @@ RUN --mount=type=cache,target=/root/.cache/pip \
 COPY app.py .
 COPY debate_moderator_agent.py .
 COPY supabase_memory_manager.py .
-COPY test_imports.py .
 
 # Copy knowledge documents for the AI agents
 COPY knowledge_documents/ ./knowledge_documents/
-
-# Test that all imports work
-RUN python test_imports.py
 
 # Create non-root user for security
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
