@@ -34,7 +34,7 @@ services:
     name: sage-ai-agent
     env: docker
     repo: https://github.com/chrisgreco/sage-ai-backend.git
-    dockerCommand: python debate_moderator_agent.py
+    dockerCommand: python debate_moderator_agent.py start
     plan: starter
     envVars:
       - key: LIVEKIT_URL
