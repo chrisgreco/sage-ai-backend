@@ -17,7 +17,6 @@ from pydantic import BaseModel
 
 # LiveKit imports for token generation
 from livekit import api
-from livekit.api import RoomService
 
 # Environment variables are managed by Render directly - no need for dotenv
 # load_dotenv() removed since Render sets environment variables
