@@ -102,20 +102,25 @@ CRITICAL BEHAVIOR RULES:
         reason: Annotated[str, "Reason for the moderation"],
     ):
         """Moderate the discussion when needed"""
-        logger.info(f"🛡️ Moderation action: {action} - {reason}")
+        try:
+            logger.info(f"🛡️ Moderation action: {action} - {reason}")
+            
+            if self.memory_manager:
+                try:
+                    await self.memory_manager.log_moderation_action(
+                        session_id="current_session",
+                        action=action,
+                        reason=reason,
+                        persona=self.persona
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to log moderation: {e}")
+            
+            return f"As {self.persona}, I must {action}. {reason}"
         
-        if self.memory_manager:
-            try:
-                await self.memory_manager.log_moderation_action(
-                    session_id="current_session",
-                    action=action,
-                    reason=reason,
-                    persona=self.persona
-                )
-            except Exception as e:
-                logger.warning(f"Failed to log moderation: {e}")
-        
-        return f"As {self.persona}, I must {action}. {reason}"
+        except Exception as e:
+            logger.error(f"Error in moderate_discussion: {e}")
+            return f"I apologize, but I encountered an issue while moderating. Let us continue with respect and understanding."
 
     @function_tool
     async def fact_check_statement(
@@ -125,10 +130,15 @@ CRITICAL BEHAVIOR RULES:
         participant: Annotated[str, "Who made the statement"],
     ):
         """Fact-check a statement made during the debate"""
-        logger.info(f"🔍 Fact-checking: {statement}")
+        try:
+            logger.info(f"🔍 Fact-checking: {statement}")
+            
+            # In a real implementation, this would call a fact-checking API
+            return f"Let me examine that claim, {participant}. While I cannot verify all facts in real-time, I encourage us to consider the sources and evidence for such statements."
         
-        # In a real implementation, this would call a fact-checking API
-        return f"Let me examine that claim, {participant}. While I cannot verify all facts in real-time, I encourage us to consider the sources and evidence for such statements."
+        except Exception as e:
+            logger.error(f"Error in fact_check_statement: {e}")
+            return f"I apologize, but I cannot fact-check that statement right now. Let us proceed with careful consideration of our claims."
 
     @function_tool
     async def set_debate_topic(
@@ -137,63 +147,102 @@ CRITICAL BEHAVIOR RULES:
         new_topic: Annotated[str, "The new topic for debate"],
     ):
         """Change the debate topic"""
-        logger.info(f"📝 Setting new debate topic: {new_topic}")
-        self.topic = new_topic
+        try:
+            logger.info(f"📝 Setting new debate topic: {new_topic}")
+            self.topic = new_topic
+            
+            if self.memory_manager:
+                try:
+                    await self.memory_manager.update_session_topic("current_session", new_topic)
+                except Exception as e:
+                    logger.warning(f"Failed to update topic: {e}")
+            
+            return f"Excellent! Let us now turn our attention to: {new_topic}"
         
-        if self.memory_manager:
-            try:
-                await self.memory_manager.update_session_topic("current_session", new_topic)
-            except Exception as e:
-                logger.warning(f"Failed to update topic: {e}")
-        
-        return f"Excellent! Let us now turn our attention to: {new_topic}"
+        except Exception as e:
+            logger.error(f"Error in set_debate_topic: {e}")
+            return f"I apologize, but I encountered an issue changing the topic. Let us continue with our current discussion."
 
 async def entrypoint(ctx: JobContext):
     """Main entry point for the LiveKit agent following official patterns"""
     
-    # Connect to the room first (official pattern)
-    await ctx.connect()
-    
-    # Now we can access the actual room object and its metadata
-    room = ctx.room
-    room_metadata = {}
-    
-    # Safely get metadata if available
-    if hasattr(room, 'metadata') and room.metadata:
+    try:
+        # Connect to the room first (official pattern)
+        logger.info("🔗 Connecting to LiveKit room...")
+        await ctx.connect()
+        logger.info("✅ Successfully connected to LiveKit room")
+        
+        # Now we can access the actual room object and its metadata
+        room = ctx.room
+        room_metadata = {}
+        
+        # Safely get metadata if available
+        if hasattr(room, 'metadata') and room.metadata:
+            try:
+                import json
+                room_metadata = json.loads(room.metadata) if isinstance(room.metadata, str) else room.metadata
+                logger.info(f"📋 Room metadata loaded: {room_metadata}")
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.warning(f"Failed to parse room metadata: {e}, using defaults")
+                room_metadata = {}
+        
+        # Extract persona and topic from room metadata or use defaults
+        persona = room_metadata.get('persona', 'Aristotle')
+        topic = room_metadata.get('topic', 'AI in society')
+        
+        logger.info(f"🎭 Starting {persona} moderator for topic: {topic}")
+        
+        # Create the debate moderator agent
+        agent = DebateModerator(persona=persona, topic=topic)
+        
+        # Create session with Perplexity integration following official pattern
+        logger.info("🔧 Creating AgentSession with Perplexity integration...")
+        session = AgentSession(
+            vad=silero.VAD.load(),
+            stt=deepgram.STT(model="nova-2"),
+            llm=openai.LLM.with_perplexity(
+                model="sonar-pro",
+                temperature=0.7,
+            ),
+            tts=openai.TTS(voice="alloy"),
+        )
+        logger.info("✅ AgentSession created successfully")
+        
+        # Start the session with the agent and room (official pattern)
+        logger.info("🚀 Starting agent session...")
+        await session.start(agent=agent, room=room)
+        logger.info("✅ Agent session started successfully")
+        
+        # Generate initial greeting (official pattern)
+        logger.info("👋 Generating initial greeting...")
+        await session.generate_reply(
+            instructions="Greet the participants and introduce yourself as the debate moderator. Briefly explain your role and invite them to begin the discussion."
+        )
+        logger.info("✅ Initial greeting generated successfully")
+        
+        # Keep the session alive
+        logger.info("🔄 Agent is now active and ready for participants")
+        
+    except Exception as e:
+        logger.error(f"❌ Critical error in entrypoint: {e}")
+        logger.error(f"Error type: {type(e).__name__}")
+        logger.error(f"Error details: {str(e)}")
+        
+        # Try to handle gracefully
         try:
-            import json
-            room_metadata = json.loads(room.metadata) if isinstance(room.metadata, str) else room.metadata
-        except (json.JSONDecodeError, TypeError):
-            logger.warning("Failed to parse room metadata, using defaults")
-            room_metadata = {}
-    
-    # Extract persona and topic from room metadata or use defaults
-    persona = room_metadata.get('persona', 'Aristotle')
-    topic = room_metadata.get('topic', 'AI in society')
-    
-    logger.info(f"🎭 Starting {persona} moderator for topic: {topic}")
-    
-    # Create the debate moderator agent
-    agent = DebateModerator(persona=persona, topic=topic)
-    
-    # Create session with Perplexity integration following official pattern
-    session = AgentSession(
-        vad=silero.VAD.load(),
-        stt=deepgram.STT(model="nova-2"),
-        llm=openai.LLM.with_perplexity(
-            model="sonar-pro",
-            temperature=0.7,
-        ),
-        tts=openai.TTS(voice="alloy"),
-    )
-    
-    # Start the session with the agent and room (official pattern)
-    await session.start(agent=agent, room=room)
-    
-    # Generate initial greeting (official pattern)
-    await session.generate_reply(
-        instructions="Greet the participants and introduce yourself as the debate moderator. Briefly explain your role and invite them to begin the discussion."
-    )
+            if 'session' in locals():
+                logger.info("🛑 Attempting graceful session cleanup...")
+                # Session cleanup would go here if needed
+        except Exception as cleanup_error:
+            logger.error(f"❌ Error during cleanup: {cleanup_error}")
+        
+        # Re-raise the exception so LiveKit can handle it
+        raise
 
 if __name__ == "__main__":
-    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint)) 
+    try:
+        logger.info("🎬 Starting LiveKit Debate Moderator Agent...")
+        cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
+    except Exception as e:
+        logger.error(f"❌ Failed to start agent: {e}")
+        raise 
