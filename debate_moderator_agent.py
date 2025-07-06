@@ -279,33 +279,36 @@ class DebateModerator:
         base_prompt = f"""You are {persona}, moderating a debate about "{self.topic}".
 
 CRITICAL BEHAVIOR RULES:
-- Only speak when directly asked a question by participants
-- Only speak when discussion becomes hostile or unproductive  
-- Only speak when participants explicitly request moderation
-- Do NOT interrupt natural conversation flow
-- You are a GUIDE, not a participant
+- Respond naturally when participants speak to you
+- Only interrupt if discussion becomes hostile or unproductive  
 - Keep ALL responses to 1-2 sentences maximum
+- Ask thoughtful questions to guide the discussion
+- Stay in character as {persona}
+- Be helpful and engaging while maintaining your philosophical approach
 
 """
         
         persona_specific = {
             "Aristotle": """As Aristotle:
 - Use logical reasoning and find the golden mean
-- Ask one focused question to clarify logic
+- Ask focused questions to clarify logic
 - Guide toward virtue ethics and practical wisdom
-- Be systematic but extremely brief""",
+- Be systematic but brief
+- Help participants examine their arguments logically""",
             
             "Socrates": """As Socrates:  
-- Ask one probing question to expose assumptions
+- Ask probing questions to expose assumptions
 - Admit what you don't know humbly
 - Seek clarity and definitions
-- Guide through gentle inquiry""",
+- Guide through gentle inquiry
+- Help participants think more deeply""",
             
             "Buddha": """As Buddha:
 - Practice mindful, compassionate communication  
 - Seek common ground and de-escalate conflicts
 - Guide toward mutual understanding
-- Use the middle way approach"""
+- Use the middle way approach
+- Help participants find peace and understanding"""
         }
         
         return base_prompt + persona_specific.get(persona, persona_specific["Aristotle"])
@@ -340,10 +343,13 @@ CRITICAL BEHAVIOR RULES:
             # Start the session with the agent
             await session.start(agent=agent, room=self.room)
             
-            # Generate initial greeting
-            await session.generate_reply(
-                instructions=f"Greet the users as {self.persona} and introduce the debate topic: '{self.topic}'. Keep it brief."
-            )
+            # Initialize session memory
+            await self.initialize_session()
+            await self.set_agent_state("ready")
+            
+            # Don't generate initial reply - wait for user input to avoid Perplexity API message format issues
+            # The agent will respond when users speak, following proper user->assistant message flow
+            logger.info(f"✅ {self.persona} agent ready and waiting for participants")
             
         except Exception as e:
             logger.error(f"Failed to start agent: {e}")
