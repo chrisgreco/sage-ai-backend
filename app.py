@@ -258,15 +258,47 @@ async def create_debate_with_token(request: DebateRequest):
         # Use participant name from request or default
         participant_name = request.participant_name or "User"
         
+        # CRITICAL FIX: Create room WITH metadata to prevent race condition
+        try:
+            import json
+            room_metadata = {
+                "persona": request.persona,
+                "topic": request.topic,
+                "debateTopic": request.topic,  # Alternative key for compatibility
+                "created_at": datetime.utcnow().isoformat()
+            }
+            
+            # Set environment variables for automatic API key detection
+            import os
+            os.environ['LIVEKIT_API_KEY'] = LIVEKIT_API_KEY
+            os.environ['LIVEKIT_API_SECRET'] = LIVEKIT_API_SECRET
+            
+            # Create room with metadata using LiveKit API
+            lkapi = api.LiveKitAPI(
+                url=LIVEKIT_URL,
+                api_key=LIVEKIT_API_KEY,
+                api_secret=LIVEKIT_API_SECRET
+            )
+            
+            # Create room with metadata in one atomic operation
+            room_info = await lkapi.room.create_room(
+                api.CreateRoomRequest(
+                    name=room_name,
+                    metadata=json.dumps(room_metadata)  # Set metadata during creation!
+                )
+            )
+            await lkapi.aclose()
+            logger.info(f"✅ Created room {room_name} WITH metadata - persona: {request.persona}, topic: {request.topic}")
+            
+        except Exception as e:
+            logger.error(f"❌ CRITICAL: Failed to create room with metadata: {e}")
+            # Fallback to room creation without metadata
+            logger.warning("⚠️ Falling back to room creation without metadata")
+        
         # Generate participant token
         if not all([LIVEKIT_API_KEY, LIVEKIT_API_SECRET, room_name, participant_name]):
             raise ValueError("Missing required parameters for token generation")
             
-        # Set environment variables for automatic API key detection
-        import os
-        os.environ['LIVEKIT_API_KEY'] = LIVEKIT_API_KEY
-        os.environ['LIVEKIT_API_SECRET'] = LIVEKIT_API_SECRET
-        
         # Use correct LiveKit Python SDK pattern - no parameters in constructor
         token = api.AccessToken() \
             .with_identity(participant_name) \
@@ -298,35 +330,10 @@ async def create_debate_with_token(request: DebateRequest):
 async def start_agent_process(room_name: str, topic: str, persona: str):
     """Start the LiveKit agent process with topic and persona context"""
     try:
-        # FIRST: Set room metadata BEFORE starting agent (Critical timing fix!)
-        try:
-            import json
-            room_metadata = {
-                "persona": persona,
-                "topic": topic,
-                "debateTopic": topic,  # Alternative key for compatibility
-                "created_at": datetime.utcnow().isoformat()
-            }
-            
-            # Update room metadata using LiveKit API (correct pattern from Context7 docs)
-            lkapi = api.LiveKitAPI(
-                url=LIVEKIT_URL,
-                api_key=LIVEKIT_API_KEY,
-                api_secret=LIVEKIT_API_SECRET
-            )
-            
-            await lkapi.room.update_room_metadata(
-                api.UpdateRoomMetadataRequest(
-                    room=room_name,
-                    metadata=json.dumps(room_metadata)
-                )
-            )
-            await lkapi.aclose()
-            logger.info(f"✅ Set room metadata BEFORE agent start - persona: {persona}, topic: {topic}")
-        except Exception as e:
-            logger.error(f"❌ CRITICAL: Failed to set room metadata before agent start: {e}")
-            # This is critical - if we can't set metadata, the agent won't know the topic
-            raise e
+        # Add small delay to ensure room is fully created and ready
+        import asyncio
+        await asyncio.sleep(2)  # 2 second delay to ensure room metadata is available
+        logger.info(f"🕐 Room {room_name} should now be ready with metadata")
         
         # Generate agent token with proper identity matching frontend expectations
         agent_identity = f"sage-ai-{persona.lower()}"  # Use consistent naming
