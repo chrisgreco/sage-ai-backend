@@ -2,12 +2,13 @@
 
 """
 Sage AI Debate Moderator Agent - Enhanced with Memory and Context
-Follows official LiveKit 1.0 patterns from the documentation
+Follows exact official LiveKit 1.0 patterns from the documentation
 """
 
 import os
 import asyncio
 import logging
+import json
 from typing import Optional, List, Dict, Any, Annotated
 from datetime import datetime
 
@@ -30,60 +31,52 @@ logger = logging.getLogger(__name__)
 # Import memory manager with graceful fallback
 try:
     from supabase_memory_manager import SupabaseMemoryManager
-    logger.info("✅ Supabase memory manager imported successfully")
-except ImportError as e:
-    logger.warning(f"⚠️ Supabase memory manager not available: {e}")
-    SupabaseMemoryManager = None
+    memory_manager = SupabaseMemoryManager()
+    logger.info("✅ Memory manager initialized successfully")
+except Exception as e:
+    logger.warning(f"⚠️ Memory manager initialization failed: {e}")
+    memory_manager = None
 
-# Global variables for agent state
-CURRENT_PERSONA = "Aristotle"
-CURRENT_TOPIC = "AI in society"
-memory_manager = None
+# Global variables for agent state (following official patterns)
+current_persona = "Aristotle"
+current_topic = "General Discussion"
 
-# Initialize memory manager globally
-if SupabaseMemoryManager:
-    try:
-        memory_manager = SupabaseMemoryManager()
-        logger.info("✅ Memory manager initialized successfully")
-    except Exception as e:
-        logger.warning(f"⚠️ Memory manager initialization failed: {e}")
-        memory_manager = None
+def get_persona_prompt(persona: str) -> str:
+    """Generate persona-specific prompt based on the selected moderator"""
+    
+    base_prompt = f"""You are {persona}, acting as a debate moderator for voice conversations. 
+Your role is to:
+- Guide meaningful philosophical discussions
+- Ask thought-provoking questions
+- Help participants explore different perspectives
+- Maintain respectful dialogue
+- Use your unique philosophical approach
 
-def get_prompt_for_persona(persona: str, topic: str) -> str:
-    """Get dynamic system prompt for the specified persona"""
-    base_prompt = f"""You are {persona}, moderating a debate about "{topic}".
-
-CRITICAL BEHAVIOR RULES:
-- Respond naturally when participants speak to you
-- Only interrupt if discussion becomes hostile or unproductive  
-- Keep ALL responses to 1-2 sentences maximum
-- Ask thoughtful questions to guide the discussion
-- Stay in character as {persona}
-- Be helpful and engaging while maintaining your philosophical approach
+Current topic: {current_topic}
 
 """
     
     persona_specific = {
         "Aristotle": """As Aristotle:
-- Use logical reasoning and find the golden mean
-- Ask focused questions to clarify logic
-- Guide toward virtue ethics and practical wisdom
-- "What is the virtuous path here?"
-- "Let us examine this through reason and evidence"
+- Use logical reasoning and systematic analysis
+- Ask questions that reveal underlying principles
+- Guide discussions toward practical wisdom (phronesis)
+- Help participants find the "golden mean" in their arguments
+- Focus on virtue ethics and character development
 """,
         "Socrates": """As Socrates:
-- Ask probing questions to reveal assumptions
-- Use the Socratic method to guide discovery
-- Challenge participants to think deeper
-- "What do you mean by that?"
-- "How do you know this to be true?"
+- Use the Socratic method of questioning
+- Challenge assumptions through inquiry
+- Ask "What do you mean by..." and "How do you know..." questions
+- Guide participants to discover contradictions in their thinking
+- Emphasize that true wisdom comes from knowing what you don't know
 """,
         "Buddha": """As Buddha:
-- Focus on compassion and mindful consideration
-- Guide toward understanding suffering and attachment
-- Encourage middle way thinking
-- "What attachment might be causing this view?"
-- "How might we approach this with compassion?"
+- Focus on reducing suffering and finding peace
+- Ask questions about attachment and desire
+- Guide discussions toward compassion and understanding
+- Help participants see interconnectedness
+- Emphasize mindfulness and present-moment awareness
 """
     }
     
@@ -94,32 +87,26 @@ CRITICAL BEHAVIOR RULES:
 - Stay true to your philosophical character and methods
 """)
 
+# Function tools following official patterns
 @function_tool
 async def moderate_discussion(
     context: RunContext,
-    action: Annotated[str, "The moderation action to take"],
-    reason: Annotated[str, "Reason for the moderation"],
-):
-    """Moderate the discussion when needed"""
+    action: Annotated[str, "The moderation action to take: 'redirect', 'clarify', 'summarize', or 'question'"],
+    content: Annotated[str, "The specific content or question for the moderation action"]
+) -> str:
+    """Moderate the debate discussion with specific actions"""
     try:
-        logger.info(f"🛡️ Moderation action: {action} - {reason}")
+        logger.info(f"🎯 Moderating discussion: {action} - {content}")
         
+        # Store moderation action in memory
         if memory_manager:
-            try:
-                await memory_manager.log_moderation_action(
-                    session_id="current_session",
-                    action=action,
-                    reason=reason,
-                    persona=CURRENT_PERSONA
-                )
-            except Exception as e:
-                logger.warning(f"Failed to log moderation: {e}")
+            await memory_manager.store_moderation_action(action, content, current_persona)
         
-        return f"As {CURRENT_PERSONA}, I must {action}. {reason}"
-    
+        return f"As {current_persona}, I will {action}: {content}"
+        
     except Exception as e:
         logger.error(f"Error in moderate_discussion: {e}")
-        return f"I apologize, but I encountered an issue while moderating. Let us continue with respect and understanding."
+        return f"I'll help moderate this discussion as {current_persona}."
 
 @function_tool
 async def fact_check_statement(statement: Annotated[str, "The statement to fact-check"]) -> str:
@@ -127,48 +114,46 @@ async def fact_check_statement(statement: Annotated[str, "The statement to fact-
     try:
         logger.info(f"🔍 Fact-checking statement: {statement}")
         
-        # Let the LLM handle fact-checking through its built-in Perplexity integration
-        # No direct API calls needed - LiveKit handles this internally
-        
         # Store the fact-check request in memory for context
         if memory_manager:
             await memory_manager.store_fact_check(statement, "fact-check-requested")
         
-        # Return a message that will be processed by the LLM's Perplexity integration
-        return f"I'll fact-check this statement using real-time search: '{statement}'. Let me verify the accuracy of this claim."
+        # Let the LLM handle fact-checking through its built-in Perplexity integration
+        return f"I'll fact-check this statement using current information: {statement}"
         
     except Exception as e:
-        logger.error(f"Error in fact-checking: {e}")
-        return f"I encountered an issue while fact-checking the statement: '{statement}'. Let me try to verify this information another way."
+        logger.error(f"Error in fact_check_statement: {e}")
+        return f"I'll verify this information: {statement}"
 
 @function_tool
 async def set_debate_topic(
     context: RunContext,
-    new_topic: Annotated[str, "The new topic for debate"],
-):
-    """Change the debate topic"""
+    topic: Annotated[str, "The new debate topic to set"]
+) -> str:
+    """Set a new topic for the debate discussion"""
     try:
-        global CURRENT_TOPIC
-        logger.info(f"📝 Setting new debate topic: {new_topic}")
-        CURRENT_TOPIC = new_topic
+        global current_topic
+        current_topic = topic
+        logger.info(f"📝 Setting debate topic: {topic}")
         
+        # Store topic change in memory
         if memory_manager:
-            try:
-                await memory_manager.update_session_topic("current_session", new_topic)
-            except Exception as e:
-                logger.warning(f"Failed to update topic: {e}")
+            await memory_manager.store_topic_change(topic, current_persona)
         
-        return f"Excellent! Let us now turn our attention to: {new_topic}"
-    
+        return f"Perfect! I've set our debate topic to: {topic}. Let's explore this together."
+        
     except Exception as e:
         logger.error(f"Error in set_debate_topic: {e}")
-        return f"I apologize, but I encountered an issue changing the topic. Let us continue with our current discussion."
+        return f"I'll guide our discussion on: {topic}"
 
+# Main entrypoint following exact official pattern
 async def entrypoint(ctx: JobContext):
     """Main entry point for the LiveKit agent following official patterns"""
     
     try:
-        # Validate environment variables first
+        logger.info("🚀 Starting Sage AI Debate Moderator Agent...")
+        
+        # Validate environment variables
         logger.info("🔍 Validating environment variables...")
         perplexity_key = os.getenv('PERPLEXITY_API_KEY')
         openai_key = os.getenv('OPENAI_API_KEY')
@@ -179,40 +164,40 @@ async def entrypoint(ctx: JobContext):
         if not perplexity_key:
             logger.error("❌ PERPLEXITY_API_KEY environment variable is required for LLM.with_perplexity()")
             raise ValueError("PERPLEXITY_API_KEY environment variable is required")
-            
-        # Connect to the room first (official pattern)
+        
+        # Connect to room first (official pattern)
         logger.info("🔗 Connecting to LiveKit room...")
         await ctx.connect()
-        logger.info("✅ Successfully connected to LiveKit room")
+        logger.info("✅ Connected to room successfully")
         
-        # Now we can access the actual room object and its metadata
+        # Get room metadata safely
         room = ctx.room
         room_metadata = {}
         
-        # Safely get metadata if available
         if hasattr(room, 'metadata') and room.metadata:
             try:
-                import json
                 room_metadata = json.loads(room.metadata) if isinstance(room.metadata, str) else room.metadata
-                logger.info(f"📋 Room metadata loaded: {room_metadata}")
-            except (json.JSONDecodeError, TypeError) as e:
-                logger.warning(f"Failed to parse room metadata: {e}, using defaults")
+                logger.info(f"📋 Room metadata: {room_metadata}")
+            except (json.JSONDecodeError, TypeError):
+                logger.warning("Failed to parse room metadata, using defaults")
                 room_metadata = {}
         
-        # Extract persona and topic from room metadata or use defaults
-        global CURRENT_PERSONA, CURRENT_TOPIC
-        CURRENT_PERSONA = room_metadata.get('persona', 'Aristotle')
-        CURRENT_TOPIC = room_metadata.get('topic', 'AI in society')
+        # Extract persona and topic from room metadata
+        global current_persona, current_topic
+        current_persona = room_metadata.get('persona', 'Aristotle')
+        current_topic = room_metadata.get('topic', 'General Discussion')
         
-        logger.info(f"🎭 Starting {CURRENT_PERSONA} moderator for topic: {CURRENT_TOPIC}")
+        logger.info(f"🎭 Persona: {current_persona}")
+        logger.info(f"📝 Topic: {current_topic}")
         
-        # Create the debate moderator agent with function tools (official pattern)
+        # Create agent with instructions and tools (exact official pattern)
         agent = Agent(
-            instructions=get_prompt_for_persona(CURRENT_PERSONA, CURRENT_TOPIC),
-            tools=[moderate_discussion, fact_check_statement, set_debate_topic]
+            instructions=get_persona_prompt(current_persona),
+            tools=[moderate_discussion, fact_check_statement, set_debate_topic],
         )
         
         # Create session with Perplexity integration (LiveKit handles API calls internally)
+        logger.info("🧠 Creating AgentSession with Perplexity integration...")
         session = AgentSession(
             vad=silero.VAD.load(),
             stt=deepgram.STT(model="nova-2"),
@@ -222,43 +207,25 @@ async def entrypoint(ctx: JobContext):
             ),
             tts=openai.TTS(voice="alloy"),
         )
+        
         logger.info("✅ AgentSession created successfully")
         
-        # Start the session with the agent and room (official pattern)
-        logger.info("🚀 Starting agent session...")
-        await session.start(agent=agent, room=room)
-        logger.info("✅ Agent session started successfully")
+        # Start session with agent and room (exact official pattern)
+        logger.info("▶️ Starting agent session...")
+        await session.start(agent=agent, room=ctx.room)
         
-        # Generate initial greeting (official pattern)
-        logger.info("👋 Generating initial greeting...")
-        await session.generate_reply(
-            instructions="Greet the participants and introduce yourself as the debate moderator. Briefly explain your role and invite them to begin the discussion."
-        )
-        logger.info("✅ Initial greeting generated successfully")
+        # Generate initial reply (exact official pattern)
+        initial_greeting = f"Hello! I'm {current_persona}, and I'll be moderating our discussion on {current_topic}. How would you like to begin exploring this topic together?"
         
-        # Keep the session alive
-        logger.info("🔄 Agent is now active and ready for participants")
+        logger.info("💬 Generating initial greeting...")
+        await session.generate_reply(instructions=initial_greeting)
+        
+        logger.info("🎉 Sage AI Debate Moderator Agent is now active!")
         
     except Exception as e:
-        logger.error(f"❌ Critical error in entrypoint: {e}")
-        logger.error(f"Error type: {type(e).__name__}")
-        logger.error(f"Error details: {str(e)}")
-        
-        # Try to handle gracefully
-        try:
-            if 'session' in locals():
-                logger.info("🛑 Attempting graceful session cleanup...")
-                # Session cleanup would go here if needed
-        except Exception as cleanup_error:
-            logger.error(f"❌ Error during cleanup: {cleanup_error}")
-        
-        # Re-raise the exception so LiveKit can handle it
+        logger.error(f"❌ Error in entrypoint: {e}")
         raise
 
+# CLI integration (exact official pattern)
 if __name__ == "__main__":
-    try:
-        logger.info("🎬 Starting LiveKit Debate Moderator Agent...")
-        cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint))
-    except Exception as e:
-        logger.error(f"❌ Failed to start agent: {e}")
-        raise 
+    cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint)) 
