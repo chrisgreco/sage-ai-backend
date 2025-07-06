@@ -326,7 +326,6 @@ CRITICAL BEHAVIOR RULES:
                     model="sonar-pro",                         # ✅ Current supported model
                     api_key=None,                               # ✅ Pulled from PERPLEXITY_API_KEY in env
                     base_url="https://api.perplexity.ai",      # ✅ Default Perplexity endpoint
-                    client=openai.AsyncClient(),                # ✅ Optional but safe
                     temperature=0.7,                            # 🎛 Tune as needed
                     parallel_tool_calls=False,                  # ⚙ Explicit default behavior
                     tool_choice="auto"                         # 🎯 Delegate tool choice to LLM
