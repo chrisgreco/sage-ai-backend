@@ -93,7 +93,7 @@ async def health_check():
         "active_agents": len(active_agents)
     }
 
-@app.post("/create-debate")
+@app.post("/debate")
 async def create_debate(request: DebateRequest):
     """Create a new debate room"""
     try:
@@ -122,11 +122,6 @@ async def create_debate(request: DebateRequest):
     except Exception as e:
         logger.error(f"Failed to create debate: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/debate")
-async def create_debate_alias(request: DebateRequest):
-    """Create a new debate room - Frontend compatibility endpoint (alias for /create-debate)"""
-    return await create_debate(request)
 
 @app.post("/participant-token")
 async def generate_participant_token(request: TokenRequest):
