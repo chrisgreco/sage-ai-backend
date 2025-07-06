@@ -228,6 +228,57 @@ async def get_all_agent_status():
         "total_agents": len(active_agents)
     }
 
+@app.post("/create-debate-with-token")
+async def create_debate_with_token(request: DebateRequest, participant_name: str = "User"):
+    """Create debate room and generate participant token in one call - optimized for LiveKitRoom"""
+    try:
+        # Generate unique room name based on topic
+        import hashlib
+        import time
+        
+        topic_hash = hashlib.md5(request.topic.encode()).hexdigest()[:8]
+        timestamp = int(time.time())
+        room_name = f"debate-{topic_hash}-{timestamp}"
+        
+        # Generate participant token
+        if not all([LIVEKIT_API_KEY, LIVEKIT_API_SECRET, room_name, participant_name]):
+            raise ValueError("Missing required parameters for token generation")
+            
+        token = api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET) \
+            .with_identity(participant_name) \
+            .with_name(participant_name) \
+            .with_grants(api.VideoGrants(
+                room_join=True,
+                room=room_name,
+                can_publish=True,
+                can_subscribe=True,
+            )) \
+            .with_metadata({
+                "topic": request.topic,
+                "participant_type": "human"
+            })
+        
+        jwt_token = token.to_jwt()
+        
+        if not jwt_token:
+            raise ValueError("Failed to generate JWT token")
+        
+        logger.info(f"Created debate room {room_name} with token for {participant_name}")
+        
+        return {
+            "room_name": room_name,
+            "topic": request.topic,
+            "persona": request.persona,
+            "token": jwt_token,
+            "livekit_url": LIVEKIT_URL,
+            "participant_name": participant_name,
+            "created_at": datetime.utcnow().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to create debate with token: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 async def start_agent_process(room_name: str, topic: str, persona: str):
     """Start the LiveKit agent process with topic and persona context"""
     try:
