@@ -328,11 +328,7 @@ CRITICAL BEHAVIOR RULES:
                 stt=deepgram.STT(model="nova-2"),
                 llm=openai.LLM.with_perplexity(
                     model="sonar-pro",
-                    api_key=None,  # Uses PERPLEXITY_API_KEY from env
-                    base_url="https://api.perplexity.ai",
                     temperature=0.7,
-                    parallel_tool_calls=False,
-                    tool_choice="auto"
                 ),
                 tts=openai.TTS(voice="alloy"),
                 turn_detection=EnglishModel(),
