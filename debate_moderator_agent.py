@@ -322,15 +322,12 @@ CRITICAL BEHAVIOR RULES:
                 tools=[self.moderate_discussion, self.fact_check_statement, self.set_debate_topic]
             )
             
-            # Create session with Perplexity via OpenAI LLM with custom base_url
-            # Note: Using this approach instead of with_perplexity() due to message sequence issues
+            # Create session with Perplexity integration following 1.0 pattern
             session = AgentSession(
                 vad=silero.VAD.load(),
                 stt=deepgram.STT(model="nova-2"),
-                llm=openai.LLM(
+                llm=openai.LLM.with_perplexity(
                     model="sonar-pro",
-                    api_key=os.getenv("PERPLEXITY_API_KEY"),
-                    base_url="https://api.perplexity.ai",
                     temperature=0.7,
                 ),
                 tts=openai.TTS(voice="alloy"),
@@ -343,9 +340,8 @@ CRITICAL BEHAVIOR RULES:
             # Start the session with the agent
             await session.start(agent=agent, room=self.room)
             
-            # Note: Removed generate_reply() call because Perplexity API requires 
-            # the last message to have role 'user' or 'tool', not 'assistant'
-            # Agent will respond naturally when participants speak
+            # Note: Do NOT call generate_reply() here as it causes Perplexity message sequence errors
+            # The agent will respond naturally when participants speak
             
             logger.info(f"✅ {self.persona} moderator started successfully and ready for participants")
             
