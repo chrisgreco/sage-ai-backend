@@ -35,13 +35,32 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Sage AI Backend", version="1.0.0")
 
-# CORS middleware for frontend integration
+# CORS middleware for frontend integration - Updated for Lovable domains
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure appropriately for production
+    allow_origins=[
+        "*",  # Allow all origins for development
+        "https://lovable.dev",
+        "https://lovable.app", 
+        "https://*.lovable.app",
+        "https://*.lovableproject.com",
+        "https://1e934c03-5a1a-4df1-9eed-2c278b3ec6a8.lovable.app",  # Specific domain from error
+        "http://localhost:8080",  # Local development
+        "http://localhost:3000",  # Local development
+    ],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "*",
+        "Authorization",
+        "Content-Type", 
+        "X-Requested-With",
+        "Accept",
+        "Origin",
+        "Access-Control-Request-Method",
+        "Access-Control-Request-Headers",
+    ],
+    expose_headers=["*"],
 )
 
 # Request/Response models
@@ -92,6 +111,11 @@ async def health_check():
         "livekit_configured": bool(LIVEKIT_URL and LIVEKIT_API_KEY and LIVEKIT_API_SECRET),
         "active_agents": len(active_agents)
     }
+
+@app.options("/{full_path:path}")
+async def options_handler(full_path: str):
+    """Handle CORS preflight requests"""
+    return {"message": "OK"}
 
 @app.post("/debate")
 async def create_debate(request: DebateRequest):
