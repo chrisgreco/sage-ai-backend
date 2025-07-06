@@ -2,19 +2,16 @@
 
 """
 Sage AI Debate Moderator Agent - Enhanced with Memory and Context
-Receives topic and persona from environment variables passed by the backend
-Integrates with Supabase for persistent memory and conversation context
+Follows official LiveKit 1.0 patterns from the documentation
 """
 
 import os
 import asyncio
 import logging
-import shutil
 from typing import Optional, List, Dict, Any, Annotated
 from datetime import datetime
-import time
 
-# Core LiveKit imports
+# Core LiveKit imports following official patterns
 from livekit.agents import (
     Agent,
     AgentSession,
@@ -23,14 +20,8 @@ from livekit.agents import (
     cli,
     function_tool,
     RunContext,
-    RoomInputOptions,
 )
 from livekit.plugins import openai, silero, deepgram, cartesia
-from livekit.plugins.turn_detector.english import EnglishModel
-from livekit import api, rtc
-
-# Environment variables are managed by Render directly - no need for dotenv
-# Render automatically sets environment variables in the container runtime
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -185,28 +176,21 @@ async def entrypoint(ctx: JobContext):
     # Create the debate moderator agent
     agent = DebateModerator(persona=persona, topic=topic)
     
-    # Create session with Perplexity integration following official pattern
+    # Create session with standard OpenAI integration following official pattern
     session = AgentSession(
         vad=silero.VAD.load(),
         stt=deepgram.STT(model="nova-2"),
-        llm=openai.LLM.with_perplexity(
-            model="sonar-pro",
-            temperature=0.7,
-        ),
+        llm=openai.LLM(model="gpt-4o-mini"),
         tts=openai.TTS(voice="alloy"),
-        min_endpointing_delay=0.5,
-        max_endpointing_delay=2.0,
     )
     
-    # Start the session with the agent
+    # Start the session with the agent and room (official pattern)
     await session.start(agent=agent, room=room)
     
     # Generate initial greeting (official pattern)
-    greeting = f"Greetings! I am {persona}, and I shall be moderating our discussion about {topic}. Please, share your thoughts and I will guide our philosophical exploration."
-    await session.generate_reply(instructions=f"Say: {greeting}")
-    
-    logger.info(f"✅ {persona} moderator started successfully")
+    await session.generate_reply(
+        instructions="Greet the participants and introduce yourself as the debate moderator. Briefly explain your role and invite them to begin the discussion."
+    )
 
 if __name__ == "__main__":
-    # Use the official LiveKit CLI pattern
     cli.run_app(WorkerOptions(entrypoint_fnc=entrypoint)) 
