@@ -124,30 +124,32 @@ async def generate_participant_token(request: TokenRequest):
         if not all([LIVEKIT_API_KEY, LIVEKIT_API_SECRET, request.room_name, request.participant_name]):
             raise ValueError("Missing required parameters for token generation")
             
-        token = api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET) \
+        # Generate participant token using correct LiveKit Python SDK pattern
+        if not all([LIVEKIT_API_KEY, LIVEKIT_API_SECRET, request.room_name, request.participant_name]):
+            raise ValueError("Missing required parameters for token generation")
+        
+        # Set environment variables for automatic API key detection
+        import os
+        os.environ['LIVEKIT_API_KEY'] = LIVEKIT_API_KEY
+        os.environ['LIVEKIT_API_SECRET'] = LIVEKIT_API_SECRET
+        
+        # Use correct LiveKit Python SDK pattern - no parameters in constructor
+        token = api.AccessToken() \
             .with_identity(request.participant_name) \
             .with_name(request.participant_name) \
             .with_grants(api.VideoGrants(
                 room_join=True,
                 room=request.room_name,
-                can_publish=True,
-                can_subscribe=True,
-            )) \
-            .with_metadata({
-                "topic": request.topic or "General Discussion",
-                "participant_type": "human"
-            })
-        
-        jwt_token = token.to_jwt()
+            )).to_jwt()
         
         # Validate token was generated successfully
-        if not jwt_token:
+        if not token:
             raise ValueError("Failed to generate JWT token")
         
         logger.info(f"Generated token for {request.participant_name} in room {request.room_name}")
         
         return {
-            "token": jwt_token,
+            "token": token,
             "livekit_url": LIVEKIT_URL,
             "participant_name": request.participant_name,
             "room_name": request.room_name,
@@ -260,23 +262,21 @@ async def create_debate_with_token(request: DebateRequest):
         if not all([LIVEKIT_API_KEY, LIVEKIT_API_SECRET, room_name, participant_name]):
             raise ValueError("Missing required parameters for token generation")
             
-        token = api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET) \
+        # Set environment variables for automatic API key detection
+        import os
+        os.environ['LIVEKIT_API_KEY'] = LIVEKIT_API_KEY
+        os.environ['LIVEKIT_API_SECRET'] = LIVEKIT_API_SECRET
+        
+        # Use correct LiveKit Python SDK pattern - no parameters in constructor
+        token = api.AccessToken() \
             .with_identity(participant_name) \
             .with_name(participant_name) \
             .with_grants(api.VideoGrants(
                 room_join=True,
                 room=room_name,
-                can_publish=True,
-                can_subscribe=True,
-            )) \
-            .with_metadata({
-                "topic": request.topic,
-                "participant_type": "human"
-            })
+            )).to_jwt()
         
-        jwt_token = token.to_jwt()
-        
-        if not jwt_token:
+        if not token:
             raise ValueError("Failed to generate JWT token")
         
         logger.info(f"Created debate room {room_name} with token for {participant_name}")
@@ -285,7 +285,7 @@ async def create_debate_with_token(request: DebateRequest):
             "room_name": room_name,
             "topic": request.topic,
             "persona": request.persona,
-            "token": jwt_token,
+            "token": token,
             "livekit_url": LIVEKIT_URL,
             "participant_name": participant_name,
             "created_at": datetime.utcnow().isoformat()
@@ -303,23 +303,20 @@ async def start_agent_process(room_name: str, topic: str, persona: str):
         
         # Generate agent token with proper identity matching frontend expectations
         agent_identity = f"sage-ai-{persona.lower()}"  # Use consistent naming
-        agent_token = api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET) \
+        
+        # Set environment variables for automatic API key detection
+        import os
+        os.environ['LIVEKIT_API_KEY'] = LIVEKIT_API_KEY
+        os.environ['LIVEKIT_API_SECRET'] = LIVEKIT_API_SECRET
+        
+        # Use correct LiveKit Python SDK pattern for agent token
+        agent_token = api.AccessToken() \
             .with_identity(agent_identity) \
             .with_name(f"Sage AI - {persona}") \
             .with_grants(api.VideoGrants(
                 room_join=True,
                 room=room_name,
-                can_publish=True,
-                can_subscribe=True,
-            )) \
-            .with_metadata({
-                "topic": topic,
-                "persona": persona,
-                "participant_type": "agent",
-                "agent_state": "initializing"
-            })
-        
-        jwt_token = agent_token.to_jwt()
+            )).to_jwt()
         
         # Check required API keys
         openai_key = os.getenv("OPENAI_API_KEY")
