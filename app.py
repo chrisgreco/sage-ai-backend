@@ -1,8 +1,16 @@
 #!/usr/bin/env python3
 
 """
-Sage AI Backend - FastAPI Web Service
-Handles debate room creation, LiveKit tokens, and AI agent management
+SAGE AI Backend - LiveKit Agent Management API
+
+This FastAPI application manages debate rooms and AI agents for the SAGE platform.
+Features:
+- Room creation with metadata
+- AI agent launching and management  
+- Participant token generation
+- Health monitoring
+
+Updated: 2025-07-06 - Added /debate endpoint for frontend compatibility
 """
 
 import os
