@@ -31,9 +31,9 @@ except Exception as e:
     logger.warning(f"⚠️ Memory manager initialization failed: {e}")
     memory_manager = None
 
-# Global variables for agent state
-current_persona = "Aristotle"
-current_topic = "General Discussion"
+# Global variables for agent state - MUST be set from room metadata
+current_persona = None
+current_topic = None
 
 def get_persona_instructions(persona: str, topic: str) -> str:
     """Generate persona-specific instructions based on the selected moderator"""
@@ -186,15 +186,26 @@ async def entrypoint(ctx: JobContext):
         # Extract persona and topic from room metadata (official LiveKit pattern)
         global current_persona, current_topic
         
-        # Extract from room metadata using official pattern
-        current_persona = room_metadata.get('persona', 'Aristotle')
-        current_topic = room_metadata.get('topic', 'General Discussion')
+        # Extract from room metadata - these MUST come from the frontend
+        current_persona = room_metadata.get('persona')
+        current_topic = room_metadata.get('topic')
         
         # Try alternative metadata keys if the standard ones don't work
-        if current_topic == 'General Discussion':
-            current_topic = room_metadata.get('debate_topic', 'General Discussion')
-        if current_topic == 'General Discussion':
-            current_topic = room_metadata.get('debateTopic', 'General Discussion')
+        if not current_topic:
+            current_topic = room_metadata.get('debate_topic')
+        if not current_topic:
+            current_topic = room_metadata.get('debateTopic')
+        
+        # If still no metadata, this indicates a backend/frontend integration issue
+        if not current_persona or not current_topic:
+            logger.error(f"❌ MISSING METADATA: persona={current_persona}, topic={current_topic}")
+            logger.error(f"❌ Room metadata received: {room_metadata}")
+            logger.error("❌ This indicates the frontend is not sending persona/topic properly!")
+            
+            # Use emergency fallbacks but log the issue
+            current_persona = current_persona or "Aristotle"
+            current_topic = current_topic or "General Discussion"
+            logger.warning(f"⚠️ Using emergency fallbacks: {current_persona}, {current_topic}")
         
         logger.info(f"🎭 Persona: {current_persona}")
         logger.info(f"📝 Topic: {current_topic}")
