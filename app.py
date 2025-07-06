@@ -40,6 +40,7 @@ app.add_middleware(
 class DebateRequest(BaseModel):
     topic: str
     persona: Optional[str] = "Aristotle"
+    participant_name: Optional[str] = "User"
 
 class TokenRequest(BaseModel):
     room_name: str
@@ -229,7 +230,7 @@ async def get_all_agent_status():
     }
 
 @app.post("/create-debate-with-token")
-async def create_debate_with_token(request: DebateRequest, participant_name: str = "User"):
+async def create_debate_with_token(request: DebateRequest):
     """Create debate room and generate participant token in one call - optimized for LiveKitRoom"""
     try:
         # Generate unique room name based on topic
@@ -239,6 +240,9 @@ async def create_debate_with_token(request: DebateRequest, participant_name: str
         topic_hash = hashlib.md5(request.topic.encode()).hexdigest()[:8]
         timestamp = int(time.time())
         room_name = f"debate-{topic_hash}-{timestamp}"
+        
+        # Use participant name from request or default
+        participant_name = request.participant_name or "User"
         
         # Generate participant token
         if not all([LIVEKIT_API_KEY, LIVEKIT_API_SECRET, room_name, participant_name]):
