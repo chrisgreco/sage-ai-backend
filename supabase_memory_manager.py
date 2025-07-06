@@ -30,7 +30,7 @@ class SupabaseMemoryManager:
         # Environment variables are set by Render directly
         self.url = os.getenv('SUPABASE_URL')
         self.service_role_key = os.getenv('SUPABASE_SERVICE_ROLE_KEY')
-        self.anon_key = os.getenv('SUPABASE_KEY')  # Fallback to anon key
+        self.anon_key = os.getenv('SUPABASE_ANON_KEY')  # Fixed: was SUPABASE_KEY
         
         # Initialize connection
         self._initialize_connection()
@@ -38,6 +38,12 @@ class SupabaseMemoryManager:
     def _initialize_connection(self):
         """Initialize Supabase connection with proper error handling"""
         try:
+            # Debug: Show what environment variables we're finding
+            logger.info(f"🔍 Checking environment variables:")
+            logger.info(f"   SUPABASE_URL: {'✅ Found' if self.url else '❌ Not found'}")
+            logger.info(f"   SUPABASE_SERVICE_ROLE_KEY: {'✅ Found' if self.service_role_key else '❌ Not found'}")
+            logger.info(f"   SUPABASE_ANON_KEY: {'✅ Found' if self.anon_key else '❌ Not found'}")
+            
             if not self.url:
                 logger.warning("SUPABASE_URL not found in environment variables")
                 return
@@ -46,8 +52,10 @@ class SupabaseMemoryManager:
             api_key = self.service_role_key or self.anon_key
             
             if not api_key:
-                logger.warning("Supabase credentials not found. Required: SUPABASE_URL and either SUPABASE_SERVICE_ROLE_KEY or SUPABASE_KEY")
+                logger.warning("Supabase credentials not found. Required: SUPABASE_URL and either SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY")
                 return
+            
+            logger.info(f"🔗 Connecting to Supabase at: {self.url}")
             
             # Create Supabase client
             self.client = create_client(self.url, api_key)
