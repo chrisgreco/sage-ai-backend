@@ -301,6 +301,36 @@ async def start_agent_process(room_name: str, topic: str, persona: str):
         # Wait a moment to ensure the room is fully established
         await asyncio.sleep(2)
         
+        # FIRST: Set room metadata BEFORE starting agent (Critical timing fix!)
+        try:
+            import json
+            room_metadata = {
+                "persona": persona,
+                "topic": topic,
+                "debateTopic": topic,  # Alternative key for compatibility
+                "created_at": datetime.utcnow().isoformat()
+            }
+            
+            # Update room metadata using LiveKit API (correct pattern from Context7 docs)
+            lkapi = api.LiveKitAPI(
+                url=LIVEKIT_URL,
+                api_key=LIVEKIT_API_KEY,
+                api_secret=LIVEKIT_API_SECRET
+            )
+            
+            await lkapi.room.update_room_metadata(
+                api.UpdateRoomMetadataRequest(
+                    room=room_name,
+                    metadata=json.dumps(room_metadata)
+                )
+            )
+            await lkapi.aclose()
+            logger.info(f"✅ Set room metadata BEFORE agent start - persona: {persona}, topic: {topic}")
+        except Exception as e:
+            logger.error(f"❌ CRITICAL: Failed to set room metadata before agent start: {e}")
+            # This is critical - if we can't set metadata, the agent won't know the topic
+            raise e
+        
         # Generate agent token with proper identity matching frontend expectations
         agent_identity = f"sage-ai-{persona.lower()}"  # Use consistent naming
         
@@ -376,34 +406,6 @@ async def start_agent_process(room_name: str, topic: str, persona: str):
         
         # Monitor process in background (non-blocking)
         asyncio.create_task(monitor_agent_process(room_name, process))
-        
-        # Update room metadata with dynamic persona information
-        try:
-            import json
-            room_metadata = {
-                "persona": persona,
-                "topic": topic,
-                "created_at": datetime.utcnow().isoformat()
-            }
-            
-            # Update room metadata using LiveKit API (correct pattern from Context7 docs)
-            lkapi = api.LiveKitAPI(
-                url=LIVEKIT_URL,
-                api_key=LIVEKIT_API_KEY,
-                api_secret=LIVEKIT_API_SECRET
-            )
-            
-            await lkapi.room.update_room_metadata(
-                api.UpdateRoomMetadataRequest(
-                    room=room_name,
-                    metadata=json.dumps(room_metadata)
-                )
-            )
-            await lkapi.aclose()
-            logger.info(f"✅ Updated room metadata with persona: {persona}")
-        except Exception as e:
-            logger.warning(f"Failed to update room metadata: {e}")
-            # Continue anyway - agent can still work with default persona
         
     except Exception as e:
         logger.error(f"❌ Failed to start agent process: {e}")

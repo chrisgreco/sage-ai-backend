@@ -10,6 +10,7 @@ import json
 import logging
 from typing import Annotated
 from dotenv import load_dotenv
+import asyncio
 
 # Core LiveKit imports following official patterns
 from livekit import agents
@@ -38,13 +39,17 @@ current_topic = "General Discussion"
 def get_persona_instructions(persona: str, topic: str) -> str:
     """Generate persona-specific instructions based on the selected moderator"""
     
-    base_instructions = f"""You are {persona}, acting as a debate moderator for voice conversations. 
-Your role is to:
-- Guide meaningful philosophical discussions
-- Ask thought-provoking questions
-- Help participants explore different perspectives
-- Maintain respectful dialogue
-- Use your unique philosophical approach
+    base_instructions = f"""You are {persona}, a concise debate moderator for voice conversations.
+
+CRITICAL: Start EVERY conversation with exactly this greeting:
+"Hello, I'm {persona}. Today we'll be discussing {topic}. Go ahead with your opening arguments, and call upon me as needed."
+
+Key behaviors:
+- Keep responses SHORT and SWEET (1-2 sentences max)
+- Ask brief, pointed questions
+- Guide discussion efficiently
+- Use your philosophical approach but be concise
+- Only speak when needed
 
 Current topic: {topic}
 
@@ -52,33 +57,26 @@ Current topic: {topic}
     
     persona_specific = {
         "Aristotle": """As Aristotle:
-- Use logical reasoning and systematic analysis
-- Ask questions that reveal underlying principles
-- Guide discussions toward practical wisdom (phronesis)
-- Help participants find the "golden mean" in their arguments
-- Focus on virtue ethics and character development
+- Use logical reasoning and practical wisdom
+- Ask brief questions about principles and virtue
+- Guide toward balanced arguments
 """,
         "Socrates": """As Socrates:
-- Use the Socratic method of questioning
-- Challenge assumptions through inquiry
-- Ask "What do you mean by..." and "How do you know..." questions
-- Guide participants to discover contradictions in their thinking
-- Emphasize that true wisdom comes from knowing what you don't know
+- Use short Socratic questions
+- Challenge assumptions briefly
+- Ask "What do you mean?" and "How do you know?"
 """,
         "Buddha": """As Buddha:
-- Focus on reducing suffering and finding peace
-- Ask questions about attachment and desire
-- Guide discussions toward compassion and understanding
-- Help participants see interconnectedness
-- Emphasize mindfulness and present-moment awareness
+- Focus on compassion and understanding
+- Ask brief questions about attachment and suffering
+- Guide toward mindful dialogue
 """
     }
     
     return base_instructions + persona_specific.get(persona, f"""As {persona}:
-- Use your philosophical approach to guide the discussion
-- Ask thoughtful questions appropriate to your perspective
-- Help participants think more deeply about the topic
-- Stay true to your philosophical character and methods
+- Use your philosophical approach briefly
+- Ask short, thoughtful questions
+- Stay true to your character but be concise
 """)
 
 # Function tools following official patterns
@@ -186,13 +184,37 @@ async def entrypoint(ctx: JobContext):
                 logger.warning("Failed to parse room metadata, using defaults")
                 room_metadata = {}
         
-        # Extract persona and topic from room metadata
+        # Extract persona and topic from room metadata (official LiveKit pattern)
         global current_persona, current_topic
+        
+        # Extract from room metadata using official pattern
         current_persona = room_metadata.get('persona', 'Aristotle')
         current_topic = room_metadata.get('topic', 'General Discussion')
         
+        # Try alternative metadata keys if the standard ones don't work
+        if current_topic == 'General Discussion':
+            current_topic = room_metadata.get('debate_topic', 'General Discussion')
+        if current_topic == 'General Discussion':
+            current_topic = room_metadata.get('debateTopic', 'General Discussion')
+        
         logger.info(f"🎭 Persona: {current_persona}")
         logger.info(f"📝 Topic: {current_topic}")
+        logger.info(f"🔍 Full metadata keys: {list(room_metadata.keys())}")
+        logger.info(f"🔍 Room metadata values: {room_metadata}")
+        
+        # If no topic found in metadata, wait a moment and try again
+        if current_topic == 'General Discussion' and room_metadata:
+            logger.info("⏳ Topic not found in initial metadata, waiting and retrying...")
+            await asyncio.sleep(1)
+            
+            # Refresh room metadata
+            if hasattr(ctx.room, 'metadata') and ctx.room.metadata:
+                try:
+                    room_metadata = json.loads(ctx.room.metadata) if isinstance(ctx.room.metadata, str) else ctx.room.metadata
+                    current_topic = room_metadata.get('topic', room_metadata.get('debateTopic', 'General Discussion'))
+                    logger.info(f"📝 Updated Topic: {current_topic}")
+                except (json.JSONDecodeError, TypeError):
+                    logger.warning("Failed to parse updated room metadata")
         
         # Create agent with extracted persona and topic (exact official pattern)
         agent = SageDebateModerator(current_persona, current_topic)
@@ -212,8 +234,8 @@ async def entrypoint(ctx: JobContext):
         logger.info("▶️ Starting agent session...")
         await session.start(agent=agent, room=ctx.room)
         
-        # Generate initial reply (exact official pattern)
-        initial_greeting = f"Hello! I'm {current_persona}, and I'll be moderating our discussion on {current_topic}. How would you like to begin exploring this topic together?"
+        # Generate initial reply with exact greeting format
+        initial_greeting = f"Hello, I'm {current_persona}. Today we'll be discussing {current_topic}. Go ahead with your opening arguments, and call upon me as needed."
         
         logger.info("💬 Generating initial greeting...")
         await session.generate_reply(instructions=initial_greeting)
