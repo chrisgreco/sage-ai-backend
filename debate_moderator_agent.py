@@ -209,16 +209,12 @@ async def entrypoint(ctx: JobContext):
             tools=[moderate_discussion, fact_check_statement, set_debate_topic]
         )
         
-        # Create session with Perplexity integration following official pattern
-        logger.info("🔧 Creating AgentSession with Perplexity integration...")
-        logger.info(f"   Using Perplexity model: sonar-pro")
-        logger.info(f"   Temperature: 0.7")
-        
+        # Create session with OpenAI (temporarily while Perplexity integration is fixed)
         session = AgentSession(
             vad=silero.VAD.load(),
             stt=deepgram.STT(model="nova-2"),
-            llm=openai.LLM.with_perplexity(
-                model="sonar-pro",
+            llm=openai.LLM(
+                model="gpt-4o-mini",
                 temperature=0.7,
             ),
             tts=openai.TTS(voice="alloy"),
