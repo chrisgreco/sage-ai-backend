@@ -87,7 +87,12 @@ CRITICAL BEHAVIOR RULES:
 """
     }
     
-    return base_prompt + persona_specific.get(persona, persona_specific["Aristotle"])
+    return base_prompt + persona_specific.get(persona, f"""As {persona}:
+- Use your philosophical approach to guide the discussion
+- Ask thoughtful questions appropriate to your perspective
+- Help participants think more deeply about the topic
+- Stay true to your philosophical character and methods
+""")
 
 @function_tool
 async def moderate_discussion(
