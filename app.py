@@ -87,12 +87,12 @@ async def health_check():
 
 @app.post("/create-debate")
 async def create_debate(request: DebateRequest):
-    """Create a new debate room with topic and persona"""
+    """Create a new debate room"""
     try:
         # Validate required fields
         if not request.persona:
             raise HTTPException(status_code=400, detail="Persona is required. Choose from: Aristotle, Socrates, Buddha")
-            
+        
         # Generate unique room name based on topic
         import hashlib
         import time
@@ -101,7 +101,7 @@ async def create_debate(request: DebateRequest):
         timestamp = int(time.time())
         room_name = f"debate-{topic_hash}-{timestamp}"
         
-        logger.info(f"Creating debate room: {room_name} with topic: {request.topic}")
+        logger.info(f"Created debate room {room_name} for topic: {request.topic}")
         
         return {
             "room_name": room_name,
@@ -114,6 +114,11 @@ async def create_debate(request: DebateRequest):
     except Exception as e:
         logger.error(f"Failed to create debate: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/debate")
+async def create_debate_alias(request: DebateRequest):
+    """Create a new debate room - Frontend compatibility endpoint (alias for /create-debate)"""
+    return await create_debate(request)
 
 @app.post("/participant-token")
 async def generate_participant_token(request: TokenRequest):
