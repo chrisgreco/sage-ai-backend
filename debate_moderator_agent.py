@@ -160,8 +160,23 @@ CRITICAL BEHAVIOR RULES:
 async def entrypoint(ctx: JobContext):
     """Main entry point for the LiveKit agent following official patterns"""
     
+    # Connect to the room first (official pattern)
+    await ctx.connect()
+    
+    # Now we can access the actual room object and its metadata
+    room = ctx.room
+    room_metadata = {}
+    
+    # Safely get metadata if available
+    if hasattr(room, 'metadata') and room.metadata:
+        try:
+            import json
+            room_metadata = json.loads(room.metadata) if isinstance(room.metadata, str) else room.metadata
+        except (json.JSONDecodeError, TypeError):
+            logger.warning("Failed to parse room metadata, using defaults")
+            room_metadata = {}
+    
     # Extract persona and topic from room metadata or use defaults
-    room_metadata = ctx.room.metadata if hasattr(ctx.room, 'metadata') else {}
     persona = room_metadata.get('persona', 'Aristotle')
     topic = room_metadata.get('topic', 'AI in society')
     
@@ -183,11 +198,8 @@ async def entrypoint(ctx: JobContext):
         max_endpointing_delay=2.0,
     )
     
-    # Connect to the room first (official pattern)
-    await ctx.connect()
-    
     # Start the session with the agent
-    await session.start(agent=agent, room=ctx.room)
+    await session.start(agent=agent, room=room)
     
     # Generate initial greeting (official pattern)
     greeting = f"Greetings! I am {persona}, and I shall be moderating our discussion about {topic}. Please, share your thoughts and I will guide our philosophical exploration."
