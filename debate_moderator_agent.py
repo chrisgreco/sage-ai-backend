@@ -11,6 +11,7 @@ import logging
 import json
 from typing import Optional, List, Dict, Any, Annotated
 from datetime import datetime
+import httpx
 
 # Core LiveKit imports following official patterns
 from livekit.agents import (
@@ -194,15 +195,20 @@ async def entrypoint(ctx: JobContext):
             tools=[moderate_discussion, fact_check_statement, set_debate_topic],
         )
         
-        # Create session with OpenAI (temporarily while Perplexity integration is fixed)
+        # Create session with OpenAI with explicit timeout configuration
         logger.info("🧠 Creating AgentSession with OpenAI integration...")
+        
+        # Create LLM with explicit timeout to prevent health check issues
+        llm = openai.LLM(
+            model="gpt-4o-mini",
+            temperature=0.7,
+            timeout=httpx.Timeout(connect=15.0, read=30.0, write=10.0, pool=5.0)
+        )
+        
         session = AgentSession(
             vad=silero.VAD.load(),
             stt=deepgram.STT(model="nova-2"),
-            llm=openai.LLM(
-                model="gpt-4o-mini",
-                temperature=0.7,
-            ),
+            llm=llm,
             tts=openai.TTS(voice="alloy"),
         )
         
@@ -210,7 +216,17 @@ async def entrypoint(ctx: JobContext):
         
         # Start session with agent and room (exact official pattern)
         logger.info("▶️ Starting agent session...")
-        await session.start(agent=agent, room=ctx.room)
+        
+        try:
+            await session.start(agent=agent, room=ctx.room)
+            logger.info("✅ Agent session started successfully")
+        except Exception as session_error:
+            logger.error(f"❌ Failed to start agent session: {session_error}")
+            # Log more details about the error
+            logger.error(f"Error type: {type(session_error).__name__}")
+            if hasattr(session_error, 'response'):
+                logger.error(f"HTTP response status: {getattr(session_error.response, 'status_code', 'unknown')}")
+            raise
         
         # Generate initial reply (exact official pattern)
         initial_greeting = f"Hello! I'm {current_persona}, and I'll be moderating our discussion on {current_topic}. How would you like to begin exploring this topic together?"
