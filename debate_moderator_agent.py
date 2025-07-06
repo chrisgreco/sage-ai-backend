@@ -10,7 +10,6 @@ import json
 import logging
 from typing import Annotated
 from dotenv import load_dotenv
-import asyncio
 
 # Core LiveKit imports following official patterns
 from livekit import agents
@@ -201,20 +200,6 @@ async def entrypoint(ctx: JobContext):
         logger.info(f"📝 Topic: {current_topic}")
         logger.info(f"🔍 Full metadata keys: {list(room_metadata.keys())}")
         logger.info(f"🔍 Room metadata values: {room_metadata}")
-        
-        # If no topic found in metadata, wait a moment and try again
-        if current_topic == 'General Discussion' and room_metadata:
-            logger.info("⏳ Topic not found in initial metadata, waiting and retrying...")
-            await asyncio.sleep(1)
-            
-            # Refresh room metadata
-            if hasattr(ctx.room, 'metadata') and ctx.room.metadata:
-                try:
-                    room_metadata = json.loads(ctx.room.metadata) if isinstance(ctx.room.metadata, str) else ctx.room.metadata
-                    current_topic = room_metadata.get('topic', room_metadata.get('debateTopic', 'General Discussion'))
-                    logger.info(f"📝 Updated Topic: {current_topic}")
-                except (json.JSONDecodeError, TypeError):
-                    logger.warning("Failed to parse updated room metadata")
         
         # Create agent with extracted persona and topic (exact official pattern)
         agent = SageDebateModerator(current_persona, current_topic)
