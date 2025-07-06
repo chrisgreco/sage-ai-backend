@@ -331,10 +331,8 @@ CRITICAL BEHAVIOR RULES:
                     temperature=0.7,
                 ),
                 tts=openai.TTS(voice="alloy"),
-                turn_detection=EnglishModel(),
-                # Add proper endpointing configuration
                 min_endpointing_delay=0.5,
-                max_endpointing_delay=5.0,
+                max_endpointing_delay=2.0,
             )
             
             logger.info(f"🤖 Starting {self.persona} agent with Perplexity integration")
