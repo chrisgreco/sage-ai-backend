@@ -316,10 +316,10 @@ CRITICAL BEHAVIOR RULES:
     async def start(self):
         """Start the agent with proper LiveKit 1.0 pattern"""
         try:
-            # Create agent with dynamic persona instructions
+            # Create agent with dynamic persona instructions and tools
             agent = Agent(
                 instructions=self.get_prompt_for_persona(self.persona),
-                # Remove tools for now to simplify debugging
+                tools=[self.moderate_discussion, self.fact_check_statement, self.set_debate_topic]
             )
             
             # Create session with Perplexity integration following 1.0 pattern
@@ -332,6 +332,9 @@ CRITICAL BEHAVIOR RULES:
                 ),
                 tts=openai.TTS(voice="alloy"),
                 turn_detection=EnglishModel(),
+                # Add proper endpointing configuration
+                min_endpointing_delay=0.5,
+                max_endpointing_delay=5.0,
             )
             
             logger.info(f"🤖 Starting {self.persona} agent with Perplexity integration")
@@ -343,9 +346,11 @@ CRITICAL BEHAVIOR RULES:
             await self.initialize_session()
             await self.set_agent_state("ready")
             
-            # Don't generate initial reply - wait for user input to avoid Perplexity API message format issues
-            # The agent will respond when users speak, following proper user->assistant message flow
-            logger.info(f"✅ {self.persona} agent ready and waiting for participants")
+            # Generate initial greeting following LiveKit best practices
+            greeting_instructions = f"Greet the participants as {self.persona} and introduce the debate topic: '{self.topic}'. Keep it brief and engaging."
+            await session.generate_reply(instructions=greeting_instructions)
+            
+            logger.info(f"✅ {self.persona} agent ready and greeted participants")
             
         except Exception as e:
             logger.error(f"Failed to start agent: {e}")
