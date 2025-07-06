@@ -342,15 +342,11 @@ CRITICAL BEHAVIOR RULES:
             # Start the session with the agent
             await session.start(agent=agent, room=self.room)
             
-            # Initialize session memory
-            await self.initialize_session()
-            await self.set_agent_state("ready")
+            # Note: Removed generate_reply() call because Perplexity API requires 
+            # the last message to have role 'user' or 'tool', not 'assistant'
+            # Agent will respond naturally when participants speak
             
-            # Generate initial greeting following LiveKit best practices
-            greeting_instructions = f"Greet the participants as {self.persona} and introduce the debate topic: '{self.topic}'. Keep it brief and engaging."
-            await session.generate_reply(instructions=greeting_instructions)
-            
-            logger.info(f"✅ {self.persona} agent ready and greeted participants")
+            logger.info(f"✅ {self.persona} moderator started successfully and ready for participants")
             
         except Exception as e:
             logger.error(f"Failed to start agent: {e}")
