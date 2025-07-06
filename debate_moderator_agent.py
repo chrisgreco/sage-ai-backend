@@ -198,19 +198,21 @@ async def entrypoint(ctx: JobContext):
         
         logger.info(f"🎭 Persona: {current_persona}")
         logger.info(f"📝 Topic: {current_topic}")
-        logger.info(f"🔍 Full metadata keys: {list(room_metadata.keys())}")
-        logger.info(f"🔍 Room metadata values: {room_metadata}")
+        logger.info(f"🔍 Full room metadata: {room_metadata}")
         
-        # Create agent with extracted persona and topic (exact official pattern)
+        # Create agent with persona-specific instructions and tools
         agent = SageDebateModerator(current_persona, current_topic)
         
-        # Create session with STT, LLM, TTS configuration (exact official pattern)
+        # Create session with OpenAI with deep male voice (onyx)
         logger.info("🧠 Creating AgentSession with OpenAI integration...")
         session = AgentSession(
             vad=silero.VAD.load(),
-            stt=deepgram.STT(model="nova-2") if deepgram_key else None,
-            llm=openai.LLM(model="gpt-4o-mini", temperature=0.7),
-            tts=openai.TTS(voice="alloy"),
+            stt=deepgram.STT(model="nova-2"),
+            llm=openai.LLM(
+                model="gpt-4o-mini",
+                temperature=0.7,
+            ),
+            tts=openai.TTS(voice="onyx"),  # Deep, old-sounding male voice
         )
         
         logger.info("✅ AgentSession created successfully")

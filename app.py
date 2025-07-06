@@ -298,9 +298,6 @@ async def create_debate_with_token(request: DebateRequest):
 async def start_agent_process(room_name: str, topic: str, persona: str):
     """Start the LiveKit agent process with topic and persona context"""
     try:
-        # Wait a moment to ensure the room is fully established
-        await asyncio.sleep(2)
-        
         # FIRST: Set room metadata BEFORE starting agent (Critical timing fix!)
         try:
             import json

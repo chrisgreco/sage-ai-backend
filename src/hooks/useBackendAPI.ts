@@ -68,14 +68,15 @@ export const useBackendAPI = () => {
       console.log('Creating debate with topic:', topic);
       console.log('Backend URL:', BACKEND_API_URL);
       
-      const response = await fetchWithRetry(`${BACKEND_API_URL}/debate`, {
+      const response = await fetchWithRetry(`${BACKEND_API_URL}/create-debate-with-token`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           topic,
-          room_name: roomName
+          persona: "Aristotle",  // Default persona for now
+          participant_name: "User"
         })
       }, 4, 2000); // 4 retries with 2 second initial delay
 
