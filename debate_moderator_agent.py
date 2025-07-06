@@ -322,12 +322,15 @@ CRITICAL BEHAVIOR RULES:
                 tools=[self.moderate_discussion, self.fact_check_statement, self.set_debate_topic]
             )
             
-            # Create session with Perplexity integration following 1.0 pattern
+            # Create session with Perplexity via OpenAI LLM with custom base_url
+            # Note: Using this approach instead of with_perplexity() due to message sequence issues
             session = AgentSession(
                 vad=silero.VAD.load(),
                 stt=deepgram.STT(model="nova-2"),
-                llm=openai.LLM.with_perplexity(
+                llm=openai.LLM(
                     model="sonar-pro",
+                    api_key=os.getenv("PERPLEXITY_API_KEY"),
+                    base_url="https://api.perplexity.ai",
                     temperature=0.7,
                 ),
                 tts=openai.TTS(voice="alloy"),
