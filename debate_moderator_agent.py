@@ -122,21 +122,24 @@ async def moderate_discussion(
         return f"I apologize, but I encountered an issue while moderating. Let us continue with respect and understanding."
 
 @function_tool
-async def fact_check_statement(
-    context: RunContext,
-    statement: Annotated[str, "The statement to fact-check"],
-    participant: Annotated[str, "Who made the statement"],
-):
-    """Fact-check a statement made during the debate"""
+async def fact_check_statement(statement: Annotated[str, "The statement to fact-check"]) -> str:
+    """Fact-check a statement using real-time search capabilities"""
     try:
-        logger.info(f"🔍 Fact-checking: {statement}")
+        logger.info(f"🔍 Fact-checking statement: {statement}")
         
-        # In a real implementation, this would call a fact-checking API
-        return f"Let me examine that claim, {participant}. While I cannot verify all facts in real-time, I encourage us to consider the sources and evidence for such statements."
-    
+        # Let the LLM handle fact-checking through its built-in Perplexity integration
+        # No direct API calls needed - LiveKit handles this internally
+        
+        # Store the fact-check request in memory for context
+        if memory_manager:
+            await memory_manager.store_fact_check(statement, "fact-check-requested")
+        
+        # Return a message that will be processed by the LLM's Perplexity integration
+        return f"I'll fact-check this statement using real-time search: '{statement}'. Let me verify the accuracy of this claim."
+        
     except Exception as e:
-        logger.error(f"Error in fact_check_statement: {e}")
-        return f"I apologize, but I cannot fact-check that statement right now. Let us proceed with careful consideration of our claims."
+        logger.error(f"Error in fact-checking: {e}")
+        return f"I encountered an issue while fact-checking the statement: '{statement}'. Let me try to verify this information another way."
 
 @function_tool
 async def set_debate_topic(
@@ -209,12 +212,12 @@ async def entrypoint(ctx: JobContext):
             tools=[moderate_discussion, fact_check_statement, set_debate_topic]
         )
         
-        # Create session with OpenAI (temporarily while Perplexity integration is fixed)
+        # Create session with Perplexity integration (LiveKit handles API calls internally)
         session = AgentSession(
             vad=silero.VAD.load(),
             stt=deepgram.STT(model="nova-2"),
-            llm=openai.LLM(
-                model="gpt-4o-mini",
+            llm=openai.LLM.with_perplexity(
+                model="sonar-pro",
                 temperature=0.7,
             ),
             tts=openai.TTS(voice="alloy"),
