@@ -176,11 +176,14 @@ async def entrypoint(ctx: JobContext):
     # Create the debate moderator agent
     agent = DebateModerator(persona=persona, topic=topic)
     
-    # Create session with standard OpenAI integration following official pattern
+    # Create session with Perplexity integration following official pattern
     session = AgentSession(
         vad=silero.VAD.load(),
         stt=deepgram.STT(model="nova-2"),
-        llm=openai.LLM(model="gpt-4o-mini"),
+        llm=openai.LLM.with_perplexity(
+            model="sonar-pro",
+            temperature=0.7,
+        ),
         tts=openai.TTS(voice="alloy"),
     )
     
