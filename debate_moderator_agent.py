@@ -165,6 +165,18 @@ async def entrypoint(ctx: JobContext):
     """Main entry point for the LiveKit agent following official patterns"""
     
     try:
+        # Validate environment variables first
+        logger.info("🔍 Validating environment variables...")
+        perplexity_key = os.getenv('PERPLEXITY_API_KEY')
+        openai_key = os.getenv('OPENAI_API_KEY')
+        
+        logger.info(f"   PERPLEXITY_API_KEY: {'✅ Found' if perplexity_key else '❌ Not found'}")
+        logger.info(f"   OPENAI_API_KEY: {'✅ Found' if openai_key else '❌ Not found'}")
+        
+        if not perplexity_key:
+            logger.error("❌ PERPLEXITY_API_KEY environment variable is required for LLM.with_perplexity()")
+            raise ValueError("PERPLEXITY_API_KEY environment variable is required")
+            
         # Connect to the room first (official pattern)
         logger.info("🔗 Connecting to LiveKit room...")
         await ctx.connect()
@@ -199,6 +211,9 @@ async def entrypoint(ctx: JobContext):
         
         # Create session with Perplexity integration following official pattern
         logger.info("🔧 Creating AgentSession with Perplexity integration...")
+        logger.info(f"   Using Perplexity model: sonar-pro")
+        logger.info(f"   Temperature: 0.7")
+        
         session = AgentSession(
             vad=silero.VAD.load(),
             stt=deepgram.STT(model="nova-2"),
