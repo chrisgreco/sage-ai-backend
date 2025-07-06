@@ -118,7 +118,7 @@ async def fact_check_statement(statement: Annotated[str, "The statement to fact-
         if memory_manager:
             await memory_manager.store_fact_check(statement, "fact-check-requested")
         
-        # Let the LLM handle fact-checking through its built-in Perplexity integration
+        # Let the LLM handle fact-checking through OpenAI's knowledge base
         return f"I'll fact-check this statement using current information: {statement}"
         
     except Exception as e:
@@ -155,15 +155,13 @@ async def entrypoint(ctx: JobContext):
         
         # Validate environment variables
         logger.info("🔍 Validating environment variables...")
-        perplexity_key = os.getenv('PERPLEXITY_API_KEY')
         openai_key = os.getenv('OPENAI_API_KEY')
         
-        logger.info(f"   PERPLEXITY_API_KEY: {'✅ Found' if perplexity_key else '❌ Not found'}")
         logger.info(f"   OPENAI_API_KEY: {'✅ Found' if openai_key else '❌ Not found'}")
         
-        if not perplexity_key:
-            logger.error("❌ PERPLEXITY_API_KEY environment variable is required for LLM.with_perplexity()")
-            raise ValueError("PERPLEXITY_API_KEY environment variable is required")
+        if not openai_key:
+            logger.error("❌ OPENAI_API_KEY environment variable is required for OpenAI LLM")
+            raise ValueError("OPENAI_API_KEY environment variable is required")
         
         # Connect to room first (official pattern)
         logger.info("🔗 Connecting to LiveKit room...")
