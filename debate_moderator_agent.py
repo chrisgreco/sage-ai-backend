@@ -12,6 +12,7 @@ import logging
 import shutil
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+import time
 
 # Core LiveKit imports
 from livekit.agents import (
@@ -28,9 +29,6 @@ from livekit.plugins import openai, silero, deepgram, cartesia
 from livekit.plugins.turn_detector.english import EnglishModel
 from livekit import api, rtc
 
-# Import memory manager
-from supabase_memory_manager import SupabaseMemoryManager
-
 # Environment variables are managed by Render directly - no need for dotenv
 # Render automatically sets environment variables in the container runtime
 
@@ -38,43 +36,46 @@ from supabase_memory_manager import SupabaseMemoryManager
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class AgentState:
-    """Agent state constants for tracking current activity"""
-    INITIALIZING = "initializing"
-    LISTENING = "listening" 
-    THINKING = "thinking"
-    SPEAKING = "speaking"
-
 class DebateModerator:
-    """Enhanced debate moderator with persistent memory and context awareness"""
+    """AI Debate Moderator using different philosophical personas"""
     
     def __init__(self, topic: str, persona: str, room_name: str, room: rtc.Room):
         self.topic = topic
         self.persona = persona
         self.room_name = room_name
         self.room = room
-        self.session_id: Optional[str] = None
+        self.session_id = f"{room_name}_{int(time.time())}"
         self.conversation_count = 0
-        self.current_state = AgentState.INITIALIZING
+        self.current_state = "initializing"
         
-        # Initialize memory manager
-        self.memory_manager = SupabaseMemoryManager()
+        # Initialize memory manager with fallback
+        try:
+            # Try to import and initialize memory manager
+            from memory_manager import SupabaseMemoryManager
+            self.memory_manager = SupabaseMemoryManager()
+        except Exception as e:
+            logger.warning(f"Memory manager initialization failed: {e}")
+            # Create a simple fallback memory manager
+            self.memory_manager = None
         
         logger.info(f"🎯 Initialized {persona} moderator for topic: '{topic}' in room: {room_name}")
         
     async def set_agent_state(self, state: str):
-        """Update agent state and broadcast to room"""
-        self.current_state = state
-        logger.info(f"🤖 Agent state: {state}")
-        
-        # Broadcast state to room participants
+        """Set agent state for tracking (using string instead of enum)"""
         try:
-            await self.room.local_participant.publish_data(
-                f'{{"type": "agent_state", "state": "{state}", "persona": "{self.persona}"}}',
-                reliable=True
-            )
+            self.current_state = state
+            logger.info(f"🤖 Agent state: {state}")
+            
+            # Broadcast state to room participants
+            try:
+                await self.room.local_participant.publish_data(
+                    f'{{"type": "agent_state", "state": "{state}", "persona": "{self.persona}"}}',
+                    reliable=True
+                )
+            except Exception as e:
+                logger.warning(f"Failed to broadcast agent state: {e}")
         except Exception as e:
-            logger.warning(f"Failed to broadcast agent state: {e}")
+            logger.error(f"Failed to set agent state: {e}")
     
     async def store_conversation_turn(self, speaker: str, content: str, turn_type: str = "speech"):
         """Store conversation turn in memory system"""
@@ -131,7 +132,7 @@ class DebateModerator:
     ) -> str:
         """Set or update the debate topic"""
         try:
-            await self.set_agent_state(AgentState.THINKING)
+            await self.set_agent_state("thinking")
             
             self.topic = topic
             logger.info(f"📋 Topic updated to: {topic}")
@@ -157,7 +158,7 @@ class DebateModerator:
     ) -> str:
         """Moderate the discussion with persona-specific approach"""
         try:
-            await self.set_agent_state(AgentState.THINKING)
+            await self.set_agent_state("thinking")
             
             self.conversation_count += 1
             speaker = speaker_name or f"Participant-{self.conversation_count}"
@@ -213,7 +214,7 @@ class DebateModerator:
     ) -> str:
         """Fact-check a statement with research if available"""
         try:
-            await self.set_agent_state(AgentState.THINKING)
+            await self.set_agent_state("thinking")
             
             logger.info(f"🔍 Fact-checking claim: {claim[:100]}...")
             
@@ -310,36 +311,31 @@ CRITICAL BEHAVIOR RULES:
         return base_prompt + persona_specific.get(persona, persona_specific["Aristotle"])
 
     async def start(self):
-        """Start the agent with proper LiveKit pattern using Perplexity integration"""
+        """Start the agent with proper LiveKit 1.0 pattern"""
         try:
             # Create agent with dynamic persona instructions
             agent = Agent(
                 instructions=self.get_prompt_for_persona(self.persona),
-                tools=[]  # Add function tools here if needed
+                # Remove tools for now to simplify debugging
             )
             
-            # Create session with Perplexity integration following recommended pattern
+            # Create session with Perplexity integration following 1.0 pattern
             session = AgentSession(
                 vad=silero.VAD.load(),
                 stt=deepgram.STT(model="nova-2"),
                 llm=openai.LLM.with_perplexity(
-                    model="sonar-pro",                         # ✅ Current supported model
-                    api_key=None,                               # ✅ Pulled from PERPLEXITY_API_KEY in env
-                    base_url="https://api.perplexity.ai",      # ✅ Default Perplexity endpoint
-                    temperature=0.7,                            # 🎛 Tune as needed
-                    parallel_tool_calls=False,                  # ⚙ Explicit default behavior
-                    tool_choice="auto"                         # 🎯 Delegate tool choice to LLM
+                    model="sonar-pro",
+                    api_key=None,  # Uses PERPLEXITY_API_KEY from env
+                    base_url="https://api.perplexity.ai",
+                    temperature=0.7,
+                    parallel_tool_calls=False,
+                    tool_choice="auto"
                 ),
                 tts=openai.TTS(voice="alloy"),
                 turn_detection=EnglishModel(),
             )
             
-            # Set up event handlers for memory storage
-            session.on("agent_speech_committed", self._on_agent_speech)
-            session.on("user_speech_committed", self._on_user_speech)
-            
-            logger.info(f"🤖 Starting {self.persona} agent with Perplexity (sonar-pro) integration")
-            logger.info(f"📝 Instructions: {self.get_prompt_for_persona(self.persona)[:100]}...")
+            logger.info(f"🤖 Starting {self.persona} agent with Perplexity integration")
             
             # Start the session with the agent
             await session.start(agent=agent, room=self.room)
@@ -351,7 +347,7 @@ CRITICAL BEHAVIOR RULES:
             
         except Exception as e:
             logger.error(f"Failed to start agent: {e}")
-            await self.set_agent_state(AgentState.ERROR)
+            await self.set_agent_state("error")
             raise
 
 async def entrypoint(ctx: JobContext):
