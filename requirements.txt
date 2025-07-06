@@ -2,14 +2,14 @@
 # python-dotenv removed - Render manages environment variables directly
 
 # FastAPI backend dependencies - EXPLICIT VERSIONS FOR STABILITY
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
 pydantic==2.5.0
 
 # LiveKit dependencies - ENHANCED FULL VOICE AI STACK
 # Using the recommended pattern from LiveKit documentation
-livekit-agents[deepgram,openai,cartesia,silero,turn-detector]>=1.0
-livekit-api>=1.0.0
+livekit-agents[deepgram,openai,silero,turn-detector]~=1.0
+python-dotenv
 
 # Audio/Video processing required by LiveKit
 av>=10.0.0
@@ -21,8 +21,11 @@ openai>=1.84.0
 httpx>=0.25.0
 
 # Supabase for memory management
-supabase>=2.3.0
+supabase>=2.0.0
 
 # Additional utilities
 asyncio-mqtt>=0.13.0
 psutil>=5.9.0
+
+# Additional dependencies
+aiofiles>=23.0.0

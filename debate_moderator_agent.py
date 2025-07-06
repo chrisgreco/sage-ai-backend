@@ -1,33 +1,26 @@
 #!/usr/bin/env python3
 
 """
-Sage AI Debate Moderator Agent - Enhanced with Memory and Context
-Follows exact official LiveKit 1.0 patterns from the documentation
+Sage AI Debate Moderator Agent - Official LiveKit 1.0 Patterns
+Follows exact patterns from https://docs.livekit.io/agents/quickstarts/voice-agent/
 """
 
 import os
-import asyncio
-import logging
 import json
-from typing import Optional, List, Dict, Any, Annotated
-from datetime import datetime
-import httpx
+import logging
+from typing import Annotated
+from dotenv import load_dotenv
 
 # Core LiveKit imports following official patterns
-from livekit.agents import (
-    Agent,
-    AgentSession,
-    JobContext,
-    WorkerOptions,
-    cli,
-    function_tool,
-    RunContext,
-)
-from livekit.plugins import openai, silero, deepgram, cartesia
+from livekit import agents
+from livekit.agents import Agent, AgentSession, JobContext, RunContext, WorkerOptions, cli, function_tool
+from livekit.plugins import deepgram, openai, silero
+
+# Load environment variables
+load_dotenv()
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("sage-debate-moderator")
 
 # Import memory manager with graceful fallback
 try:
@@ -38,14 +31,14 @@ except Exception as e:
     logger.warning(f"⚠️ Memory manager initialization failed: {e}")
     memory_manager = None
 
-# Global variables for agent state (following official patterns)
+# Global variables for agent state
 current_persona = "Aristotle"
 current_topic = "General Discussion"
 
-def get_persona_prompt(persona: str) -> str:
-    """Generate persona-specific prompt based on the selected moderator"""
+def get_persona_instructions(persona: str, topic: str) -> str:
+    """Generate persona-specific instructions based on the selected moderator"""
     
-    base_prompt = f"""You are {persona}, acting as a debate moderator for voice conversations. 
+    base_instructions = f"""You are {persona}, acting as a debate moderator for voice conversations. 
 Your role is to:
 - Guide meaningful philosophical discussions
 - Ask thought-provoking questions
@@ -53,7 +46,7 @@ Your role is to:
 - Maintain respectful dialogue
 - Use your unique philosophical approach
 
-Current topic: {current_topic}
+Current topic: {topic}
 
 """
     
@@ -81,7 +74,7 @@ Current topic: {current_topic}
 """
     }
     
-    return base_prompt + persona_specific.get(persona, f"""As {persona}:
+    return base_instructions + persona_specific.get(persona, f"""As {persona}:
 - Use your philosophical approach to guide the discussion
 - Ask thoughtful questions appropriate to your perspective
 - Help participants think more deeply about the topic
@@ -110,8 +103,11 @@ async def moderate_discussion(
         return f"I'll help moderate this discussion as {current_persona}."
 
 @function_tool
-async def fact_check_statement(statement: Annotated[str, "The statement to fact-check"]) -> str:
-    """Fact-check a statement using real-time search capabilities"""
+async def fact_check_statement(
+    context: RunContext,
+    statement: Annotated[str, "The statement to fact-check"]
+) -> str:
+    """Fact-check a statement using available knowledge"""
     try:
         logger.info(f"🔍 Fact-checking statement: {statement}")
         
@@ -119,8 +115,7 @@ async def fact_check_statement(statement: Annotated[str, "The statement to fact-
         if memory_manager:
             await memory_manager.store_fact_check(statement, "fact-check-requested")
         
-        # Let the LLM handle fact-checking through OpenAI's knowledge base
-        return f"I'll fact-check this statement using current information: {statement}"
+        return f"I'll fact-check this statement using available knowledge: {statement}"
         
     except Exception as e:
         logger.error(f"Error in fact_check_statement: {e}")
@@ -147,6 +142,14 @@ async def set_debate_topic(
         logger.error(f"Error in set_debate_topic: {e}")
         return f"I'll guide our discussion on: {topic}"
 
+# Agent class following official patterns
+class SageDebateModerator(Agent):
+    def __init__(self, persona: str, topic: str) -> None:
+        super().__init__(
+            instructions=get_persona_instructions(persona, topic),
+            tools=[moderate_discussion, fact_check_statement, set_debate_topic],
+        )
+
 # Main entrypoint following exact official pattern
 async def entrypoint(ctx: JobContext):
     """Main entry point for the LiveKit agent following official patterns"""
@@ -157,19 +160,21 @@ async def entrypoint(ctx: JobContext):
         # Validate environment variables
         logger.info("🔍 Validating environment variables...")
         openai_key = os.getenv('OPENAI_API_KEY')
+        deepgram_key = os.getenv('DEEPGRAM_API_KEY')
         
         logger.info(f"   OPENAI_API_KEY: {'✅ Found' if openai_key else '❌ Not found'}")
+        logger.info(f"   DEEPGRAM_API_KEY: {'✅ Found' if deepgram_key else '❌ Not found'}")
         
         if not openai_key:
-            logger.error("❌ OPENAI_API_KEY environment variable is required for OpenAI LLM")
+            logger.error("❌ OPENAI_API_KEY environment variable is required")
             raise ValueError("OPENAI_API_KEY environment variable is required")
         
-        # Connect to room first (official pattern)
+        # Connect to room first (exact official pattern)
         logger.info("🔗 Connecting to LiveKit room...")
         await ctx.connect()
         logger.info("✅ Connected to room successfully")
         
-        # Get room metadata safely
+        # Get room metadata safely after connection
         room = ctx.room
         room_metadata = {}
         
@@ -189,26 +194,15 @@ async def entrypoint(ctx: JobContext):
         logger.info(f"🎭 Persona: {current_persona}")
         logger.info(f"📝 Topic: {current_topic}")
         
-        # Create agent with instructions and tools (exact official pattern)
-        agent = Agent(
-            instructions=get_persona_prompt(current_persona),
-            tools=[moderate_discussion, fact_check_statement, set_debate_topic],
-        )
+        # Create agent with extracted persona and topic (exact official pattern)
+        agent = SageDebateModerator(current_persona, current_topic)
         
-        # Create session with OpenAI with explicit timeout configuration
+        # Create session with STT, LLM, TTS configuration (exact official pattern)
         logger.info("🧠 Creating AgentSession with OpenAI integration...")
-        
-        # Create LLM with explicit timeout to prevent health check issues
-        llm = openai.LLM(
-            model="gpt-4o-mini",
-            temperature=0.7,
-            timeout=httpx.Timeout(connect=15.0, read=30.0, write=10.0, pool=5.0)
-        )
-        
         session = AgentSession(
             vad=silero.VAD.load(),
-            stt=deepgram.STT(model="nova-2"),
-            llm=llm,
+            stt=deepgram.STT(model="nova-2") if deepgram_key else None,
+            llm=openai.LLM(model="gpt-4o-mini", temperature=0.7),
             tts=openai.TTS(voice="alloy"),
         )
         
@@ -216,17 +210,7 @@ async def entrypoint(ctx: JobContext):
         
         # Start session with agent and room (exact official pattern)
         logger.info("▶️ Starting agent session...")
-        
-        try:
-            await session.start(agent=agent, room=ctx.room)
-            logger.info("✅ Agent session started successfully")
-        except Exception as session_error:
-            logger.error(f"❌ Failed to start agent session: {session_error}")
-            # Log more details about the error
-            logger.error(f"Error type: {type(session_error).__name__}")
-            if hasattr(session_error, 'response'):
-                logger.error(f"HTTP response status: {getattr(session_error.response, 'status_code', 'unknown')}")
-            raise
+        await session.start(agent=agent, room=ctx.room)
         
         # Generate initial reply (exact official pattern)
         initial_greeting = f"Hello! I'm {current_persona}, and I'll be moderating our discussion on {current_topic}. How would you like to begin exploring this topic together?"
