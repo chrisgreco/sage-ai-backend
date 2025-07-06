@@ -196,13 +196,13 @@ async def entrypoint(ctx: JobContext):
             tools=[moderate_discussion, fact_check_statement, set_debate_topic],
         )
         
-        # Create session with Perplexity integration (LiveKit handles API calls internally)
-        logger.info("🧠 Creating AgentSession with Perplexity integration...")
+        # Create session with OpenAI (temporarily while Perplexity integration is fixed)
+        logger.info("🧠 Creating AgentSession with OpenAI integration...")
         session = AgentSession(
             vad=silero.VAD.load(),
             stt=deepgram.STT(model="nova-2"),
-            llm=openai.LLM.with_perplexity(
-                model="sonar-pro",
+            llm=openai.LLM(
+                model="gpt-4o-mini",
                 temperature=0.7,
             ),
             tts=openai.TTS(voice="alloy"),
