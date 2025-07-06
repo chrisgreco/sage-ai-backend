@@ -51,7 +51,7 @@ class DebateModerator:
         # Initialize memory manager with fallback
         try:
             # Try to import and initialize memory manager
-            from memory_manager import SupabaseMemoryManager
+            from supabase_memory_manager import SupabaseMemoryManager
             self.memory_manager = SupabaseMemoryManager()
         except Exception as e:
             logger.warning(f"Memory manager initialization failed: {e}")
