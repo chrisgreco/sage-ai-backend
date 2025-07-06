@@ -39,7 +39,7 @@ app.add_middleware(
 # Request/Response models
 class DebateRequest(BaseModel):
     topic: str
-    persona: Optional[str] = "Aristotle"
+    persona: Optional[str] = None  # No default - frontend must specify
     participant_name: Optional[str] = "User"
 
 class TokenRequest(BaseModel):
@@ -50,7 +50,7 @@ class TokenRequest(BaseModel):
 class AgentLaunchRequest(BaseModel):
     room_name: str
     topic: str
-    persona: Optional[str] = "Aristotle"
+    persona: Optional[str] = None  # No default - frontend must specify
 
 class AgentStopRequest(BaseModel):
     room_name: str
@@ -89,6 +89,10 @@ async def health_check():
 async def create_debate(request: DebateRequest):
     """Create a new debate room with topic and persona"""
     try:
+        # Validate required fields
+        if not request.persona:
+            raise HTTPException(status_code=400, detail="Persona is required. Choose from: Aristotle, Socrates, Buddha")
+            
         # Generate unique room name based on topic
         import hashlib
         import time
@@ -158,6 +162,10 @@ async def generate_participant_token(request: TokenRequest):
 async def launch_ai_agents(request: AgentLaunchRequest, background_tasks: BackgroundTasks):
     """Launch AI agents for a debate room with topic and persona context"""
     try:
+        # Validate required fields
+        if not request.persona:
+            raise HTTPException(status_code=400, detail="Persona is required. Choose from: Aristotle, Socrates, Buddha")
+            
         if request.room_name in active_agents:
             return {"message": "AI agents already active for this room", "room_name": request.room_name}
         
@@ -233,6 +241,10 @@ async def get_all_agent_status():
 async def create_debate_with_token(request: DebateRequest):
     """Create debate room and generate participant token in one call - optimized for LiveKitRoom"""
     try:
+        # Validate required fields
+        if not request.persona:
+            raise HTTPException(status_code=400, detail="Persona is required. Choose from: Aristotle, Socrates, Buddha")
+        
         # Generate unique room name based on topic
         import hashlib
         import time
