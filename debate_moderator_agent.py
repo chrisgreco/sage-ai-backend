@@ -171,36 +171,58 @@ async def entrypoint(ctx: JobContext):
         await ctx.connect()
         logger.info("✅ Connected to room successfully")
         
-        # Get room metadata safely after connection
+        # CRITICAL FIX: Get participant metadata from the agent's JWT token
+        # According to LiveKit docs and Lovable analysis, metadata comes from participant token, not room
         room = ctx.room
-        room_metadata = {}
+        agent_participant = room.local_participant  # This is the agent itself
+        participant_metadata = {}
         
+        logger.info(f"🔍 Agent participant identity: {agent_participant.identity}")
+        logger.info(f"🔍 Agent participant metadata: {agent_participant.metadata}")
+        
+        if hasattr(agent_participant, 'metadata') and agent_participant.metadata:
+            try:
+                participant_metadata = json.loads(agent_participant.metadata) if isinstance(agent_participant.metadata, str) else agent_participant.metadata
+                logger.info(f"📋 Successfully parsed participant metadata: {participant_metadata}")
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.warning(f"Failed to parse participant metadata: {e}")
+                participant_metadata = {}
+        
+        # ALSO check room metadata as backup (in case it's set there too)
+        room_metadata = {}
         if hasattr(room, 'metadata') and room.metadata:
             try:
                 room_metadata = json.loads(room.metadata) if isinstance(room.metadata, str) else room.metadata
-                logger.info(f"📋 Room metadata: {room_metadata}")
+                logger.info(f"📋 Room metadata (backup): {room_metadata}")
             except (json.JSONDecodeError, TypeError):
-                logger.warning("Failed to parse room metadata, using defaults")
+                logger.warning("Failed to parse room metadata")
                 room_metadata = {}
         
-        # Extract persona and topic from room metadata (official LiveKit pattern)
+        # Extract persona and topic from participant metadata FIRST, then room metadata as fallback
         global current_persona, current_topic
         
-        # Extract from room metadata - these MUST come from the frontend
-        current_persona = room_metadata.get('persona')
-        current_topic = room_metadata.get('topic')
+        # Try participant metadata first (CORRECT approach according to LiveKit docs)
+        current_persona = participant_metadata.get('persona') or room_metadata.get('persona')
+        current_topic = participant_metadata.get('topic') or room_metadata.get('topic')
         
         # Try alternative metadata keys if the standard ones don't work
         if not current_topic:
-            current_topic = room_metadata.get('debate_topic')
+            current_topic = participant_metadata.get('debate_topic') or room_metadata.get('debate_topic')
         if not current_topic:
-            current_topic = room_metadata.get('debateTopic')
+            current_topic = participant_metadata.get('debateTopic') or room_metadata.get('debateTopic')
         
-        # If still no metadata, this indicates a backend/frontend integration issue
+        # Detailed logging for debugging
+        logger.info(f"🔍 Participant metadata: {participant_metadata}")
+        logger.info(f"🔍 Room metadata: {room_metadata}")
+        logger.info(f"🔍 Extracted persona: {current_persona}")
+        logger.info(f"🔍 Extracted topic: {current_topic}")
+        
+        # If still no metadata, this indicates the JWT token doesn't have metadata
         if not current_persona or not current_topic:
             logger.error(f"❌ MISSING METADATA: persona={current_persona}, topic={current_topic}")
+            logger.error(f"❌ Participant metadata received: {participant_metadata}")
             logger.error(f"❌ Room metadata received: {room_metadata}")
-            logger.error("❌ This indicates the frontend is not sending persona/topic properly!")
+            logger.error("❌ This indicates the backend JWT token generation is not including metadata!")
             
             # Use emergency fallbacks but log the issue
             current_persona = current_persona or "Aristotle"

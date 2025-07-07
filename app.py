@@ -15,6 +15,7 @@ Updated: 2025-07-06 - Added /debate endpoint for frontend compatibility
 
 import os
 import asyncio
+import jwt
 import logging
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
@@ -73,6 +74,7 @@ class TokenRequest(BaseModel):
     room_name: str
     participant_name: str
     topic: Optional[str] = None
+    persona: Optional[str] = None
 
 class AgentLaunchRequest(BaseModel):
     room_name: str
@@ -151,34 +153,76 @@ async def create_debate(request: DebateRequest):
 async def generate_participant_token(request: TokenRequest):
     """Generate LiveKit token for participant with topic context"""
     try:
+        # 🔍 DEBUG: Log what parameters we received from frontend
+        logger.info(f"🔍 /participant-token received parameters:")
+        logger.info(f"   - room_name: '{request.room_name}'")
+        logger.info(f"   - participant_name: '{request.participant_name}'")
+        logger.info(f"   - topic: '{request.topic}'")
+        logger.info(f"   - persona: '{request.persona}'")
+        
         # Create token with participant permissions
         # Ensure all required parameters are present
         if not all([LIVEKIT_API_KEY, LIVEKIT_API_SECRET, request.room_name, request.participant_name]):
             raise ValueError("Missing required parameters for token generation")
             
-        # Generate participant token using correct LiveKit Python SDK pattern
-        if not all([LIVEKIT_API_KEY, LIVEKIT_API_SECRET, request.room_name, request.participant_name]):
-            raise ValueError("Missing required parameters for token generation")
-        
         # Set environment variables for automatic API key detection
         import os
         os.environ['LIVEKIT_API_KEY'] = LIVEKIT_API_KEY
         os.environ['LIVEKIT_API_SECRET'] = LIVEKIT_API_SECRET
         
+        # CRITICAL FIX: Include topic and persona metadata in the token
+        # This allows AI agents to access this information when they connect
+        import json
+        participant_metadata = {}
+        if request.topic:
+            participant_metadata["topic"] = request.topic
+        # Note: persona is typically set when launching agents, not for regular participants
+        # But we can check if it's provided in the request
+        if hasattr(request, 'persona') and request.persona:
+            participant_metadata["persona"] = request.persona
+            
+        # 🔍 DEBUG: Log the metadata we're adding to the token
+        logger.info(f"🔍 Participant metadata to include: {json.dumps(participant_metadata, indent=2)}")
+            
         # Use correct LiveKit Python SDK pattern - no parameters in constructor
-        token = api.AccessToken() \
+        token_builder = api.AccessToken() \
             .with_identity(request.participant_name) \
             .with_name(request.participant_name) \
             .with_grants(api.VideoGrants(
                 room_join=True,
                 room=request.room_name,
-            )).to_jwt()
+            ))
+            
+        # Add metadata if we have any
+        if participant_metadata:
+            token_builder = token_builder.with_metadata(json.dumps(participant_metadata))
+            logger.info(f"🔧 Added participant metadata to token: {participant_metadata}")
+        else:
+            logger.warning(f"⚠️ No participant metadata to add to token!")
+            
+        token = token_builder.to_jwt()
+        
+        # 🔍 DEBUG: Try to decode the token to verify metadata is included
+        try:
+            import jwt
+            # Decode without verification to inspect the payload
+            decoded_token = jwt.decode(token, options={"verify_signature": False})
+            logger.info(f"🔍 Token payload contains: {json.dumps(decoded_token, indent=2)}")
+            
+            # Check specifically for metadata
+            if 'metadata' in decoded_token:
+                logger.info(f"✅ Token metadata field: {decoded_token['metadata']}")
+            else:
+                logger.warning(f"⚠️ No 'metadata' field found in token!")
+                
+        except Exception as decode_error:
+            logger.error(f"❌ Failed to decode token for verification: {decode_error}")
         
         # Validate token was generated successfully
         if not token:
             raise ValueError("Failed to generate JWT token")
         
-        logger.info(f"Generated token for {request.participant_name} in room {request.room_name}")
+        logger.info(f"✅ Generated token for {request.participant_name} in room {request.room_name}")
         
         return {
             "token": token,
@@ -271,93 +315,33 @@ async def get_all_agent_status():
         "total_agents": len(active_agents)
     }
 
-@app.post("/create-debate-with-token")
-async def create_debate_with_token(request: DebateRequest):
-    """Create debate room and generate participant token in one call - optimized for LiveKitRoom"""
+@app.post("/debug-token")
+async def debug_token(request: dict):
+    """Debug endpoint to decode JWT tokens and verify metadata"""
     try:
-        # Validate required fields
-        if not request.persona:
-            raise HTTPException(status_code=400, detail="Persona is required. Choose from: Aristotle, Socrates, Buddha")
-        
-        # Generate unique room name based on topic
-        import hashlib
-        import time
-        
-        topic_hash = hashlib.md5(request.topic.encode()).hexdigest()[:8]
-        timestamp = int(time.time())
-        room_name = f"debate-{topic_hash}-{timestamp}"
-        
-        # Use participant name from request or default
-        participant_name = request.participant_name or "User"
-        
-        # CRITICAL FIX: Create room WITH metadata to prevent race condition
-        try:
-            import json
-            room_metadata = {
-                "persona": request.persona,
-                "topic": request.topic,
-                "debateTopic": request.topic,  # Alternative key for compatibility
-                "created_at": datetime.utcnow().isoformat()
-            }
-            
-            # Set environment variables for automatic API key detection
-            import os
-            os.environ['LIVEKIT_API_KEY'] = LIVEKIT_API_KEY
-            os.environ['LIVEKIT_API_SECRET'] = LIVEKIT_API_SECRET
-            
-            # Create room with metadata using LiveKit API
-            lkapi = api.LiveKitAPI(
-                url=LIVEKIT_URL,
-                api_key=LIVEKIT_API_KEY,
-                api_secret=LIVEKIT_API_SECRET
-            )
-            
-            # Create room with metadata in one atomic operation
-            room_info = await lkapi.room.create_room(
-                api.CreateRoomRequest(
-                    name=room_name,
-                    metadata=json.dumps(room_metadata)  # Set metadata during creation!
-                )
-            )
-            await lkapi.aclose()
-            logger.info(f"✅ Created room {room_name} WITH metadata - persona: {request.persona}, topic: {request.topic}")
-            
-        except Exception as e:
-            logger.error(f"❌ CRITICAL: Failed to create room with metadata: {e}")
-            # Fallback to room creation without metadata
-            logger.warning("⚠️ Falling back to room creation without metadata")
-        
-        # Generate participant token
-        if not all([LIVEKIT_API_KEY, LIVEKIT_API_SECRET, room_name, participant_name]):
-            raise ValueError("Missing required parameters for token generation")
-            
-        # Use correct LiveKit Python SDK pattern - no parameters in constructor
-        token = api.AccessToken() \
-            .with_identity(participant_name) \
-            .with_name(participant_name) \
-            .with_grants(api.VideoGrants(
-                room_join=True,
-                room=room_name,
-            )).to_jwt()
-        
+        token = request.get("token")
         if not token:
-            raise ValueError("Failed to generate JWT token")
+            raise HTTPException(status_code=400, detail="Token is required")
         
-        logger.info(f"Created debate room {room_name} with token for {participant_name}")
+        # Decode JWT without verification (for debugging only)
+        decoded = jwt.decode(token, options={"verify_signature": False})
+        
+        logger.info(f"🔍 Decoded JWT token: {decoded}")
         
         return {
-            "room_name": room_name,
-            "topic": request.topic,
-            "persona": request.persona,
-            "token": token,
-            "livekit_url": LIVEKIT_URL,
-            "participant_name": participant_name,
-            "created_at": datetime.utcnow().isoformat()
+            "decoded_token": decoded,
+            "has_metadata": "metadata" in decoded,
+            "metadata": decoded.get("metadata", {}),
+            "has_attributes": "attributes" in decoded,
+            "attributes": decoded.get("attributes", {}),
+            "participant_name": decoded.get("sub"),
+            "room_name": decoded.get("video", {}).get("room")
         }
         
     except Exception as e:
-        logger.error(f"Failed to create debate with token: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error(f"Error decoding token: {e}")
+        raise HTTPException(status_code=400, detail=f"Error decoding token: {str(e)}")
+
 
 async def start_agent_process(room_name: str, topic: str, persona: str):
     """Start the LiveKit agent process with topic and persona context"""
@@ -375,14 +359,28 @@ async def start_agent_process(room_name: str, topic: str, persona: str):
         os.environ['LIVEKIT_API_KEY'] = LIVEKIT_API_KEY
         os.environ['LIVEKIT_API_SECRET'] = LIVEKIT_API_SECRET
         
+        # CRITICAL FIX: Generate agent token WITH metadata for AI agents
+        # This ensures agents can access topic and persona information when they connect
+        import json
+        agent_metadata = {
+            "topic": topic,
+            "persona": persona,
+            "room_name": room_name,
+            "participant_type": "agent",  # Distinguish from human participants
+            "agent_role": "debate_moderator"
+        }
+        
         # Use correct LiveKit Python SDK pattern for agent token
         agent_token = api.AccessToken() \
             .with_identity(agent_identity) \
             .with_name(f"Sage AI - {persona}") \
+            .with_metadata(json.dumps(agent_metadata)) \
             .with_grants(api.VideoGrants(
                 room_join=True,
                 room=room_name,
             )).to_jwt()
+            
+        logger.info(f"🔧 Generated agent token with metadata: {agent_metadata}")
         
         # Check required API keys
         openai_key = os.getenv("OPENAI_API_KEY")
