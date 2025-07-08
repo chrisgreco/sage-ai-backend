@@ -287,17 +287,14 @@ async def start_agent_process(room_name: str, topic: str, persona: str):
             
             logger.info(f"🎯 Creating agent dispatch with job metadata: {job_metadata}")
             
-            # Use official agent dispatch API to create the job with metadata
-            from livekit.protocol import agent as agent_proto
+            # Use official agent dispatch API - correct method without CreateAgentDispatchRequest
+            # The correct LiveKit pattern: direct call to create_dispatch
             
-            dispatch_request = agent_proto.CreateAgentDispatchRequest(
+            dispatch_response = await lkapi.agent_dispatch.create_dispatch(
                 room=room_name,
                 agent_name="sage-debate-moderator",  # Must match agent registration name
-                metadata=json.dumps(job_metadata)  # Job metadata passed to agent via ctx.job.metadata
+                metadata=job_metadata  # Job metadata passed to agent via ctx.job.metadata
             )
-            
-            # Dispatch the agent using the official API
-            dispatch_response = await lkapi.agent_dispatch.create_dispatch(dispatch_request)
             
             logger.info(f"✅ Agent dispatched successfully:")
             logger.info(f"   Dispatch ID: {dispatch_response.dispatch_id}")
