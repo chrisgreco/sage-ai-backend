@@ -15,6 +15,7 @@ Updated: 2025-07-06 - Added /debate endpoint for frontend compatibility
 
 import os
 import asyncio
+import json
 import jwt
 import logging
 from typing import Optional, Dict, Any
