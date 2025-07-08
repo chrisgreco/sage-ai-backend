@@ -249,6 +249,13 @@ async def entrypoint(ctx: JobContext):
         
         logger.info("🎉 Sage AI Debate Moderator Agent is now active!")
         
+        # Keep the session alive - this is crucial for the agent to remain active
+        logger.info("🔄 Keeping agent session alive...")
+        
+        # Wait for the session to complete naturally (keeps the agent running)
+        await session.wait_for_completion()
+        logger.info("🔚 Agent session completed")
+        
     except Exception as e:
         logger.error(f"❌ Error in entrypoint: {e}")
         raise
