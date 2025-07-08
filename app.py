@@ -195,17 +195,20 @@ async def generate_participant_token(request: TokenRequest):
                 
                 logger.info(f"🎯 Updating room metadata: {room_metadata}")
                 
-                # Update room metadata using RoomService API
-                room_service = api.RoomService()
-                update_request = api.UpdateRoomMetadataRequest(
-                    room=request.room_name,
-                    metadata=json.dumps(room_metadata)
-                )
-                
-                # Update room metadata synchronously 
-                room_service.update_room_metadata(update_request)
-                
-                logger.info(f"✅ Successfully updated room metadata for {request.room_name}")
+                # Update room metadata using async LiveKitAPI
+                lkapi = api.LiveKitAPI()
+                try:
+                    update_request = api.UpdateRoomMetadataRequest(
+                        room=request.room_name,
+                        metadata=json.dumps(room_metadata)
+                    )
+                    
+                    # Use async room service
+                    await lkapi.room.update_room_metadata(update_request)
+                    logger.info(f"✅ Successfully updated room metadata for {request.room_name}")
+                    
+                finally:
+                    await lkapi.aclose()
                 
             except Exception as e:
                 logger.error(f"❌ Failed to update room metadata: {e}")
@@ -308,33 +311,6 @@ async def get_all_agent_status():
         "total_agents": len(active_agents)
     }
 
-@app.post("/debug-token")
-async def debug_token(request: dict):
-    """Debug endpoint to decode JWT tokens and verify metadata"""
-    try:
-        token = request.get("token")
-        if not token:
-            raise HTTPException(status_code=400, detail="Token is required")
-        
-        # Decode JWT without verification (for debugging only)
-        decoded = jwt.decode(token, options={"verify_signature": False})
-        
-        logger.info(f"🔍 Decoded JWT token: {decoded}")
-        
-        return {
-            "decoded_token": decoded,
-            "has_metadata": "metadata" in decoded,
-            "metadata": decoded.get("metadata", {}),
-            "has_attributes": "attributes" in decoded,
-            "attributes": decoded.get("attributes", {}),
-            "participant_name": decoded.get("sub"),
-            "room_name": decoded.get("video", {}).get("room")
-        }
-        
-    except Exception as e:
-        logger.error(f"Error decoding token: {e}")
-        raise HTTPException(status_code=400, detail=f"Error decoding token: {str(e)}")
-
 
 async def start_agent_process(room_name: str, topic: str, persona: str):
     """Start the LiveKit agent process with topic and persona context"""
@@ -377,17 +353,20 @@ async def start_agent_process(room_name: str, topic: str, persona: str):
             
             logger.info(f"🎯 Ensuring room metadata is set: {room_metadata}")
             
-            # Update room metadata using RoomService API
-            room_service = api.RoomService()
-            update_request = api.UpdateRoomMetadataRequest(
-                room=room_name,
-                metadata=json.dumps(room_metadata)
-            )
-            
-            # Update room metadata synchronously 
-            room_service.update_room_metadata(update_request)
-            
-            logger.info(f"✅ Room metadata confirmed for agent connection")
+            # Update room metadata using async LiveKitAPI
+            lkapi = api.LiveKitAPI()
+            try:
+                update_request = api.UpdateRoomMetadataRequest(
+                    room=room_name,
+                    metadata=json.dumps(room_metadata)
+                )
+                
+                # Use async room service
+                await lkapi.room.update_room_metadata(update_request)
+                logger.info(f"✅ Room metadata confirmed for agent connection")
+                
+            finally:
+                await lkapi.aclose()
             
         except Exception as e:
             logger.error(f"❌ Failed to ensure room metadata: {e}")
