@@ -303,8 +303,10 @@ async def start_agent_process(room_name: str, topic: str, persona: str):
             # Check if dispatch has expected attributes
             if hasattr(dispatch, 'dispatch_id'):
                 logger.info(f"   Dispatch ID: {dispatch.dispatch_id}")
+            elif hasattr(dispatch, 'id'):
+                logger.info(f"   Dispatch ID: {dispatch.id}")
             else:
-                logger.warning(f"   No dispatch_id attribute found")
+                logger.warning(f"   No dispatch_id or id attribute found")
                 
             if hasattr(dispatch, 'agent_name'):
                 logger.info(f"   Agent Name: {dispatch.agent_name}")
@@ -321,6 +323,8 @@ async def start_agent_process(room_name: str, topic: str, persona: str):
                 active_agents[room_name]["status"] = "dispatched"
                 if hasattr(dispatch, 'dispatch_id'):
                     active_agents[room_name]["dispatch_id"] = dispatch.dispatch_id
+                elif hasattr(dispatch, 'id'):
+                    active_agents[room_name]["dispatch_id"] = dispatch.id
                 if hasattr(dispatch, 'agent_name'):
                     active_agents[room_name]["agent_name"] = dispatch.agent_name
                 active_agents[room_name]["job_metadata"] = job_metadata
