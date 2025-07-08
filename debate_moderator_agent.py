@@ -171,29 +171,45 @@ async def entrypoint(ctx: JobContext):
         await ctx.connect()
         logger.info("✅ Connected to room successfully")
         
-        # CORRECT APPROACH: Read metadata from environment variables
-        # For the LiveKit agent worker pattern, metadata comes from environment variables
+        # OFFICIAL LIVEKIT PATTERN: Read metadata from ctx.job.metadata
+        # According to official LiveKit documentation, job metadata is accessed via ctx.job.metadata
         
-        logger.info("🔍 Reading agent metadata from environment variables...")
+        logger.info("🔍 Reading agent metadata from job metadata (official LiveKit pattern)...")
         
-        # Extract persona and topic from environment variables
+        # Extract persona and topic from job metadata
         global current_persona, current_topic
         
-        # Read from environment variables (set by backend)
-        current_persona = os.getenv('DEBATE_PERSONA')
-        current_topic = os.getenv('DEBATE_TOPIC')
-        current_room = os.getenv('DEBATE_ROOM')
+        # Read from job metadata (official LiveKit pattern)
+        job_metadata = {}
         
-        # Log environment variable debugging
-        logger.info(f"🔍 Environment variables:")
-        logger.info(f"   DEBATE_PERSONA: {current_persona}")
-        logger.info(f"   DEBATE_TOPIC: {current_topic}")
-        logger.info(f"   DEBATE_ROOM: {current_room}")
+        logger.info(f"🔍 Job object: {ctx.job}")
+        logger.info(f"🔍 Job metadata raw: {getattr(ctx.job, 'metadata', 'No metadata attribute')}")
         
-        # If still no metadata, this indicates the backend is not setting environment variables
+        if hasattr(ctx.job, 'metadata') and ctx.job.metadata:
+            try:
+                # Job metadata is passed as JSON string according to docs
+                if isinstance(ctx.job.metadata, str):
+                    job_metadata = json.loads(ctx.job.metadata)
+                else:
+                    job_metadata = ctx.job.metadata
+                logger.info(f"🎯 Job metadata parsed: {job_metadata}")
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.warning(f"Failed to parse job metadata: {e}")
+                job_metadata = {}
+        else:
+            logger.warning("🎯 Job metadata: empty or missing")
+        
+        current_persona = job_metadata.get('persona')
+        current_topic = job_metadata.get('topic')
+        
+        logger.info(f"🎭 Extracted persona from job metadata: {current_persona}")
+        logger.info(f"💭 Extracted topic from job metadata: {current_topic}")
+        
+        # If still no metadata, this indicates the agent dispatch is not including metadata correctly
         if not current_persona or not current_topic:
             logger.error(f"❌ MISSING METADATA: persona={current_persona}, topic={current_topic}")
-            logger.error("❌ This indicates the backend is not setting environment variables!")
+            logger.error(f"❌ Job metadata received: {job_metadata}")
+            logger.error("❌ This indicates the backend agent dispatch is not including metadata correctly!")
             
             # Use emergency fallbacks but log the issue
             current_persona = current_persona or "Aristotle"
@@ -202,7 +218,7 @@ async def entrypoint(ctx: JobContext):
         
         logger.info(f"🎭 Persona: {current_persona}")
         logger.info(f"📝 Topic: {current_topic}")
-        logger.info(f"🏠 Room: {current_room}")
+        logger.info(f"🔍 Full job metadata: {job_metadata}")
         
         # Create agent with persona-specific instructions and tools
         agent = SageDebateModerator(current_persona, current_topic)
