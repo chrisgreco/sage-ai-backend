@@ -297,15 +297,32 @@ async def start_agent_process(room_name: str, topic: str, persona: str):
             )
             
             logger.info(f"✅ Agent dispatched successfully:")
-            logger.info(f"   Dispatch ID: {dispatch.dispatch_id}")
-            logger.info(f"   Agent Name: {dispatch.agent_name}")
-            logger.info(f"   Room: {dispatch.room}")
+            logger.info(f"   Dispatch object: {dispatch}")
+            logger.info(f"   Dispatch type: {type(dispatch)}")
+            
+            # Check if dispatch has expected attributes
+            if hasattr(dispatch, 'dispatch_id'):
+                logger.info(f"   Dispatch ID: {dispatch.dispatch_id}")
+            else:
+                logger.warning(f"   No dispatch_id attribute found")
+                
+            if hasattr(dispatch, 'agent_name'):
+                logger.info(f"   Agent Name: {dispatch.agent_name}")
+            else:
+                logger.warning(f"   No agent_name attribute found")
+                
+            if hasattr(dispatch, 'room'):
+                logger.info(f"   Room: {dispatch.room}")
+            else:
+                logger.warning(f"   No room attribute found")
             
             # Update status with dispatch information
             if room_name in active_agents:
                 active_agents[room_name]["status"] = "dispatched"
-                active_agents[room_name]["dispatch_id"] = dispatch.dispatch_id
-                active_agents[room_name]["agent_name"] = dispatch.agent_name
+                if hasattr(dispatch, 'dispatch_id'):
+                    active_agents[room_name]["dispatch_id"] = dispatch.dispatch_id
+                if hasattr(dispatch, 'agent_name'):
+                    active_agents[room_name]["agent_name"] = dispatch.agent_name
                 active_agents[room_name]["job_metadata"] = job_metadata
             
         finally:
@@ -316,7 +333,7 @@ async def start_agent_process(room_name: str, topic: str, persona: str):
         if room_name in active_agents:
             active_agents[room_name]["status"] = "failed"
             active_agents[room_name]["error"] = str(e)
-        raise
+        # Don't raise in background task - just log the error
 
 
 
