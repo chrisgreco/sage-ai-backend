@@ -269,50 +269,38 @@ async def get_all_agent_status():
 
 
 async def start_agent_process(room_name: str, topic: str, persona: str):
-    """Start the LiveKit agent using official agent dispatch with job metadata"""
+    """CORRECT APPROACH: No manual agent dispatch needed!
+    
+    With the official LiveKit agent worker pattern:
+    1. Agent runs as a worker with agent_name="sage-debate-moderator" 
+    2. Agent automatically joins rooms when they're created
+    3. Agent gets topic/persona from environment variables set by this function
+    4. Backend just needs to set environment context and let agent worker handle the rest
+    """
     try:
-        logger.info(f"🚀 Dispatching agent using official LiveKit agent dispatch for room {room_name}")
+        logger.info(f"🚀 Setting up environment for agent worker to join room {room_name}")
         
-        # Use official LiveKit agent dispatch API
-        lkapi = api.LiveKitAPI()
-        try:
-            # Create job metadata with topic and persona
-            job_metadata = {
-                "topic": topic,
-                "persona": persona,
-                "room_name": room_name,
-                "agent_type": "debate_moderator",
-                "created_at": datetime.now().isoformat()
-            }
-            
-            logger.info(f"🎯 Creating agent dispatch with job metadata: {job_metadata}")
-            
-            # Use official agent dispatch API - correct method without CreateAgentDispatchRequest
-            # The correct LiveKit pattern: direct call to create_dispatch
-            
-            dispatch_response = await lkapi.agent_dispatch.create_dispatch(
-                room=room_name,
-                agent_name="sage-debate-moderator",  # Must match agent registration name
-                metadata=job_metadata  # Job metadata passed to agent via ctx.job.metadata
-            )
-            
-            logger.info(f"✅ Agent dispatched successfully:")
-            logger.info(f"   Dispatch ID: {dispatch_response.dispatch_id}")
-            logger.info(f"   Agent Name: {dispatch_response.agent_name}")
-            logger.info(f"   Room: {dispatch_response.room}")
-            
-            # Update status with dispatch information
-            if room_name in active_agents:
-                active_agents[room_name]["status"] = "dispatched"
-                active_agents[room_name]["dispatch_id"] = dispatch_response.dispatch_id
-                active_agents[room_name]["agent_name"] = dispatch_response.agent_name
-                active_agents[room_name]["job_metadata"] = job_metadata
-            
-        finally:
-            await lkapi.aclose()
+        # Set environment variables that the agent worker will read
+        # This is the correct pattern for subprocess-launched agents
+        import os
+        os.environ['DEBATE_TOPIC'] = topic
+        os.environ['DEBATE_PERSONA'] = persona
+        os.environ['DEBATE_ROOM'] = room_name
+        
+        logger.info(f"✅ Environment configured for agent worker:")
+        logger.info(f"   DEBATE_TOPIC: {topic}")
+        logger.info(f"   DEBATE_PERSONA: {persona}")
+        logger.info(f"   DEBATE_ROOM: {room_name}")
+        logger.info(f"🎯 Agent worker will automatically join room when it's created")
+        
+        # Update status - no dispatch needed, agent worker handles everything
+        if room_name in active_agents:
+            active_agents[room_name]["status"] = "environment_ready"
+            active_agents[room_name]["agent_name"] = "sage-debate-moderator"
+            active_agents[room_name]["message"] = "Agent worker will auto-join room"
         
     except Exception as e:
-        logger.error(f"❌ Failed to dispatch agent: {e}")
+        logger.error(f"❌ Failed to set up agent environment: {e}")
         if room_name in active_agents:
             active_agents[room_name]["status"] = "failed"
             active_agents[room_name]["error"] = str(e)
