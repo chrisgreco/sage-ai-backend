@@ -314,129 +314,57 @@ async def get_all_agent_status():
 
 
 async def start_agent_process(room_name: str, topic: str, persona: str):
-    """Start the LiveKit agent process with topic and persona context"""
+    """Start the LiveKit agent using official agent dispatch with job metadata"""
     try:
-        # Add small delay to ensure room is fully created and ready
-        import asyncio
-        await asyncio.sleep(2)  # 2 second delay to ensure room metadata is available
-        logger.info(f"🕐 Room {room_name} should now be ready with metadata")
+        logger.info(f"🚀 Dispatching agent using official LiveKit agent dispatch for room {room_name}")
         
-        # Generate agent token with proper identity matching frontend expectations
-        agent_identity = f"sage-ai-{persona.lower()}"  # Use consistent naming
-        
-        # Set environment variables for automatic API key detection
-        import os
-        os.environ['LIVEKIT_API_KEY'] = LIVEKIT_API_KEY
-        os.environ['LIVEKIT_API_SECRET'] = LIVEKIT_API_SECRET
-        
-        # Generate standard LiveKit agent token (no metadata in JWT)
-        # Agents will read metadata from room metadata, not token metadata
-        agent_token = api.AccessToken() \
-            .with_identity(agent_identity) \
-            .with_name(f"Sage AI - {persona}") \
-            .with_grants(api.VideoGrants(
-                room_join=True,
-                room=room_name,
-            )).to_jwt()
-            
-        logger.info(f"🔧 Generated agent token for {agent_identity}")
-        
-        # Ensure room metadata is set with topic and persona for agents to read
-        # This is the correct LiveKit pattern for passing data to agents
+        # Use official LiveKit agent dispatch API
+        lkapi = api.LiveKitAPI()
         try:
-            room_metadata = {
+            # Create job metadata with topic and persona
+            job_metadata = {
                 "topic": topic,
                 "persona": persona,
                 "room_name": room_name,
-                "participant_type": "agent_context",
-                "updated_at": datetime.now().isoformat()
+                "agent_type": "debate_moderator",
+                "created_at": datetime.now().isoformat()
             }
             
-            logger.info(f"🎯 Ensuring room metadata is set: {room_metadata}")
+            logger.info(f"🎯 Creating agent dispatch with job metadata: {job_metadata}")
             
-            # Update room metadata using async LiveKitAPI
-            lkapi = api.LiveKitAPI()
-            try:
-                update_request = api.UpdateRoomMetadataRequest(
-                    room=room_name,
-                    metadata=json.dumps(room_metadata)
-                )
-                
-                # Use async room service
-                await lkapi.room.update_room_metadata(update_request)
-                logger.info(f"✅ Room metadata confirmed for agent connection")
-                
-            finally:
-                await lkapi.aclose()
+            # Use official agent dispatch API to create the job with metadata
+            from livekit.protocol import agent as agent_proto
             
-        except Exception as e:
-            logger.error(f"❌ Failed to ensure room metadata: {e}")
-            # Continue anyway - agent will use fallbacks
-        
-        # Check required API keys
-        openai_key = os.getenv("OPENAI_API_KEY")
-        if not openai_key:
-            raise Exception("OPENAI_API_KEY environment variable is required")
-        
-        # Set environment variables for the agent process (LiveKit standard pattern)
-        env = os.environ.copy()
-        env.update({
-            # LiveKit connection (standard pattern)
-            "LIVEKIT_URL": LIVEKIT_URL,
-            "LIVEKIT_API_KEY": LIVEKIT_API_KEY,
-            "LIVEKIT_API_SECRET": LIVEKIT_API_SECRET,
+            dispatch_request = agent_proto.CreateAgentDispatchRequest(
+                room=room_name,
+                agent_name="sage-debate-moderator",  # Must match agent registration name
+                metadata=json.dumps(job_metadata)  # Job metadata passed to agent via ctx.job.metadata
+            )
             
-            # Debate context
-            "DEBATE_TOPIC": topic,
-            "ROOM_NAME": room_name,
+            # Dispatch the agent using the official API
+            dispatch_response = await lkapi.agent_dispatch.create_dispatch(dispatch_request)
             
-            # AI provider API keys
-            "OPENAI_API_KEY": openai_key,
-            "PERPLEXITY_API_KEY": os.getenv("PERPLEXITY_API_KEY", ""),
-            "CARTESIA_API_KEY": os.getenv("CARTESIA_API_KEY", ""),
-            "DEEPGRAM_API_KEY": os.getenv("DEEPGRAM_API_KEY", ""),
+            logger.info(f"✅ Agent dispatched successfully:")
+            logger.info(f"   Dispatch ID: {dispatch_response.dispatch_id}")
+            logger.info(f"   Agent Name: {dispatch_response.agent_name}")
+            logger.info(f"   Room: {dispatch_response.room}")
             
-            # Database (optional)
-            "SUPABASE_URL": os.getenv("SUPABASE_URL", ""),
-            "SUPABASE_KEY": os.getenv("SUPABASE_KEY", ""),
-            "SUPABASE_SERVICE_ROLE_KEY": os.getenv("SUPABASE_SERVICE_ROLE_KEY", "")
-        })
-        
-        # Start the agent process with proper error handling
-        import subprocess
-        import sys
-        
-        # Use the proper command for LiveKit agents in production mode
-        cmd = [sys.executable, "debate_moderator_agent.py", "start"]
-        
-        logger.info(f"Starting agent with command: {' '.join(cmd)}")
-        logger.info(f"Environment variables set: LIVEKIT_URL, DEBATE_TOPIC={topic}")
-        
-        process = subprocess.Popen(
-            cmd,
-            env=env,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,  # Combine stderr with stdout
-            universal_newlines=True,
-            bufsize=1  # Line buffered
-        )
-        
-        # Update status
-        if room_name in active_agents:
-            active_agents[room_name]["status"] = "active"
-            active_agents[room_name]["process_id"] = process.pid
-            active_agents[room_name]["agent_identity"] = agent_identity
-        
-        logger.info(f"✅ Started agent process {process.pid} for room {room_name}")
-        
-        # Monitor process in background (non-blocking)
-        asyncio.create_task(monitor_agent_process(room_name, process))
+            # Update status with dispatch information
+            if room_name in active_agents:
+                active_agents[room_name]["status"] = "dispatched"
+                active_agents[room_name]["dispatch_id"] = dispatch_response.dispatch_id
+                active_agents[room_name]["agent_name"] = dispatch_response.agent_name
+                active_agents[room_name]["job_metadata"] = job_metadata
+            
+        finally:
+            await lkapi.aclose()
         
     except Exception as e:
-        logger.error(f"❌ Failed to start agent process: {e}")
+        logger.error(f"❌ Failed to dispatch agent: {e}")
         if room_name in active_agents:
             active_agents[room_name]["status"] = "failed"
             active_agents[room_name]["error"] = str(e)
+        raise
 
 async def monitor_agent_process(room_name: str, process):
     """Monitor the agent process and handle failures"""
