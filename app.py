@@ -170,21 +170,8 @@ async def generate_participant_token(request: TokenRequest):
         os.environ['LIVEKIT_API_KEY'] = LIVEKIT_API_KEY
         os.environ['LIVEKIT_API_SECRET'] = LIVEKIT_API_SECRET
         
-        # CRITICAL FIX: Include topic and persona metadata in the token
-        # This allows AI agents to access this information when they connect
-        import json
-        participant_metadata = {}
-        if request.topic:
-            participant_metadata["topic"] = request.topic
-        # Note: persona is typically set when launching agents, not for regular participants
-        # But we can check if it's provided in the request
-        if hasattr(request, 'persona') and request.persona:
-            participant_metadata["persona"] = request.persona
-            
-        # 🔍 DEBUG: Log the metadata we're adding to the token
-        logger.info(f"🔍 Participant metadata to include: {json.dumps(participant_metadata, indent=2)}")
-            
-        # Use correct LiveKit Python SDK pattern - no parameters in constructor
+        # Generate standard LiveKit participant token (no metadata in JWT)
+        # LiveKit agents get metadata from room metadata, not participant metadata
         token_builder = api.AccessToken() \
             .with_identity(request.participant_name) \
             .with_name(request.participant_name) \
@@ -193,30 +180,36 @@ async def generate_participant_token(request: TokenRequest):
                 room=request.room_name,
             ))
             
-        # Add metadata if we have any
-        if participant_metadata:
-            token_builder = token_builder.with_metadata(json.dumps(participant_metadata))
-            logger.info(f"🔧 Added participant metadata to token: {participant_metadata}")
-        else:
-            logger.warning(f"⚠️ No participant metadata to add to token!")
-            
         token = token_builder.to_jwt()
         
-        # 🔍 DEBUG: Try to decode the token to verify metadata is included
-        try:
-            import jwt
-            # Decode without verification to inspect the payload
-            decoded_token = jwt.decode(token, options={"verify_signature": False})
-            logger.info(f"🔍 Token payload contains: {json.dumps(decoded_token, indent=2)}")
-            
-            # Check specifically for metadata
-            if 'metadata' in decoded_token:
-                logger.info(f"✅ Token metadata field: {decoded_token['metadata']}")
-            else:
-                logger.warning(f"⚠️ No 'metadata' field found in token!")
+        # CRITICAL: Update room metadata with topic and persona for AI agents
+        # This is the correct LiveKit pattern for passing data to agents
+        if request.topic or request.persona:
+            try:
+                room_metadata = {
+                    "topic": request.topic or "General Discussion",
+                    "persona": request.persona or "Aristotle", 
+                    "room_name": request.room_name,
+                    "updated_at": datetime.now().isoformat()
+                }
                 
-        except Exception as decode_error:
-            logger.error(f"❌ Failed to decode token for verification: {decode_error}")
+                logger.info(f"🎯 Updating room metadata: {room_metadata}")
+                
+                # Update room metadata using RoomService API
+                room_service = api.RoomService()
+                update_request = api.UpdateRoomMetadataRequest(
+                    room=request.room_name,
+                    metadata=json.dumps(room_metadata)
+                )
+                
+                # Update room metadata synchronously 
+                room_service.update_room_metadata(update_request)
+                
+                logger.info(f"✅ Successfully updated room metadata for {request.room_name}")
+                
+            except Exception as e:
+                logger.error(f"❌ Failed to update room metadata: {e}")
+                # Continue anyway - token is still valid
         
         # Validate token was generated successfully
         if not token:
@@ -359,28 +352,46 @@ async def start_agent_process(room_name: str, topic: str, persona: str):
         os.environ['LIVEKIT_API_KEY'] = LIVEKIT_API_KEY
         os.environ['LIVEKIT_API_SECRET'] = LIVEKIT_API_SECRET
         
-        # CRITICAL FIX: Generate agent token WITH metadata for AI agents
-        # This ensures agents can access topic and persona information when they connect
-        import json
-        agent_metadata = {
-            "topic": topic,
-            "persona": persona,
-            "room_name": room_name,
-            "participant_type": "agent",  # Distinguish from human participants
-            "agent_role": "debate_moderator"
-        }
-        
-        # Use correct LiveKit Python SDK pattern for agent token
+        # Generate standard LiveKit agent token (no metadata in JWT)
+        # Agents will read metadata from room metadata, not token metadata
         agent_token = api.AccessToken() \
             .with_identity(agent_identity) \
             .with_name(f"Sage AI - {persona}") \
-            .with_metadata(json.dumps(agent_metadata)) \
             .with_grants(api.VideoGrants(
                 room_join=True,
                 room=room_name,
             )).to_jwt()
             
-        logger.info(f"🔧 Generated agent token with metadata: {agent_metadata}")
+        logger.info(f"🔧 Generated agent token for {agent_identity}")
+        
+        # Ensure room metadata is set with topic and persona for agents to read
+        # This is the correct LiveKit pattern for passing data to agents
+        try:
+            room_metadata = {
+                "topic": topic,
+                "persona": persona,
+                "room_name": room_name,
+                "participant_type": "agent_context",
+                "updated_at": datetime.now().isoformat()
+            }
+            
+            logger.info(f"🎯 Ensuring room metadata is set: {room_metadata}")
+            
+            # Update room metadata using RoomService API
+            room_service = api.RoomService()
+            update_request = api.UpdateRoomMetadataRequest(
+                room=room_name,
+                metadata=json.dumps(room_metadata)
+            )
+            
+            # Update room metadata synchronously 
+            room_service.update_room_metadata(update_request)
+            
+            logger.info(f"✅ Room metadata confirmed for agent connection")
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to ensure room metadata: {e}")
+            # Continue anyway - agent will use fallbacks
         
         # Check required API keys
         openai_key = os.getenv("OPENAI_API_KEY")
