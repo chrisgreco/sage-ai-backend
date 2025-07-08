@@ -253,5 +253,11 @@ if __name__ == "__main__":
     cli.run_app(WorkerOptions(
         entrypoint_fnc=entrypoint,
         agent_name="sage-debate-moderator",  # Register with specific name for dispatch
-        # Use default worker permissions - agent will have standard publishing capabilities
+        # Configure worker permissions according to official LiveKit API
+        permissions=agents.WorkerPermissions(
+            can_publish=True,
+            can_subscribe=True,
+            can_publish_data=True,
+            can_update_metadata=True,
+        ),
     )) 
