@@ -165,10 +165,7 @@ async def generate_participant_token(request: TokenRequest):
         if not all([LIVEKIT_API_KEY, LIVEKIT_API_SECRET, request.room_name, request.participant_name]):
             raise ValueError("Missing required parameters for token generation")
             
-        # Set environment variables for automatic API key detection
-        import os
-        os.environ['LIVEKIT_API_KEY'] = LIVEKIT_API_KEY
-        os.environ['LIVEKIT_API_SECRET'] = LIVEKIT_API_SECRET
+        # Environment variables are already set by Render - no need to set manually
         
         # Generate standard LiveKit participant token (no metadata in JWT)
         # LiveKit agents get metadata from room metadata, not participant metadata

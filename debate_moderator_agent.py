@@ -9,15 +9,13 @@ import os
 import json
 import logging
 from typing import Annotated
-from dotenv import load_dotenv
-
 # Core LiveKit imports following official patterns
 from livekit import agents
 from livekit.agents import Agent, AgentSession, JobContext, RunContext, WorkerOptions, cli, function_tool
 from livekit.plugins import deepgram, openai, silero
 
-# Load environment variables
-load_dotenv()
+# Environment variables are managed by Render directly - no need for dotenv
+# load_dotenv() removed since Render sets environment variables
 
 # Configure logging
 logger = logging.getLogger("sage-debate-moderator")

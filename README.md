@@ -30,11 +30,9 @@ cd sage-ai-backend
 pip install -r requirements.txt
 ```
 
-3. Configure environment variables:
-```bash
-cp example.env .env
-# Edit .env with your actual API keys
-```
+3. Configure environment variables in Render dashboard:
+   - Set all required API keys in your Render service environment variables
+   - No local .env files needed - Render manages environment variables directly
 
 4. Run the agent:
 ```bash
@@ -73,8 +71,9 @@ The project includes `render.yaml` for easy deployment to Render:
 
 ```bash
 docker build -t sage-ai-agent .
-docker run --env-file .env sage-ai-agent
+docker run sage-ai-agent
 ```
+Note: Environment variables are managed by Render directly in production
 
 ## Architecture
 

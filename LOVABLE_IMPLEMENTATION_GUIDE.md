@@ -535,12 +535,11 @@ agent_identity = f"{persona}"  # "Socrates", "Aristotle", "Buddha"
 agent_token = api.AccessToken(LIVEKIT_API_KEY, LIVEKIT_API_SECRET) \
     .with_identity(agent_identity) \
     .with_name(f"Sage AI - {persona}") \
-    .with_metadata({
-        "topic": topic,
-        "persona": persona,
-        "participant_type": "agent",
-        "agent_state": "initializing"
-    })
+    .with_grants(api.VideoGrants(
+        room_join=True,
+        room=room_name,
+    ))
+# Note: Metadata is passed via job metadata in agent dispatch, not JWT tokens
 ```
 
 ## 🎭 AI Personality Implementation

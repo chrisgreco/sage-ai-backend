@@ -9,7 +9,6 @@ pydantic==2.5.0
 # LiveKit dependencies - ENHANCED FULL VOICE AI STACK
 # Using the latest 1.1.x series for bug fixes and improvements
 livekit-agents[deepgram,openai,silero,turn-detector]~=1.1.5
-python-dotenv
 
 # Audio/Video processing required by LiveKit
 av>=10.0.0
