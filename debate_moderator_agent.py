@@ -241,20 +241,10 @@ async def entrypoint(ctx: JobContext):
         logger.info("▶️ Starting agent session...")
         await session.start(agent=agent, room=ctx.room)
         
-        # Generate initial reply with exact greeting format
-        initial_greeting = f"Hello, I'm {current_persona}. Today we'll be discussing {current_topic}. Go ahead with your opening arguments, and call upon me as needed."
+        logger.info("🎉 Sage AI Debate Moderator Agent is now active and listening!")
         
-        logger.info("💬 Generating initial greeting...")
-        await session.generate_reply(instructions=initial_greeting)
-        
-        logger.info("🎉 Sage AI Debate Moderator Agent is now active!")
-        
-        # Keep the session alive - this is crucial for the agent to remain active
-        logger.info("🔄 Keeping agent session alive...")
-        
-        # Wait for the session to complete naturally (keeps the agent running)
-        await session.wait_for_completion()
-        logger.info("🔚 Agent session completed")
+        # The session should now run indefinitely until the room closes
+        # No need to call wait_for_completion() - the session manages its own lifecycle
         
     except Exception as e:
         logger.error(f"❌ Error in entrypoint: {e}")
@@ -264,5 +254,12 @@ async def entrypoint(ctx: JobContext):
 if __name__ == "__main__":
     cli.run_app(WorkerOptions(
         entrypoint_fnc=entrypoint,
-        agent_name="sage-debate-moderator"  # Register with specific name for dispatch
+        agent_name="sage-debate-moderator",  # Register with specific name for dispatch
+        # Configure worker permissions for proper session management
+        permissions=agents.Permissions(
+            can_publish=True,
+            can_subscribe=True,
+            can_publish_data=True,
+            can_update_metadata=True,
+        ),
     )) 
