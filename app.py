@@ -16,7 +16,6 @@ Updated: 2025-07-06 - Added /debate endpoint for frontend compatibility
 import os
 import asyncio
 import json
-import jwt
 import logging
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
@@ -183,38 +182,6 @@ async def generate_participant_token(request: TokenRequest):
             
         token = token_builder.to_jwt()
         
-        # CRITICAL: Update room metadata with topic and persona for AI agents
-        # This is the correct LiveKit pattern for passing data to agents
-        if request.topic or request.persona:
-            try:
-                room_metadata = {
-                    "topic": request.topic or "General Discussion",
-                    "persona": request.persona or "Aristotle", 
-                    "room_name": request.room_name,
-                    "updated_at": datetime.now().isoformat()
-                }
-                
-                logger.info(f"🎯 Updating room metadata: {room_metadata}")
-                
-                # Update room metadata using async LiveKitAPI
-                lkapi = api.LiveKitAPI()
-                try:
-                    update_request = api.UpdateRoomMetadataRequest(
-                        room=request.room_name,
-                        metadata=json.dumps(room_metadata)
-                    )
-                    
-                    # Use async room service
-                    await lkapi.room.update_room_metadata(update_request)
-                    logger.info(f"✅ Successfully updated room metadata for {request.room_name}")
-                    
-                finally:
-                    await lkapi.aclose()
-                
-            except Exception as e:
-                logger.error(f"❌ Failed to update room metadata: {e}")
-                # Continue anyway - token is still valid
-        
         # Validate token was generated successfully
         if not token:
             raise ValueError("Failed to generate JWT token")
@@ -288,18 +255,6 @@ async def get_agent_status(room_name: str):
     """Get status of AI agents for a room"""
     if room_name in active_agents:
         agent_info = active_agents[room_name].copy()
-        
-        # Check if process is still running
-        if "process_id" in agent_info:
-            try:
-                import psutil
-                process = psutil.Process(agent_info["process_id"])
-                agent_info["process_running"] = process.is_running()
-                agent_info["process_status"] = process.status()
-            except (psutil.NoSuchProcess, ImportError):
-                agent_info["process_running"] = False
-                agent_info["process_status"] = "not_found"
-        
         return agent_info
     else:
         return {"status": "inactive", "room_name": room_name}
@@ -366,41 +321,7 @@ async def start_agent_process(room_name: str, topic: str, persona: str):
             active_agents[room_name]["error"] = str(e)
         raise
 
-async def monitor_agent_process(room_name: str, process):
-    """Monitor the agent process and handle failures"""
-    try:
-        # Wait for process to complete (or crash)
-        await asyncio.get_event_loop().run_in_executor(None, process.wait)
-        
-        # Process has ended
-        return_code = process.returncode
-        
-        if return_code == 0:
-            logger.info(f"✅ Agent process for room {room_name} completed successfully")
-        else:
-            logger.error(f"❌ Agent process for room {room_name} exited with code {return_code}")
-            
-            # Get the last output for debugging
-            try:
-                stdout, stderr = process.communicate(timeout=1)
-                if stdout:
-                    logger.error(f"Agent stdout: {stdout}")
-                if stderr:
-                    logger.error(f"Agent stderr: {stderr}")
-            except Exception as e:
-                logger.warning(f"Could not get process output: {e}")
-        
-        # Update status
-        if room_name in active_agents:
-            active_agents[room_name]["status"] = "completed" if return_code == 0 else "failed"
-            active_agents[room_name]["exit_code"] = return_code
-            active_agents[room_name]["ended_at"] = datetime.utcnow().isoformat()
-            
-    except Exception as e:
-        logger.error(f"❌ Error monitoring agent process for room {room_name}: {e}")
-        if room_name in active_agents:
-            active_agents[room_name]["status"] = "error"
-            active_agents[room_name]["error"] = str(e)
+
 
 if __name__ == "__main__":
     import uvicorn
