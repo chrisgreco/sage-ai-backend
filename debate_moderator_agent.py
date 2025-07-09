@@ -264,5 +264,6 @@ if __name__ == "__main__":
             can_subscribe=True,
             can_publish_data=True,
             can_update_metadata=True,
+            hidden=False,  # Make agent visible as a participant
         ),
     )) 
