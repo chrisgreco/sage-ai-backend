@@ -270,6 +270,11 @@ async def start_agent_process(room_name: str, topic: str, persona: str):
     try:
         logger.info(f"🚀 Dispatching agent using official LiveKit agent dispatch for room {room_name}")
         
+        # Add small delay to ensure background worker is fully registered (LiveKit best practice)
+        import asyncio
+        await asyncio.sleep(2)  # 2-second delay to ensure worker registration
+        logger.info(f"⏰ Delay complete, proceeding with agent dispatch...")
+        
         # Use official LiveKit agent dispatch API as documented
         lkapi = api.LiveKitAPI()
         try:
