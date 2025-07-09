@@ -255,6 +255,14 @@ async def entrypoint(ctx: JobContext):
 
 # CLI integration with agent registration for dispatch system
 if __name__ == "__main__":
+    logger.info("🚀 Starting Sage AI Debate Moderator Agent...")
+    logger.info(f"🔑 Environment check:")
+    logger.info(f"   LIVEKIT_URL: {'✅ Set' if os.getenv('LIVEKIT_URL') else '❌ Missing'}")
+    logger.info(f"   LIVEKIT_API_KEY: {'✅ Set' if os.getenv('LIVEKIT_API_KEY') else '❌ Missing'}")
+    logger.info(f"   LIVEKIT_API_SECRET: {'✅ Set' if os.getenv('LIVEKIT_API_SECRET') else '❌ Missing'}")
+    logger.info(f"   OPENAI_API_KEY: {'✅ Set' if os.getenv('OPENAI_API_KEY') else '❌ Missing'}")
+    logger.info(f"   DEEPGRAM_API_KEY: {'✅ Set' if os.getenv('DEEPGRAM_API_KEY') else '❌ Missing'}")
+    
     cli.run_app(WorkerOptions(
         entrypoint_fnc=entrypoint,
         agent_name="sage-debate-moderator",  # Register with specific name for dispatch
@@ -264,6 +272,5 @@ if __name__ == "__main__":
             can_subscribe=True,
             can_publish_data=True,
             can_update_metadata=True,
-            hidden=False,  # Make agent visible as a participant
         ),
     )) 
