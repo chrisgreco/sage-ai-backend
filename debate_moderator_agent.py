@@ -241,6 +241,11 @@ async def entrypoint(ctx: JobContext):
         
         logger.info("🎉 Sage AI Debate Moderator Agent is now active and listening!")
         
+        # Send initial greeting when agent joins the room using the correct LiveKit method
+        initial_greeting = f"Hello, I'm {current_persona}. Today we'll be discussing {current_topic}. Go ahead with your opening arguments, and call upon me as needed."
+        logger.info(f"🎤 Sending initial greeting: {initial_greeting}")
+        await session.generate_reply(instructions=f"Say exactly: '{initial_greeting}'")
+        
         # The session should now run indefinitely until the room closes
         # No need to call wait_for_completion() - the session manages its own lifecycle
         
