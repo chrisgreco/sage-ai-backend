@@ -239,9 +239,13 @@ async def entrypoint(ctx: JobContext):
         logger.info("▶️ Starting agent session...")
         await session.start(agent=agent, room=ctx.room)
         
+        # Set agent identity that frontend can recognize
+        await ctx.room.local_participant.set_name(f"sage-ai-{current_persona.lower()}")
+        
         logger.info("🎉 Sage AI Debate Moderator Agent is now active and listening!")
         logger.info(f"🏠 Agent joined room: {ctx.room.name}")
         logger.info(f"👤 Agent participant ID: {ctx.room.local_participant.identity}")
+        logger.info(f"🏷️ Agent participant name: {ctx.room.local_participant.name}")
         
         # Send initial greeting when agent joins the room using the correct LiveKit method
         initial_greeting = f"Hello, I'm {current_persona}. Today we'll be discussing {current_topic}. Go ahead with your opening arguments, and call upon me as needed."
