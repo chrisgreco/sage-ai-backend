@@ -239,12 +239,12 @@ async def entrypoint(ctx: JobContext):
         logger.info("▶️ Starting agent session...")
         await session.start(agent=agent, room=ctx.room)
         
-        # Set agent identity that frontend can recognize
-        await ctx.room.local_participant.set_name(f"sage-ai-{current_persona.lower()}")
+        # Set consistent agent display name
+        await ctx.room.local_participant.set_name("Sage AI Debate Moderator")
         
         logger.info("🎉 Sage AI Debate Moderator Agent is now active and listening!")
         logger.info(f"🏠 Agent joined room: {ctx.room.name}")
-        logger.info(f"👤 Agent participant ID: {ctx.room.local_participant.identity}")
+        logger.info(f"👤 Agent participant identity: {ctx.room.local_participant.identity}")
         logger.info(f"🏷️ Agent participant name: {ctx.room.local_participant.name}")
         
         # Send initial greeting when agent joins the room using the correct LiveKit method
@@ -259,6 +259,22 @@ async def entrypoint(ctx: JobContext):
         logger.error(f"❌ Error in entrypoint: {e}")
         raise
 
+# Simple request handler - use consistent identity, persona comes from metadata
+async def handle_job_request(job_req: agents.JobRequest):
+    """Handle incoming job requests with consistent agent identity"""
+    try:
+        logger.info(f"🎭 Job request received for room: {job_req.room.name}")
+        
+        # Accept with consistent identity - frontend will read persona from metadata
+        await job_req.accept(
+            identity="sage-debate-moderator",  # Simple, consistent identity
+            name="Sage AI Debate Moderator",   # Simple, consistent name
+        )
+        
+    except Exception as e:
+        logger.error(f"❌ Error handling job request: {e}")
+        await job_req.reject()
+
 # CLI integration with agent registration for dispatch system
 if __name__ == "__main__":
     logger.info("🚀 Starting Sage AI Debate Moderator Agent...")
@@ -271,6 +287,7 @@ if __name__ == "__main__":
     
     cli.run_app(WorkerOptions(
         entrypoint_fnc=entrypoint,
+        request_fnc=handle_job_request,  # Custom job request handler
         agent_name="sage-debate-moderator",  # Register with specific name for dispatch
         # Configure worker permissions according to official LiveKit API
         permissions=agents.WorkerPermissions(
