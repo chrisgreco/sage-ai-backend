@@ -280,10 +280,10 @@ async def handle_job_request(job_req: agents.JobRequest):
         logger.info(f"🎭 Job request received for room: {job_req.room.name}")
         logger.info(f"🎭 Setting agent identity to: {persona}")
         
-        # Accept with persona as identity (what frontend expects)
+        # Accept with consistent identity (what frontend expects)
         await job_req.accept(
-            identity=persona,                    # Frontend expects "Socrates", "Aristotle", "Buddha"
-            name=f"Sage AI - {persona}",         # Display name
+            identity="sage-debate-moderator",    # Frontend expects "sage-debate-moderator"
+            name=f"Sage AI - {persona}",         # Display name with persona
         )
         
     except Exception as e:
