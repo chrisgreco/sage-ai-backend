@@ -239,8 +239,8 @@ async def entrypoint(ctx: JobContext):
         logger.info("▶️ Starting agent session...")
         await session.start(agent=agent, room=ctx.room)
         
-        # Set consistent agent display name
-        await ctx.room.local_participant.set_name("Sage AI Debate Moderator")
+        # Set agent display name to match persona (what frontend expects)
+        await ctx.room.local_participant.set_name(f"Sage AI - {current_persona}")
         
         logger.info("🎉 Sage AI Debate Moderator Agent is now active and listening!")
         logger.info(f"🏠 Agent joined room: {ctx.room.name}")
@@ -259,16 +259,31 @@ async def entrypoint(ctx: JobContext):
         logger.error(f"❌ Error in entrypoint: {e}")
         raise
 
-# Simple request handler - use consistent identity, persona comes from metadata
+# Request handler - use persona name as identity (what frontend expects)
 async def handle_job_request(job_req: agents.JobRequest):
-    """Handle incoming job requests with consistent agent identity"""
+    """Handle incoming job requests with persona-based identity"""
     try:
-        logger.info(f"🎭 Job request received for room: {job_req.room.name}")
+        # Extract persona from job metadata
+        job_metadata = {}
+        if hasattr(job_req.job, 'metadata') and job_req.job.metadata:
+            try:
+                if isinstance(job_req.job.metadata, str):
+                    job_metadata = json.loads(job_req.job.metadata)
+                else:
+                    job_metadata = job_req.job.metadata
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.warning(f"Failed to parse job metadata: {e}")
         
-        # Accept with consistent identity - frontend will read persona from metadata
+        # Get persona from metadata, default to Socrates
+        persona = job_metadata.get('persona', 'Socrates')
+        
+        logger.info(f"🎭 Job request received for room: {job_req.room.name}")
+        logger.info(f"🎭 Setting agent identity to: {persona}")
+        
+        # Accept with persona as identity (what frontend expects)
         await job_req.accept(
-            identity="sage-debate-moderator",  # Simple, consistent identity
-            name="Sage AI Debate Moderator",   # Simple, consistent name
+            identity=persona,                    # Frontend expects "Socrates", "Aristotle", "Buddha"
+            name=f"Sage AI - {persona}",         # Display name
         )
         
     except Exception as e:
