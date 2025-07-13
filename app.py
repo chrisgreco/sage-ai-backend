@@ -67,6 +67,7 @@ app.add_middleware(
 # Request/Response models
 class DebateRequest(BaseModel):
     topic: str
+    room_name: str  # ✅ ADDED: Accept room_name from frontend
     persona: Optional[str] = None  # No default - frontend must specify
     participant_name: Optional[str] = "User"
 
@@ -127,13 +128,8 @@ async def create_debate(request: DebateRequest):
         if not request.persona:
             raise HTTPException(status_code=400, detail="Persona is required. Choose from: Aristotle, Socrates, Buddha")
         
-        # Generate unique room name based on topic
-        import hashlib
-        import time
-        
-        topic_hash = hashlib.md5(request.topic.encode()).hexdigest()[:8]
-        timestamp = int(time.time())
-        room_name = f"debate-{topic_hash}-{timestamp}"
+        # ✅ FIXED: Use room_name from frontend request instead of generating our own
+        room_name = request.room_name
         
         logger.info(f"Created debate room {room_name} for topic: {request.topic}")
         
