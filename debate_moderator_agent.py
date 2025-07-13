@@ -11,7 +11,7 @@ import logging
 from typing import Annotated
 # Core LiveKit imports following official patterns
 from livekit import agents
-from livekit.agents import Agent, AgentSession, JobContext, RunContext, WorkerOptions, cli, function_tool
+from livekit.agents import JobContext, RunContext, WorkerOptions, cli, function_tool
 from livekit.plugins import deepgram, openai, silero
 
 # Environment variables are managed by Render directly - no need for dotenv
@@ -23,13 +23,12 @@ logger = logging.getLogger("sage-debate-moderator")
 # Import memory manager with graceful fallback
 try:
     from supabase_memory_manager import SupabaseMemoryManager
-    memory_manager = SupabaseMemoryManager()
-    logger.info("✅ Memory manager initialized successfully")
-except Exception as e:
-    logger.warning(f"⚠️ Memory manager initialization failed: {e}")
-    memory_manager = None
+    logger.info("✅ Supabase memory manager imported successfully")
+except ImportError:
+    logger.warning("⚠️ Supabase memory manager not available - continuing without memory features")
+    SupabaseMemoryManager = None
 
-# Global variables for agent state - MUST be set from room metadata
+# Global variables for agent state
 current_persona = None
 current_topic = None
 
@@ -83,8 +82,8 @@ async def moderate_discussion(
         logger.info(f"🎯 Moderating discussion: {action} - {content}")
         
         # Store moderation action in memory
-        if memory_manager:
-            await memory_manager.store_moderation_action(action, content, current_persona)
+        if SupabaseMemoryManager:
+            await SupabaseMemoryManager.store_moderation_action(action, content, current_persona)
         
         return f"As {current_persona}, I will {action}: {content}"
         
@@ -102,8 +101,8 @@ async def fact_check_statement(
         logger.info(f"🔍 Fact-checking statement: {statement}")
         
         # Store the fact-check request in memory for context
-        if memory_manager:
-            await memory_manager.store_fact_check(statement, "fact-check-requested")
+        if SupabaseMemoryManager:
+            await SupabaseMemoryManager.store_fact_check(statement, "fact-check-requested")
         
         return f"I'll fact-check this statement using available knowledge: {statement}"
         
@@ -123,22 +122,14 @@ async def set_debate_topic(
         logger.info(f"📝 Setting debate topic: {topic}")
         
         # Store topic change in memory
-        if memory_manager:
-            await memory_manager.store_topic_change(topic, current_persona)
+        if SupabaseMemoryManager:
+            await SupabaseMemoryManager.store_topic_change(topic, current_persona)
         
         return f"Perfect! I've set our debate topic to: {topic}. Let's explore this together."
         
     except Exception as e:
         logger.error(f"Error in set_debate_topic: {e}")
         return f"I'll guide our discussion on: {topic}"
-
-# Agent class following official patterns
-class SageDebateModerator(Agent):
-    def __init__(self, persona: str, topic: str) -> None:
-        super().__init__(
-            instructions=get_persona_instructions(persona, topic),
-            tools=[moderate_discussion, fact_check_statement, set_debate_topic],
-        )
 
 # Main entrypoint following exact official pattern
 async def entrypoint(ctx: JobContext):
@@ -214,63 +205,55 @@ async def entrypoint(ctx: JobContext):
         logger.info(f"🔍 Full job metadata: {job_metadata}")
         
         # Create agent with persona-specific instructions and tools
-        agent = SageDebateModerator(current_persona, current_topic)
+        logger.info(f"🎭 Creating {current_persona} agent with topic: {current_topic}")
         
-        # Create session with enhanced TTS for better voice quality
-        logger.info("🧠 Creating AgentSession with enhanced voice quality...")
-        
-        # Configure high-quality TTS with Cartesia preferred, OpenAI HD fallback
-        logger.info("🎤 Configuring high-quality TTS...")
-        try:
-            # Try Cartesia first for best voice quality (less raspy, more natural)
-            from livekit.plugins import cartesia
-            tts = cartesia.TTS(
-                model="sonic-multilingual",  # Best quality model
-                voice="79a125e8-cd45-4c13-8a67-188112f4dd22",  # British Male (clear, professional)
-                sample_rate=44100,  # High quality audio
-            )
-            logger.info("✅ Using Cartesia TTS for premium voice quality")
-        except Exception as e:
-            logger.warning(f"⚠️ Cartesia TTS not available ({e}), falling back to OpenAI HD")
-            # Fallback to OpenAI with optimized settings for less raspy voice
-            tts = openai.TTS(
-                voice="alloy",  # Much clearer and less raspy than "onyx"
-                model="tts-1-hd",  # High-definition model for better quality
-                speed=1.0,  # Normal speed for clarity
-            )
-            logger.info("✅ Using OpenAI TTS HD with optimized voice settings")
-        
-        session = AgentSession(
-            vad=silero.VAD.load(),
-            stt=deepgram.STT(model="nova-2"),
-            llm=openai.LLM(
-                model="gpt-4o-mini",
-                temperature=0.7,
-            ),
-            tts=tts,  # Use the optimized TTS configuration
+        # Create initial chat context with persona instructions
+        from livekit.agents import llm
+        initial_chat_context = llm.ChatContext().append(
+            role="system",
+            text=get_persona_instructions(current_persona, current_topic)
         )
         
-        logger.info("✅ AgentSession created successfully")
+        # Configure Cartesia TTS (official implementation)
+        from livekit.plugins import cartesia, deepgram, silero
+        logger.info("🎤 Configuring Cartesia TTS...")
         
-        # Start session with agent and room (exact official pattern)
-        logger.info("▶️ Starting agent session...")
-        await session.start(agent=agent, room=ctx.room)
+        tts = cartesia.TTS(
+            model="sonic",  # High-quality Cartesia model
+            voice="794f9389-aac1-45b6-b726-9d9369183238",  # Professional male voice  
+        )
+        logger.info("✅ Using Cartesia TTS for premium voice quality")
         
-        # Set agent display name to match persona (what frontend expects)
-        await ctx.room.local_participant.set_name(f"Sage AI - {current_persona}")
+        # Wait for first participant (official LiveKit pattern)
+        logger.info("⏳ Waiting for participant to connect...")
+        participant = await ctx.wait_for_participant()
+        logger.info(f"👤 Starting voice assistant for participant {participant.identity}")
+        
+        # Create VoicePipelineAgent (official Cartesia-LiveKit pattern)
+        from livekit.agents.pipeline import VoicePipelineAgent
+        
+        agent = VoicePipelineAgent(
+            vad=silero.VAD.load(),
+            stt=deepgram.STT(),
+            llm=openai.LLM(model="gpt-4o-mini"),
+            tts=tts,
+            chat_ctx=initial_chat_context,
+        )
+        
+        logger.info("✅ VoicePipelineAgent created successfully")
+        
+        # Start the agent (official pattern)
+        logger.info("▶️ Starting voice pipeline agent...")
+        agent.start(ctx.room, participant)
         
         logger.info("🎉 Sage AI Debate Moderator Agent is now active and listening!")
         logger.info(f"🏠 Agent joined room: {ctx.room.name}")
-        logger.info(f"👤 Agent participant identity: {ctx.room.local_participant.identity}")
-        logger.info(f"🏷️ Agent participant name: {ctx.room.local_participant.name}")
+        logger.info(f"👤 Agent participant identity: {current_persona}")  # Uses persona as identity
         
-        # Send initial greeting when agent joins the room using the correct LiveKit method
+        # Send initial greeting (official pattern)
         initial_greeting = f"Hello, I'm {current_persona}. Today we'll be discussing {current_topic}. Go ahead with your opening arguments, and call upon me as needed."
         logger.info(f"🎤 Sending initial greeting: {initial_greeting}")
-        await session.generate_reply(instructions=f"Say exactly: '{initial_greeting}'")
-        
-        # The session should now run indefinitely until the room closes
-        # No need to call wait_for_completion() - the session manages its own lifecycle
+        await agent.say(initial_greeting, allow_interruptions=True)
         
     except Exception as e:
         logger.error(f"❌ Error in entrypoint: {e}")
