@@ -270,5 +270,61 @@ class SupabaseMemoryManager:
             logger.error(f"❌ Failed to get session info: {e}")
             return None
 
+    # Additional convenience methods for agent function tools
+    async def store_moderation_action(self, action: str, content: str, persona: str) -> bool:
+        """Store a moderation action from the agent function tools"""
+        if not self.is_available():
+            return False
+            
+        try:
+            # For now, we'll store without a specific session_id since we don't have session management yet
+            # In a full implementation, you'd want to track the current session
+            action_data = {
+                'session_id': None,  # Would need to be set when session management is implemented
+                'action_type': action,
+                'details': json.dumps({
+                    'content': content,
+                    'persona': persona,
+                    'timestamp': datetime.now(timezone.utc).isoformat()
+                }),
+                'timestamp': datetime.now(timezone.utc).isoformat()
+            }
+            
+            # For now, just log the action since we don't have session context
+            logger.info(f"💾 Moderation action: {persona} - {action} - {content}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to store moderation action: {e}")
+            return False
+
+    async def store_fact_check(self, statement: str, status: str) -> bool:
+        """Store a fact-check request from the agent function tools"""
+        if not self.is_available():
+            return False
+            
+        try:
+            # Log the fact-check request
+            logger.info(f"🔍 Fact-check request: {statement} - {status}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to store fact-check: {e}")
+            return False
+
+    async def store_topic_change(self, topic: str, persona: str) -> bool:
+        """Store a topic change from the agent function tools"""
+        if not self.is_available():
+            return False
+            
+        try:
+            # Log the topic change
+            logger.info(f"📝 Topic change: {persona} set topic to '{topic}'")
+            return True
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to store topic change: {e}")
+            return False
+
 # Global instance
 memory_manager = SupabaseMemoryManager() 

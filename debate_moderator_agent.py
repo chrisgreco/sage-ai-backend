@@ -23,10 +23,14 @@ logger = logging.getLogger("sage-debate-moderator")
 # Import memory manager with graceful fallback
 try:
     from supabase_memory_manager import SupabaseMemoryManager
-    logger.info("✅ Supabase memory manager imported successfully")
+    memory_manager = SupabaseMemoryManager()
+    logger.info("✅ Supabase memory manager initialized successfully")
 except ImportError:
     logger.warning("⚠️ Supabase memory manager not available - continuing without memory features")
-    SupabaseMemoryManager = None
+    memory_manager = None
+except Exception as e:
+    logger.warning(f"⚠️ Memory manager initialization failed: {e}")
+    memory_manager = None
 
 # Global variables for agent state
 current_persona = None
@@ -82,8 +86,8 @@ async def moderate_discussion(
         logger.info(f"🎯 Moderating discussion: {action} - {content}")
         
         # Store moderation action in memory
-        if SupabaseMemoryManager:
-            await SupabaseMemoryManager.store_moderation_action(action, content, current_persona)
+        if memory_manager:
+            await memory_manager.store_moderation_action(action, content, current_persona)
         
         return f"As {current_persona}, I will {action}: {content}"
         
@@ -101,8 +105,8 @@ async def fact_check_statement(
         logger.info(f"🔍 Fact-checking statement: {statement}")
         
         # Store the fact-check request in memory for context
-        if SupabaseMemoryManager:
-            await SupabaseMemoryManager.store_fact_check(statement, "fact-check-requested")
+        if memory_manager:
+            await memory_manager.store_fact_check(statement, "fact-check-requested")
         
         return f"I'll fact-check this statement using available knowledge: {statement}"
         
@@ -122,8 +126,8 @@ async def set_debate_topic(
         logger.info(f"📝 Setting debate topic: {topic}")
         
         # Store topic change in memory
-        if SupabaseMemoryManager:
-            await SupabaseMemoryManager.store_topic_change(topic, current_persona)
+        if memory_manager:
+            await memory_manager.store_topic_change(topic, current_persona)
         
         return f"Perfect! I've set our debate topic to: {topic}. Let's explore this together."
         
@@ -207,14 +211,7 @@ async def entrypoint(ctx: JobContext):
         # Create agent with persona-specific instructions and tools
         logger.info(f"🎭 Creating {current_persona} agent with topic: {current_topic}")
         
-        # Create initial chat context with persona instructions
-        from livekit.agents import llm
-        initial_chat_context = llm.ChatContext().append(
-            role="system",
-            text=get_persona_instructions(current_persona, current_topic)
-        )
-        
-        # Configure Cartesia TTS (official implementation)
+        # Configure Cartesia TTS (correct implementation)
         from livekit.plugins import cartesia, deepgram, silero
         logger.info("🎤 Configuring Cartesia TTS...")
         
@@ -224,27 +221,25 @@ async def entrypoint(ctx: JobContext):
         )
         logger.info("✅ Using Cartesia TTS for premium voice quality")
         
-        # Wait for first participant (official LiveKit pattern)
-        logger.info("⏳ Waiting for participant to connect...")
-        participant = await ctx.wait_for_participant()
-        logger.info(f"👤 Starting voice assistant for participant {participant.identity}")
+        # Create Agent with tools and instructions (supports function tools)
+        agent = agents.Agent(
+            instructions=get_persona_instructions(current_persona, current_topic),
+            tools=[moderate_discussion, fact_check_statement, set_debate_topic],
+        )
         
-        # Create VoicePipelineAgent (official Cartesia-LiveKit pattern)
-        from livekit.agents.pipeline import VoicePipelineAgent
-        
-        agent = VoicePipelineAgent(
+        # Create AgentSession with Cartesia TTS (official pattern)
+        session = agents.AgentSession(
             vad=silero.VAD.load(),
             stt=deepgram.STT(),
             llm=openai.LLM(model="gpt-4o-mini"),
-            tts=tts,
-            chat_ctx=initial_chat_context,
+            tts=tts,  # Use Cartesia TTS
         )
         
-        logger.info("✅ VoicePipelineAgent created successfully")
+        logger.info("✅ Agent and AgentSession created successfully")
         
-        # Start the agent (official pattern)
-        logger.info("▶️ Starting voice pipeline agent...")
-        agent.start(ctx.room, participant)
+        # Start the session (official pattern)
+        logger.info("▶️ Starting agent session...")
+        await session.start(agent=agent, room=ctx.room)
         
         logger.info("🎉 Sage AI Debate Moderator Agent is now active and listening!")
         logger.info(f"🏠 Agent joined room: {ctx.room.name}")
@@ -253,7 +248,7 @@ async def entrypoint(ctx: JobContext):
         # Send initial greeting (official pattern)
         initial_greeting = f"Hello, I'm {current_persona}. Today we'll be discussing {current_topic}. Go ahead with your opening arguments, and call upon me as needed."
         logger.info(f"🎤 Sending initial greeting: {initial_greeting}")
-        await agent.say(initial_greeting, allow_interruptions=True)
+        await session.generate_reply(instructions=f"Say exactly: '{initial_greeting}'")
         
     except Exception as e:
         logger.error(f"❌ Error in entrypoint: {e}")
