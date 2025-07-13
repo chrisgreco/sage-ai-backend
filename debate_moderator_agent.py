@@ -12,7 +12,7 @@ from typing import Annotated
 # Core LiveKit imports following official patterns
 from livekit import agents
 from livekit.agents import JobContext, RunContext, WorkerOptions, cli, function_tool
-from livekit.plugins import deepgram, openai, silero
+from livekit.plugins import deepgram, openai, silero, cartesia
 
 # Environment variables are managed by Render directly - no need for dotenv
 # load_dotenv() removed since Render sets environment variables
@@ -211,13 +211,13 @@ async def entrypoint(ctx: JobContext):
         # Create agent with persona-specific instructions and tools
         logger.info(f"🎭 Creating {current_persona} agent with topic: {current_topic}")
         
-        # Configure Cartesia TTS (correct implementation)
-        from livekit.plugins import cartesia, deepgram, silero
+        # Configure Cartesia TTS (official implementation)
         logger.info("🎤 Configuring Cartesia TTS...")
         
         tts = cartesia.TTS(
-            model="sonic",  # High-quality Cartesia model
-            voice="794f9389-aac1-45b6-b726-9d9369183238",  # Professional male voice  
+            model="sonic",  # High-quality Cartesia model (default)
+            voice="c2ac25f9-ecc4-4f56-9095-651354df60c0",  # Default professional voice from docs
+            speed=1.0,  # Normal speed for clarity
         )
         logger.info("✅ Using Cartesia TTS for premium voice quality")
         
