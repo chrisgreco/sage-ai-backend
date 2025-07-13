@@ -280,11 +280,14 @@ async def handle_job_request(job_req: agents.JobRequest):
         logger.info(f"🎭 Job request received for room: {job_req.room.name}")
         logger.info(f"🎭 Setting agent identity to: {persona}")
         
-        # Accept with consistent identity (what frontend expects)
+        # ✅ FIXED: Use persona name as identity (LiveKit best practice)
+        # Frontend expects agent identity to match persona name exactly
         await job_req.accept(
-            identity="sage-debate-moderator",    # Frontend expects "sage-debate-moderator"
+            identity=persona,                    # ✅ "Socrates", "Aristotle", "Buddha"
             name=f"Sage AI - {persona}",         # Display name with persona
         )
+        
+        logger.info(f"✅ Agent accepted job with identity: {persona}")
         
     except Exception as e:
         logger.error(f"❌ Error handling job request: {e}")
