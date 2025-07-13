@@ -216,8 +216,30 @@ async def entrypoint(ctx: JobContext):
         # Create agent with persona-specific instructions and tools
         agent = SageDebateModerator(current_persona, current_topic)
         
-        # Create session with OpenAI with deep male voice (onyx)
-        logger.info("🧠 Creating AgentSession with OpenAI integration...")
+        # Create session with enhanced TTS for better voice quality
+        logger.info("🧠 Creating AgentSession with enhanced voice quality...")
+        
+        # Configure high-quality TTS with Cartesia preferred, OpenAI HD fallback
+        logger.info("🎤 Configuring high-quality TTS...")
+        try:
+            # Try Cartesia first for best voice quality (less raspy, more natural)
+            from livekit.plugins import cartesia
+            tts = cartesia.TTS(
+                model="sonic-multilingual",  # Best quality model
+                voice="79a125e8-cd45-4c13-8a67-188112f4dd22",  # British Male (clear, professional)
+                sample_rate=44100,  # High quality audio
+            )
+            logger.info("✅ Using Cartesia TTS for premium voice quality")
+        except Exception as e:
+            logger.warning(f"⚠️ Cartesia TTS not available ({e}), falling back to OpenAI HD")
+            # Fallback to OpenAI with optimized settings for less raspy voice
+            tts = openai.TTS(
+                voice="alloy",  # Much clearer and less raspy than "onyx"
+                model="tts-1-hd",  # High-definition model for better quality
+                speed=1.0,  # Normal speed for clarity
+            )
+            logger.info("✅ Using OpenAI TTS HD with optimized voice settings")
+        
         session = AgentSession(
             vad=silero.VAD.load(),
             stt=deepgram.STT(model="nova-2"),
@@ -225,7 +247,7 @@ async def entrypoint(ctx: JobContext):
                 model="gpt-4o-mini",
                 temperature=0.7,
             ),
-            tts=openai.TTS(voice="onyx"),  # Deep, old-sounding male voice
+            tts=tts,  # Use the optimized TTS configuration
         )
         
         logger.info("✅ AgentSession created successfully")
