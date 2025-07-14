@@ -266,12 +266,17 @@ async def entrypoint(ctx: JobContext):
         # Configure Cartesia TTS (official implementation)
         logger.info("🎤 Configuring Cartesia TTS...")
         
+        # Debug: Check if Cartesia API key is available
+        cartesia_key = os.getenv('CARTESIA_API_KEY')
+        logger.info(f"🔑 CARTESIA_API_KEY: {'✅ Available' if cartesia_key else '❌ Missing'}")
+        
         tts = cartesia.TTS(
             model="sonic-2-2025-03-07",  # Updated model that supports speed controls
             voice="a0e99841-438c-4a64-b679-ae501e7d6091",  # British Male (professional, deeper voice)
             speed=0.8, # Added speed parameter
         )
         logger.info("✅ Using Cartesia TTS with British male voice")
+        logger.info(f"🎛️ TTS Configuration: model=sonic-2-2025-03-07, voice=a0e99841-438c-4a64-b679-ae501e7d6091, speed=0.8")
         
         # Create Agent with tools and instructions (supports function tools)
         agent = agents.Agent(
