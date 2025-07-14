@@ -216,10 +216,10 @@ async def entrypoint(ctx: JobContext):
         
         tts = cartesia.TTS(
             model="sonic",  # High-quality Cartesia model (default)
-            voice="248be419-c632-4f23-adf1-5324ed7dbf1d",  # Barbershop Man - older, deeper male voice
-            speed=0.7,  # Slower speed for more thoughtful, deliberate speech
+            voice="a0e99841-438c-4a64-b679-ae501e7d6091",  # British Male (professional, deeper voice)
+            speed=0.5,  # Much slower speed for deliberate, thoughtful speech
         )
-        logger.info("✅ Using Cartesia TTS with older male voice at slower speed")
+        logger.info("✅ Using Cartesia TTS with slower British male voice")
         
         # Create Agent with tools and instructions (supports function tools)
         agent = agents.Agent(
