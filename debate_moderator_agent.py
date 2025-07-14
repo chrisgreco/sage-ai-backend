@@ -215,7 +215,7 @@ async def entrypoint(ctx: JobContext):
         logger.info("🎤 Configuring Cartesia TTS...")
         
         tts = cartesia.TTS(
-            model="sonic",  # High-quality Cartesia model (default)
+            model="sonic-2-2025-03-07",  # Updated model that supports speed controls
             voice="a0e99841-438c-4a64-b679-ae501e7d6091",  # British Male (professional, deeper voice)
             speed=0.5,  # Much slower speed for deliberate, thoughtful speech
         )
