@@ -26,7 +26,10 @@ logger = logging.getLogger(__name__)
 
 # Brave Search API configuration - API key managed by Render
 BRAVE_API_URL = "https://api.search.brave.com/res/v1/web/search"
-BRAVE_API_KEY = os.environ["BRAVE_API_KEY"]  # Render will inject this - no fallback
+BRAVE_API_KEY = os.environ.get("BRAVE_API_KEY")  # Render will inject this
+if not BRAVE_API_KEY:
+    logger.warning("⚠️ BRAVE_API_KEY not found - Brave Search functionality will be disabled")
+    BRAVE_API_KEY = None
 
 # Memory manager initialization
 try:
