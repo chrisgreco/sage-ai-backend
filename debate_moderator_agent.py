@@ -97,15 +97,13 @@ async def moderate_discussion(ctx: RunContext, intervention_type: str, guidance:
     """
     logger.info(f"🎭 {current_persona} moderating: {intervention_type}")
     
-    # Store interaction in memory if available
+    # Store moderation action in memory if available
     if memory_manager:
         try:
-            await memory_manager.store_interaction(
-                session_id=ctx.job.room.name,
-                agent_name=current_persona,
-                interaction_type="moderation",
-                content=f"{intervention_type}: {guidance}",
-                metadata={"topic": current_topic}
+            await memory_manager.store_moderation_action(
+                action=intervention_type,
+                content=guidance,
+                persona=current_persona
             )
         except Exception as e:
             logger.warning(f"Failed to store moderation in memory: {e}")
@@ -168,12 +166,9 @@ async def brave_search(ctx: RunContext, query: str) -> str:
             # Store fact-check in memory if available
             if memory_manager:
                 try:
-                    await memory_manager.store_interaction(
-                        session_id=ctx.job.room.name,
-                        agent_name=current_persona,
-                        interaction_type="fact_check",
-                        content=f"Query: {query}\nResults: {result_text}",
-                        metadata={"topic": current_topic, "source": "brave_search"}
+                    await memory_manager.store_fact_check(
+                        statement=query,
+                        status=f"Verified with sources: {result_text}"
                     )
                 except Exception as e:
                     logger.warning(f"Failed to store fact-check in memory: {e}")
@@ -225,12 +220,9 @@ async def set_debate_topic(ctx: RunContext, topic: str) -> str:
     # Store topic change in memory if available
     if memory_manager:
         try:
-            await memory_manager.store_interaction(
-                session_id=ctx.job.room.name,
-                agent_name=current_persona,
-                interaction_type="topic_change",
-                content=topic,
-                metadata={"previous_topic": current_topic}
+            await memory_manager.store_topic_change(
+                topic=topic,
+                persona=current_persona
             )
         except Exception as e:
             logger.warning(f"Failed to store topic change in memory: {e}")
