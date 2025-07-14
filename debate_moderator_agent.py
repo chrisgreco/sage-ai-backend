@@ -15,12 +15,20 @@ from livekit.agents import JobContext, RunContext, WorkerOptions, cli, function_
 from livekit.plugins import deepgram, openai, silero, cartesia
 
 # Environment variables are managed by Render directly - no need for dotenv
-# load_dotenv() removed since Render sets environment variables
+import os
+import json
+import logging
+import httpx  # Added for Brave Search API calls
 
 # Configure logging
-logger = logging.getLogger("sage-debate-moderator")
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Import memory manager with graceful fallback
+# Brave Search API configuration - API key managed by Render
+BRAVE_API_URL = "https://api.search.brave.com/res/v1/web/search"
+BRAVE_API_KEY = os.environ.get("BRAVE_API_KEY")  # Render will inject this
+
+# Memory manager initialization
 try:
     from supabase_memory_manager import SupabaseMemoryManager
     memory_manager = SupabaseMemoryManager()
@@ -75,138 +83,178 @@ Buddhist approach:
     return base_instructions + "\n" + persona_specific.get(persona, "")
 
 # Function tools following official patterns
-@function_tool
-async def moderate_discussion(
-    context: RunContext,
-    action: Annotated[str, "The moderation action to take: 'redirect', 'clarify', 'summarize', or 'question'"],
-    content: Annotated[str, "The specific content or question for the moderation action"]
-) -> str:
-    """Moderate the debate discussion with specific actions"""
-    try:
-        logger.info(f"🎯 Moderating discussion: {action} - {content}")
-        
-        # Store moderation action in memory
-        if memory_manager:
-            await memory_manager.store_moderation_action(action, content, current_persona)
-        
-        return f"As {current_persona}, I will {action}: {content}"
-        
-    except Exception as e:
-        logger.error(f"Error in moderate_discussion: {e}")
-        return f"I'll help moderate this discussion as {current_persona}."
+@function_tool()
+async def moderate_discussion(ctx: RunContext, intervention_type: str, guidance: str) -> str:
+    """
+    Moderate the ongoing discussion with philosophical guidance.
+    
+    Args:
+        intervention_type: Type of moderation needed (clarify, redirect, summarize, question)
+        guidance: The specific guidance or question to offer
+    """
+    logger.info(f"🎭 {current_persona} moderating: {intervention_type}")
+    
+    # Store interaction in memory if available
+    if memory_manager:
+        try:
+            await memory_manager.store_interaction(
+                session_id=ctx.job.room.name,
+                agent_name=current_persona,
+                interaction_type="moderation",
+                content=f"{intervention_type}: {guidance}",
+                metadata={"topic": current_topic}
+            )
+        except Exception as e:
+            logger.warning(f"Failed to store moderation in memory: {e}")
+    
+    return f"As {current_persona}, I offer this guidance: {guidance}"
 
-@function_tool
-async def fact_check_statement(
-    context: RunContext,
-    statement: Annotated[str, "The statement to fact-check"]
-) -> str:
-    """Fact-check a statement using available knowledge"""
-    try:
-        logger.info(f"🔍 Fact-checking statement: {statement}")
-        
-        # Store the fact-check request in memory for context
-        if memory_manager:
-            await memory_manager.store_fact_check(statement, "fact-check-requested")
-        
-        return f"I'll fact-check this statement using available knowledge: {statement}"
-        
-    except Exception as e:
-        logger.error(f"Error in fact_check_statement: {e}")
-        return f"I'll verify this information: {statement}"
+@function_tool()
+async def brave_search(ctx: RunContext, query: str) -> str:
+    """
+    Use the Brave Search API to get real-time search results for fact-checking.
+    Returns the top 3 results as title + URL pairs for verification.
+    
+    Args:
+        query: The search query to fact-check
+    """
+    if not BRAVE_API_KEY:
+        logger.warning("⚠️ BRAVE_API_KEY not configured - fact-checking unavailable")
+        return "Fact-checking is currently unavailable. Please verify information independently."
+    
+    headers = {
+        "Accept": "application/json",
+        "Accept-Encoding": "gzip",
+        "X-Subscription-Token": BRAVE_API_KEY,
+    }
+    params = {
+        "q": query,
+        "count": 3,  # Get top 3 results for concise fact-checking
+        "safesearch": "moderate"  # Filter inappropriate content
+    }
 
-@function_tool
-async def set_debate_topic(
-    context: RunContext,
-    topic: Annotated[str, "The new debate topic to set"]
-) -> str:
-    """Set a new topic for the debate discussion"""
     try:
-        global current_topic
-        current_topic = topic
-        logger.info(f"📝 Setting debate topic: {topic}")
+        logger.info(f"🔍 Brave Search fact-check query: {query}")
         
-        # Store topic change in memory
-        if memory_manager:
-            await memory_manager.store_topic_change(topic, current_persona)
-        
-        return f"Perfect! I've set our debate topic to: {topic}. Let's explore this together."
-        
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(BRAVE_API_URL, headers=headers, params=params)
+            response.raise_for_status()
+            
+            data = response.json()
+            web_results = data.get("web", {}).get("results", [])
+
+            if not web_results:
+                return f"No verification sources found for: {query}"
+
+            # Format results for concise presentation
+            formatted_results = []
+            for result in web_results:
+                title = result.get("title", "No title")
+                url = result.get("url", "")
+                # Truncate title if too long for voice
+                if len(title) > 60:
+                    title = title[:57] + "..."
+                formatted_results.append(f"• {title}")
+            
+            result_text = "\n".join(formatted_results)
+            
+            # Store fact-check in memory if available
+            if memory_manager:
+                try:
+                    await memory_manager.store_interaction(
+                        session_id=ctx.job.room.name,
+                        agent_name=current_persona,
+                        interaction_type="fact_check",
+                        content=f"Query: {query}\nResults: {result_text}",
+                        metadata={"topic": current_topic, "source": "brave_search"}
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to store fact-check in memory: {e}")
+            
+            logger.info(f"✅ Brave Search returned {len(web_results)} results")
+            return f"Based on current sources:\n{result_text}"
+
+    except httpx.TimeoutException:
+        logger.error("⏰ Brave Search request timed out")
+        return "Fact-checking timed out. Please verify information independently."
+    except httpx.HTTPStatusError as e:
+        logger.error(f"❌ Brave Search HTTP error: {e.response.status_code}")
+        return "Fact-checking service temporarily unavailable."
     except Exception as e:
-        logger.error(f"Error in set_debate_topic: {e}")
-        return f"I'll guide our discussion on: {topic}"
+        logger.error(f"❌ Brave Search error: {e}")
+        return f"Fact-checking failed: {str(e)}"
+
+@function_tool()
+async def fact_check_statement(ctx: RunContext, statement: str) -> str:
+    """
+    Fact-check a specific statement made during the debate using Brave Search.
+    
+    Args:
+        statement: The statement to fact-check
+    """
+    logger.info(f"🔍 Fact-checking statement: {statement}")
+    
+    # Create a focused search query from the statement
+    # Remove common debate phrases and focus on factual claims
+    search_query = statement.replace("I think", "").replace("I believe", "").replace("In my opinion", "").strip()
+    
+    # Use brave_search to get verification
+    search_result = await brave_search(ctx, search_query)
+    
+    return f"Fact-checking '{statement[:50]}...': {search_result}"
+
+@function_tool()
+async def set_debate_topic(ctx: RunContext, topic: str) -> str:
+    """
+    Set or change the current debate topic.
+    
+    Args:
+        topic: The new topic for discussion
+    """
+    global current_topic
+    current_topic = topic
+    logger.info(f"📝 Topic set to: {topic}")
+    
+    # Store topic change in memory if available
+    if memory_manager:
+        try:
+            await memory_manager.store_interaction(
+                session_id=ctx.job.room.name,
+                agent_name=current_persona,
+                interaction_type="topic_change",
+                content=topic,
+                metadata={"previous_topic": current_topic}
+            )
+        except Exception as e:
+            logger.warning(f"Failed to store topic change in memory: {e}")
+    
+    return f"I'll guide our discussion on: {topic}"
 
 # Main entrypoint following exact official pattern
 async def entrypoint(ctx: JobContext):
-    """Main entry point for the LiveKit agent following official patterns"""
-    
+    """Main agent entrypoint - follows official LiveKit pattern exactly"""
     try:
-        logger.info("🚀 Starting Sage AI Debate Moderator Agent...")
+        logger.info("🚀 Sage AI Debate Moderator starting...")
         
-        # Validate environment variables
-        logger.info("🔍 Validating environment variables...")
-        openai_key = os.getenv('OPENAI_API_KEY')
-        deepgram_key = os.getenv('DEEPGRAM_API_KEY')
-        
-        logger.info(f"   OPENAI_API_KEY: {'✅ Found' if openai_key else '❌ Not found'}")
-        logger.info(f"   DEEPGRAM_API_KEY: {'✅ Found' if deepgram_key else '❌ Not found'}")
-        
-        if not openai_key:
-            logger.error("❌ OPENAI_API_KEY environment variable is required")
-            raise ValueError("OPENAI_API_KEY environment variable is required")
-        
-        # Connect to room first (exact official pattern)
-        logger.info("🔗 Connecting to LiveKit room...")
-        await ctx.connect()
-        logger.info("✅ Connected to room successfully")
-        
-        # OFFICIAL LIVEKIT PATTERN: Read metadata from ctx.job.metadata
-        # According to official LiveKit documentation, job metadata is accessed via ctx.job.metadata
-        
-        logger.info("🔍 Reading agent metadata from job metadata (official LiveKit pattern)...")
-        
-        # Extract persona and topic from job metadata
+        # Extract metadata from job context (official pattern)
         global current_persona, current_topic
         
-        # Read from job metadata (official LiveKit pattern)
         job_metadata = {}
-        
-        logger.info(f"🔍 Job object: {ctx.job}")
-        logger.info(f"🔍 Job metadata raw: {getattr(ctx.job, 'metadata', 'No metadata attribute')}")
-        
         if hasattr(ctx.job, 'metadata') and ctx.job.metadata:
             try:
-                # Job metadata is passed as JSON string according to docs
                 if isinstance(ctx.job.metadata, str):
                     job_metadata = json.loads(ctx.job.metadata)
                 else:
                     job_metadata = ctx.job.metadata
-                logger.info(f"🎯 Job metadata parsed: {job_metadata}")
             except (json.JSONDecodeError, TypeError) as e:
                 logger.warning(f"Failed to parse job metadata: {e}")
-                job_metadata = {}
-        else:
-            logger.warning("🎯 Job metadata: empty or missing")
         
-        current_persona = job_metadata.get('persona')
-        current_topic = job_metadata.get('topic')
-        
-        logger.info(f"🎭 Extracted persona from job metadata: {current_persona}")
-        logger.info(f"💭 Extracted topic from job metadata: {current_topic}")
-        
-        # If still no metadata, this indicates the agent dispatch is not including metadata correctly
-        if not current_persona or not current_topic:
-            logger.error(f"❌ MISSING METADATA: persona={current_persona}, topic={current_topic}")
-            logger.error(f"❌ Job metadata received: {job_metadata}")
-            logger.error("❌ This indicates the backend agent dispatch is not including metadata correctly!")
-            
-            # Use emergency fallbacks but log the issue
-            current_persona = current_persona or "Aristotle"
-            current_topic = current_topic or "General Discussion"
-            logger.warning(f"⚠️ Using emergency fallbacks: {current_persona}, {current_topic}")
+        # Set persona and topic from metadata with defaults
+        current_persona = job_metadata.get('persona', 'Socrates')
+        current_topic = job_metadata.get('topic', 'Philosophy and Ethics')
         
         logger.info(f"🎭 Persona: {current_persona}")
         logger.info(f"📝 Topic: {current_topic}")
-        logger.info(f"🔍 Full job metadata: {job_metadata}")
         
         # Create agent with persona-specific instructions and tools
         logger.info(f"🎭 Creating {current_persona} agent with topic: {current_topic}")
@@ -224,7 +272,7 @@ async def entrypoint(ctx: JobContext):
         # Create Agent with tools and instructions (supports function tools)
         agent = agents.Agent(
             instructions=get_persona_instructions(current_persona, current_topic),
-            tools=[moderate_discussion, fact_check_statement, set_debate_topic],
+            tools=[moderate_discussion, brave_search, fact_check_statement, set_debate_topic],
         )
         
         # Create AgentSession with Cartesia TTS (official pattern)
@@ -297,16 +345,11 @@ if __name__ == "__main__":
     logger.info(f"   LIVEKIT_API_SECRET: {'✅ Set' if os.getenv('LIVEKIT_API_SECRET') else '❌ Missing'}")
     logger.info(f"   OPENAI_API_KEY: {'✅ Set' if os.getenv('OPENAI_API_KEY') else '❌ Missing'}")
     logger.info(f"   DEEPGRAM_API_KEY: {'✅ Set' if os.getenv('DEEPGRAM_API_KEY') else '❌ Missing'}")
+    logger.info(f"   BRAVE_API_KEY: {'✅ Set' if os.getenv('BRAVE_API_KEY') else '❌ Missing'}")
     
     cli.run_app(WorkerOptions(
         entrypoint_fnc=entrypoint,
         request_fnc=handle_job_request,  # Custom job request handler
         agent_name="sage-debate-moderator",  # Register with specific name for dispatch
         # Configure worker permissions according to official LiveKit API
-        permissions=agents.WorkerPermissions(
-            can_publish=True,
-            can_subscribe=True,
-            can_publish_data=True,
-            can_update_metadata=True,
-        ),
     )) 
