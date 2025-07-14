@@ -122,15 +122,19 @@ async def brave_search(ctx: RunContext, query: str) -> str:
         logger.warning("⚠️ BRAVE_API_KEY not configured - fact-checking unavailable")
         return "Fact-checking is currently unavailable. Please verify information independently."
     
+    # Headers following Brave Search API best practices from Context7 documentation
     headers = {
         "Accept": "application/json",
         "Accept-Encoding": "gzip",
         "X-Subscription-Token": BRAVE_API_KEY,
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     params = {
         "q": query,
         "count": 3,  # Get top 3 results for concise fact-checking
-        "safesearch": "moderate"  # Filter inappropriate content
+        "safesearch": "moderate",  # Filter inappropriate content
+        "search_lang": "en",  # English language results
+        "country": "US"  # US-focused results
     }
 
     try:
