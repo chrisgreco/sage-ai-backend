@@ -267,8 +267,8 @@ async def entrypoint(ctx: JobContext):
         logger.info("🎤 Configuring Cartesia TTS...")
         
         # Debug: Check if Cartesia API key is available
-            cartesia_key = os.environ.get('CARTESIA_API_KEY')
-    logger.info(f"🔑 CARTESIA_API_KEY: {'✅ Available' if cartesia_key else '❌ Missing'}")
+        cartesia_key = os.environ.get('CARTESIA_API_KEY')
+        logger.info(f"🔑 CARTESIA_API_KEY: {'✅ Available' if cartesia_key else '❌ Missing'}")
         
         tts = cartesia.TTS(
             model="sonic-2-2025-03-07",  # Updated model that supports speed controls
