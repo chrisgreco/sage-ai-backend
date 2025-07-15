@@ -297,10 +297,16 @@ async def entrypoint(ctx: JobContext):
         logger.info(f"🏠 Agent joined room: {ctx.room.name}")
         logger.info(f"👤 Agent participant identity: {current_persona}")  # Uses persona as identity
         
-        # Send initial greeting (official pattern)
-        initial_greeting = f"Hello, I'm {current_persona}. Today we'll be discussing {current_topic}. Go ahead with your opening arguments, and call upon me as needed."
-        logger.info(f"🎤 Sending initial greeting: {initial_greeting}")
-        await session.generate_reply(instructions=f"Say exactly: '{initial_greeting}'")
+        # Check if this is a new session or continuation
+        conversation_ctx = session.conversation_context
+        if not conversation_ctx or len(conversation_ctx.messages) == 0:
+            # Send initial greeting only for new sessions
+            initial_greeting = f"Hello, I'm {current_persona}. Today we'll be discussing {current_topic}. Go ahead with your opening arguments, and call upon me as needed."
+            logger.info(f"🎤 Sending initial greeting: {initial_greeting}")
+            await session.generate_reply(instructions=f"Say exactly: '{initial_greeting}'")
+        else:
+            # Continue existing conversation - no greeting needed
+            logger.info(f"🔄 Continuing existing conversation with {len(conversation_ctx.messages)} messages")
         
     except Exception as e:
         logger.error(f"❌ Error in entrypoint: {e}")
