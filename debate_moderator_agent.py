@@ -10,8 +10,16 @@ import json
 import logging
 from typing import Annotated
 # Core LiveKit imports following official patterns
-from livekit import agents
-from livekit.agents import JobContext, RunContext, WorkerOptions, cli, function_tool
+from livekit.agents import (
+    Agent,
+    AgentSession, 
+    JobContext,
+    RunContext,
+    WorkerOptions,
+    cli,
+    function_tool,
+    agents
+)
 from livekit.plugins import deepgram, openai, silero, cartesia
 
 # Environment variables are managed by Render directly - no need for dotenv
@@ -85,7 +93,25 @@ Buddhist approach:
 
     return base_instructions + "\n" + persona_specific.get(persona, "")
 
-# Function tools following official patterns
+# === Agent Class Definition ===
+class DebateModerator(agents.Agent):
+    """Sage AI Debate Moderator Agent with persona-based behavior"""
+    
+    def __init__(self, persona: str, topic: str):
+        self.persona = persona
+        self.topic = topic
+        
+        # Get persona-specific instructions
+        instructions = get_persona_instructions(persona, topic)
+        
+        super().__init__(
+            instructions=instructions,
+            tools=[moderate_discussion, brave_search, fact_check_statement, set_debate_topic],
+        )
+        
+        logger.info(f"🎭 Created {persona} agent for topic: {topic}")
+
+# === Core Agent Functions ===
 @function_tool()
 async def moderate_discussion(ctx: RunContext, intervention_type: str, guidance: str) -> str:
     """
@@ -231,13 +257,13 @@ async def set_debate_topic(ctx: RunContext, topic: str) -> str:
 
 # Main entrypoint following exact official pattern
 async def entrypoint(ctx: JobContext):
-    """Main agent entrypoint - follows official LiveKit pattern exactly"""
+    """Main entrypoint for the Sage AI Debate Moderator Agent"""
     try:
-        logger.info("🚀 Sage AI Debate Moderator starting...")
+        # Connect to the room
+        await ctx.connect()
+        logger.info(f"🔗 Connected to LiveKit room: {ctx.room.name}")
         
-        # Extract metadata from job context (official pattern)
-        global current_persona, current_topic
-        
+        # Get metadata from job context
         job_metadata = {}
         if hasattr(ctx.job, 'metadata') and ctx.job.metadata:
             try:
@@ -248,18 +274,18 @@ async def entrypoint(ctx: JobContext):
             except (json.JSONDecodeError, TypeError) as e:
                 logger.warning(f"Failed to parse job metadata: {e}")
         
-        # Set persona and topic from metadata with defaults
+        # Get persona and topic from metadata
         current_persona = job_metadata.get('persona', 'Socrates')
-        current_topic = job_metadata.get('topic', 'Philosophy and Ethics')
+        current_topic = job_metadata.get('topic', 'philosophical discourse')
         
-        logger.info(f"🎭 Persona: {current_persona}")
-        logger.info(f"📝 Topic: {current_topic}")
+        logger.info(f"🎭 Initializing agent as: {current_persona}")
+        logger.info(f"📝 Debate topic: {current_topic}")
         
-        # Create agent with persona-specific instructions and tools
-        logger.info(f"🎭 Creating {current_persona} agent with topic: {current_topic}")
+        # Get the global memory manager (if available)
+        global memory_manager
         
-        # Configure Cartesia TTS (official implementation)
-        logger.info("🎤 Configuring Cartesia TTS...")
+        # Configure the debate moderator agent
+        agent = DebateModerator(persona=current_persona, topic=current_topic)
         
         # Debug: Check if Cartesia API key is available
         cartesia_key = os.environ.get('CARTESIA_API_KEY')
@@ -270,43 +296,26 @@ async def entrypoint(ctx: JobContext):
             voice="a0e99841-438c-4a64-b679-ae501e7d6091",  # British Male (professional, deeper voice)
             speed=0.8, # Added speed parameter
         )
-        logger.info("✅ Using Cartesia TTS with British male voice")
-        logger.info(f"🎛️ TTS Configuration: model=sonic-2-2025-03-07, voice=a0e99841-438c-4a64-b679-ae501e7d6091, speed=0.8")
         
-        # Create Agent with tools and instructions (supports function tools)
-        agent = agents.Agent(
-            instructions=get_persona_instructions(current_persona, current_topic),
-            tools=[moderate_discussion, brave_search, fact_check_statement, set_debate_topic],
-        )
-        
-        # Create AgentSession with Cartesia TTS (official pattern)
-        session = agents.AgentSession(
+        # Create the agent session with proper configuration
+        session = AgentSession(
             vad=silero.VAD.load(),
-            stt=deepgram.STT(),
+            stt=deepgram.STT(model="nova-3"),
             llm=openai.LLM(model="gpt-4o-mini"),
-            tts=tts,  # Use Cartesia TTS
+            tts=tts,
         )
         
-        logger.info("✅ Agent and AgentSession created successfully")
-        
-        # Start the session (official pattern)
-        logger.info("▶️ Starting agent session...")
+        # Start the persistent session
         await session.start(agent=agent, room=ctx.room)
         
         logger.info("🎉 Sage AI Debate Moderator Agent is now active and listening!")
         logger.info(f"🏠 Agent joined room: {ctx.room.name}")
-        logger.info(f"👤 Agent participant identity: {current_persona}")  # Uses persona as identity
+        logger.info(f"👤 Agent participant identity: {current_persona}")
         
-        # Check if this is a new session or continuation
-        conversation_ctx = session.conversation_context
-        if not conversation_ctx or len(conversation_ctx.messages) == 0:
-            # Send initial greeting only for new sessions
-            initial_greeting = f"Hello, I'm {current_persona}. Today we'll be discussing {current_topic}. Go ahead with your opening arguments, and call upon me as needed."
-            logger.info(f"🎤 Sending initial greeting: {initial_greeting}")
-            await session.generate_reply(instructions=f"Say exactly: '{initial_greeting}'")
-        else:
-            # Continue existing conversation - no greeting needed
-            logger.info(f"🔄 Continuing existing conversation with {len(conversation_ctx.messages)} messages")
+        # Send initial greeting ONLY once when agent first joins
+        initial_greeting = f"Hello, I'm {current_persona}. Today we'll be discussing {current_topic}. Go ahead with your opening arguments, and call upon me as needed."
+        logger.info(f"🎤 Sending initial greeting: {initial_greeting}")
+        await session.say(initial_greeting)
         
     except Exception as e:
         logger.error(f"❌ Error in entrypoint: {e}")
