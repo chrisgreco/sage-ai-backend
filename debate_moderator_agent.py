@@ -17,8 +17,7 @@ from livekit.agents import (
     RunContext,
     WorkerOptions,
     cli,
-    function_tool,
-    agents
+    function_tool
 )
 from livekit.plugins import deepgram, openai, silero, cartesia
 
@@ -94,7 +93,7 @@ Buddhist approach:
     return base_instructions + "\n" + persona_specific.get(persona, "")
 
 # === Agent Class Definition ===
-class DebateModerator(agents.Agent):
+class DebateModerator(Agent):
     """Sage AI Debate Moderator Agent with persona-based behavior"""
     
     def __init__(self, persona: str, topic: str):
