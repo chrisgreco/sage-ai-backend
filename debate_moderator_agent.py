@@ -8,7 +8,8 @@ Follows exact patterns from https://docs.livekit.io/agents/quickstarts/voice-age
 import os
 import json
 import logging
-from typing import Annotated
+import httpx
+
 # Core LiveKit imports following official patterns
 from livekit.agents import (
     Agent,
@@ -22,12 +23,6 @@ from livekit.agents import (
 )
 from livekit.plugins import deepgram, openai, silero, cartesia
 
-# Environment variables are managed by Render directly - no need for dotenv
-import os
-import json
-import logging
-import httpx  # Added for Brave Search API calls
-
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -39,7 +34,7 @@ if not BRAVE_API_KEY:
     logger.warning("⚠️ BRAVE_API_KEY not found - Brave Search functionality will be disabled")
     BRAVE_API_KEY = None
 
-# Memory manager initialization
+# Initialize memory manager (if available)
 try:
     from supabase_memory_manager import SupabaseMemoryManager
     memory_manager = SupabaseMemoryManager()
