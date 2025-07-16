@@ -73,10 +73,10 @@ Core principles:
 - Let participants lead - only intervene when needed
 - Allow natural pauses in conversation
 
-IMPORTANT: When participants ask direct questions (especially factual ones), USE YOUR TOOLS:
-- If asked about weather, current events, or facts - use brave_search immediately
-- Don't refuse factual questions - that's what your tools are for
-- Share the information you find through your tools"""
+IMPORTANT: When participants ask questions requiring real-time information, USE YOUR TOOLS:
+- For any current events, facts, or real-time data - use brave_search immediately
+- Share the information you find through your tools
+- Don't refuse factual questions - that's what your tools are for"""
 
     persona_specific = {
         "Socrates": """
@@ -316,13 +316,6 @@ async def entrypoint(ctx: JobContext):
         logger.info(f"🎭 Initializing agent as: {current_persona}")
         logger.info(f"📝 Debate topic: {current_topic}")
         logger.info(f"🏠 Room: {ctx.room.name} (participants: {len(ctx.room.remote_participants)})")
-        
-        # Check for existing agents in the room
-        existing_agents = [p for p in ctx.room.remote_participants if p.kind == 'agent']
-        if existing_agents:
-            logger.warning(f"⚠️ Found {len(existing_agents)} existing agents in room!")
-            for agent in existing_agents:
-                logger.warning(f"   - Agent: {agent.identity} (connected: {agent.connected})")
         
         # Get the global memory manager (if available)
         global memory_manager
