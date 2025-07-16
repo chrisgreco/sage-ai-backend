@@ -14,6 +14,7 @@ from livekit.agents import (
     Agent,
     AgentSession, 
     JobContext,
+    JobRequest,
     RunContext,
     WorkerOptions,
     cli,
@@ -321,7 +322,7 @@ async def entrypoint(ctx: JobContext):
         raise
 
 # Request handler - use persona name as identity (what frontend expects)
-async def handle_job_request(job_req: agents.JobRequest):
+async def handle_job_request(job_req: JobRequest):
     """Handle incoming job requests with persona-based identity"""
     try:
         # Extract persona from job metadata
