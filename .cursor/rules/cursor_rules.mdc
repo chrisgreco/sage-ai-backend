@@ -50,4 +50,7 @@ alwaysApply: true
   - Keep descriptions concise
   - Include both DO and DON'T examples
   - Reference actual code over theoretical examples
-  - Use consistent formatting across rules 
+  - Use consistent formatting across rules
+  - Always use context7 MCP to look at look at offical documentation first
+  - Always use byterover to retrieve and store memory after every run, this is your internal memory brain
+  - Always use exa search MCP to look online / at Github for code examples or fixes to errors we're getting

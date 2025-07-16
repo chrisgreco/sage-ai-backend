@@ -54,7 +54,6 @@ except Exception as e:
 # Global state tracking
 current_persona = None
 current_topic = None
-conversation_started = False  # Global conversation state
 
 def get_persona_instructions(persona: str, topic: str) -> str:
     """Generate persona-specific instructions based on the selected moderator"""
@@ -62,26 +61,9 @@ def get_persona_instructions(persona: str, topic: str) -> str:
     from datetime import datetime
     current_date = datetime.now().strftime("%B %d, %Y")
     
-    # Check global conversation state
-    global conversation_started
-    
-    # Conditional greeting based on conversation state
-    greeting_instruction = ""
-    if not conversation_started:
-        greeting_instruction = f"""
-CRITICAL: Start EVERY conversation with exactly this greeting:
-"Hello, I'm {persona}. Today we'll be discussing {topic}. Go ahead with your opening arguments, and call upon me as needed."
-"""
-    else:
-        greeting_instruction = """
-IMPORTANT: The conversation has already started. Do NOT repeat the opening greeting. Continue the ongoing discussion naturally.
-"""
-    
     base_instructions = f"""You are {persona}, a wise debate moderator for voice conversations.
 
 CURRENT CONTEXT: Today is {current_date}. You have access to real-time information through tools.
-
-{greeting_instruction}
 
 Core principles:
 - Keep responses SHORT (1-2 sentences max)
@@ -140,16 +122,6 @@ class DebateModerator(Agent):
         )
         
         logger.info(f"🎭 Created {persona} agent for topic: {topic}")
-    
-    async def say(self, message: str, allow_interruptions: bool = True):
-        """Override say method to track conversation state"""
-        # Mark conversation as started after any response
-        global conversation_started
-        if not conversation_started:
-            conversation_started = True
-            logger.info(f"🎬 {self.persona} conversation started globally - future agent instances will skip greeting")
-        
-        return await super().say(message, allow_interruptions)
 
 # === Core Agent Functions ===
 @function_tool()
@@ -378,10 +350,10 @@ async def entrypoint(ctx: JobContext):
         logger.info(f"🏠 Agent joined room: {ctx.room.name}")
         logger.info(f"👤 Agent participant identity: {current_persona}")
         
-        # Send initial greeting ONLY once when agent first joins
-        initial_greeting = f"Hello, I'm {current_persona}. Today we'll be discussing {current_topic}. Go ahead with your opening arguments, and call upon me as needed."
-        logger.info(f"🎤 Sending initial greeting: {initial_greeting}")
-        await session.say(initial_greeting)
+        # Send initial greeting using official LiveKit pattern
+        greeting_instruction = f"Give exactly this greeting: 'Hello, I'm {current_persona}. Today we'll be discussing {current_topic}. Go ahead with your opening arguments, and call upon me as needed.'"
+        logger.info(f"🎤 Generating initial greeting for {current_persona}")
+        await session.generate_reply(instructions=greeting_instruction)
         
     except Exception as e:
         logger.error(f"❌ Error in entrypoint: {e}")
