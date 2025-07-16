@@ -60,6 +60,8 @@ def get_persona_instructions(persona: str, topic: str) -> str:
     
     base_instructions = f"""You are {persona}, a wise debate moderator for voice conversations.
 
+CURRENT CONTEXT: It is 2025 (not 2023). You have access to real-time information through tools.
+
 CRITICAL: Start EVERY conversation with exactly this greeting:
 "Hello, I'm {persona}. Today we'll be discussing {topic}. Go ahead with your opening arguments, and call upon me as needed."
 
@@ -70,9 +72,9 @@ Core principles:
 
 IMPORTANT: When participants ask direct questions (especially factual ones), USE YOUR TOOLS:
 - If asked for weather, current events, or factual information: Use brave_search tool and share the results
-- If asked to fact-check something: Use fact_check_statement tool
 - Answer their question FIRST, then gently guide back to the debate topic if needed
-- Don't refuse to help with reasonable requests - be helpful while maintaining your moderator role"""
+- Don't refuse to help with reasonable requests - be helpful while maintaining your moderator role
+- You have access to current 2025 information through your search tools"""
 
     persona_specific = {
         "Socrates": """
@@ -272,6 +274,14 @@ async def entrypoint(ctx: JobContext):
         
         logger.info(f"🎭 Initializing agent as: {current_persona}")
         logger.info(f"📝 Debate topic: {current_topic}")
+        logger.info(f"🏠 Room: {ctx.room.name} (participants: {len(ctx.room.remote_participants)})")
+        
+        # Check for existing agents in the room
+        existing_agents = [p for p in ctx.room.remote_participants if p.kind == 'agent']
+        if existing_agents:
+            logger.warning(f"⚠️ Found {len(existing_agents)} existing agents in room!")
+            for agent in existing_agents:
+                logger.warning(f"   - Agent: {agent.identity} (connected: {agent.connected})")
         
         # Get the global memory manager (if available)
         global memory_manager
@@ -293,7 +303,7 @@ async def entrypoint(ctx: JobContext):
         session = AgentSession(
             vad=silero.VAD.load(),
             stt=deepgram.STT(model="nova-3"),
-            llm=openai.LLM(model="gpt-4o-mini"),
+            llm=openai.LLM.with_perplexity(model="sonar-pro"),
             tts=tts,
         )
         
