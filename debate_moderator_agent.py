@@ -58,9 +58,12 @@ current_topic = None
 def get_persona_instructions(persona: str, topic: str) -> str:
     """Generate persona-specific instructions based on the selected moderator"""
     
+    from datetime import datetime
+    current_date = datetime.now().strftime("%B %d, %Y")
+    
     base_instructions = f"""You are {persona}, a wise debate moderator for voice conversations.
 
-CURRENT CONTEXT: It is 2025 (not 2023). You have access to real-time information through tools.
+CURRENT CONTEXT: Today is {current_date}. You have access to real-time information through tools.
 
 CRITICAL: Start EVERY conversation with exactly this greeting:
 "Hello, I'm {persona}. Today we'll be discussing {topic}. Go ahead with your opening arguments, and call upon me as needed."
@@ -71,10 +74,9 @@ Core principles:
 - Allow natural pauses in conversation
 
 IMPORTANT: When participants ask direct questions (especially factual ones), USE YOUR TOOLS:
-- If asked for weather, current events, or factual information: Use brave_search tool and share the results
-- Answer their question FIRST, then gently guide back to the debate topic if needed
-- Don't refuse to help with reasonable requests - be helpful while maintaining your moderator role
-- You have access to current 2025 information through your search tools"""
+- If asked about weather, current events, or facts - use brave_search immediately
+- Don't refuse factual questions - that's what your tools are for
+- Share the information you find through your tools"""
 
     persona_specific = {
         "Socrates": """
@@ -160,6 +162,17 @@ async def brave_search(ctx: RunContext, query: str) -> str:
     
     # Clean up the query by removing opinion phrases and focusing on factual content
     cleaned_query = query.replace("I think", "").replace("I believe", "").replace("In my opinion", "").strip()
+    
+    # Enhance weather queries to get current conditions
+    if "weather" in cleaned_query.lower():
+        if "new york" in cleaned_query.lower() or "nyc" in cleaned_query.lower():
+            cleaned_query = "current weather temperature New York City today"
+        elif any(word in cleaned_query.lower() for word in ["temperature", "temp", "degrees"]):
+            # Already has temperature terms
+            cleaned_query = f"current {cleaned_query} today"
+        else:
+            cleaned_query = f"current weather {cleaned_query} today"
+    
     search_query = cleaned_query if cleaned_query else query
     
     # Headers following Brave Search API best practices from Context7 documentation
@@ -187,18 +200,46 @@ async def brave_search(ctx: RunContext, query: str) -> str:
             data = response.json()
             web_results = data.get("web", {}).get("results", [])
 
+            # DEBUG: Log raw results to understand what we're getting
+            logger.info(f"🔍 DEBUG: Brave Search returned {len(web_results)} results")
+            for i, result in enumerate(web_results[:3]):
+                title = result.get("title", "No title")
+                url = result.get("url", "")
+                description = result.get("description", "")
+                logger.info(f"🔍 DEBUG Result {i+1}: {title}")
+                logger.info(f"🔍 DEBUG URL {i+1}: {url}")
+                logger.info(f"🔍 DEBUG Description {i+1}: {description[:100]}...")
+
             if not web_results:
                 return f"No sources found for: {search_query}"
 
-            # Format results for concise presentation
+            # Format results for concise presentation, including descriptions for weather
             formatted_results = []
             for result in web_results:
                 title = result.get("title", "No title")
                 url = result.get("url", "")
+                description = result.get("description", "")
+                
+                # For weather queries, include temperature from description if available
+                temp_info = ""
+                if "weather" in search_query.lower() and description:
+                    # Extract temperature info from description
+                    if "°" in description or "degrees" in description.lower():
+                        # Find temperature mentions
+                        import re
+                        temp_matches = re.findall(r'\b\d+\s*°?[FfCc]?\b', description)
+                        if temp_matches:
+                            temp_info = f" - {temp_matches[0]}"
+                
                 # Truncate title if too long for voice
                 if len(title) > 60:
                     title = title[:57] + "..."
-                formatted_results.append(f"• {title}")
+                
+                result_line = f"• {title}"
+                if temp_info:
+                    result_line += temp_info
+                    
+                formatted_results.append(result_line)
             
             result_text = "\n".join(formatted_results)
             
@@ -303,7 +344,7 @@ async def entrypoint(ctx: JobContext):
         session = AgentSession(
             vad=silero.VAD.load(),
             stt=deepgram.STT(model="nova-3"),
-            llm=openai.LLM.with_perplexity(model="sonar-pro"),
+            llm=openai.LLM(model="gpt-4o-mini"),
             tts=tts,
         )
         
