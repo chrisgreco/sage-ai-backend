@@ -112,7 +112,7 @@ class DebateModerator(Agent):
         
         super().__init__(
             instructions=instructions,
-            tools=[moderate_discussion, brave_search, fact_check_statement, set_debate_topic],
+            tools=[moderate_discussion, brave_search, set_debate_topic],
         )
         
         logger.info(f"🎭 Created {persona} agent for topic: {topic}")
@@ -145,15 +145,20 @@ async def moderate_discussion(ctx: RunContext, intervention_type: str, guidance:
 @function_tool()
 async def brave_search(ctx: RunContext, query: str) -> str:
     """
-    Use the Brave Search API to get real-time search results for fact-checking.
-    Returns the top 3 results as title + URL pairs for verification.
+    Search for real-time information and fact-check statements using Brave Search API.
+    Can be used for weather, current events, or verifying claims made during debates.
+    Returns the top 3 results as formatted sources for verification.
     
     Args:
-        query: The search query to fact-check
+        query: The search query or statement to fact-check (will be automatically cleaned)
     """
     if not BRAVE_API_KEY:
-        logger.warning("⚠️ BRAVE_API_KEY not configured - fact-checking unavailable")
-        return "Fact-checking is currently unavailable. Please verify information independently."
+        logger.warning("⚠️ BRAVE_API_KEY not configured - search unavailable")
+        return "Search is currently unavailable. Please verify information independently."
+    
+    # Clean up the query by removing opinion phrases and focusing on factual content
+    cleaned_query = query.replace("I think", "").replace("I believe", "").replace("In my opinion", "").strip()
+    search_query = cleaned_query if cleaned_query else query
     
     # Headers following Brave Search API best practices from Context7 documentation
     headers = {
@@ -163,7 +168,7 @@ async def brave_search(ctx: RunContext, query: str) -> str:
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
     }
     params = {
-        "q": query,
+        "q": search_query,
         "count": 3,  # Get top 3 results for concise fact-checking
         "safesearch": "moderate",  # Filter inappropriate content
         "search_lang": "en",  # English language results
@@ -171,7 +176,7 @@ async def brave_search(ctx: RunContext, query: str) -> str:
     }
 
     try:
-        logger.info(f"🔍 Brave Search fact-check query: {query}")
+        logger.info(f"🔍 Brave Search query: {search_query}")
         
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(BRAVE_API_URL, headers=headers, params=params)
@@ -181,7 +186,7 @@ async def brave_search(ctx: RunContext, query: str) -> str:
             web_results = data.get("web", {}).get("results", [])
 
             if not web_results:
-                return f"No verification sources found for: {query}"
+                return f"No sources found for: {search_query}"
 
             # Format results for concise presentation
             formatted_results = []
@@ -199,7 +204,7 @@ async def brave_search(ctx: RunContext, query: str) -> str:
             if memory_manager:
                 try:
                     await memory_manager.store_fact_check(
-                        statement=query,
+                        statement=search_query,
                         status=f"Verified with sources: {result_text}"
                     )
                 except Exception as e:
@@ -210,32 +215,13 @@ async def brave_search(ctx: RunContext, query: str) -> str:
 
     except httpx.TimeoutException:
         logger.error("⏰ Brave Search request timed out")
-        return "Fact-checking timed out. Please verify information independently."
+        return "Search timed out. Please verify information independently."
     except httpx.HTTPStatusError as e:
         logger.error(f"❌ Brave Search HTTP error: {e.response.status_code}")
-        return "Fact-checking service temporarily unavailable."
+        return "Search service temporarily unavailable."
     except Exception as e:
         logger.error(f"❌ Brave Search error: {e}")
-        return f"Fact-checking failed: {str(e)}"
-
-@function_tool()
-async def fact_check_statement(ctx: RunContext, statement: str) -> str:
-    """
-    Fact-check a specific statement made during the debate using Brave Search.
-    
-    Args:
-        statement: The statement to fact-check
-    """
-    logger.info(f"🔍 Fact-checking statement: {statement}")
-    
-    # Create a focused search query from the statement
-    # Remove common debate phrases and focus on factual claims
-    search_query = statement.replace("I think", "").replace("I believe", "").replace("In my opinion", "").strip()
-    
-    # Use brave_search to get verification
-    search_result = await brave_search(ctx, search_query)
-    
-    return f"Fact-checking '{statement[:50]}...': {search_result}"
+        return f"Search failed: {str(e)}"
 
 @function_tool()
 async def set_debate_topic(ctx: RunContext, topic: str) -> str:
@@ -259,7 +245,7 @@ async def set_debate_topic(ctx: RunContext, topic: str) -> str:
         except Exception as e:
             logger.warning(f"Failed to store topic change in memory: {e}")
     
-    return f"I'll guide our discussion on: {topic}"
+    return f"Debate topic changed to: {topic}"
 
 # Main entrypoint following exact official pattern
 async def entrypoint(ctx: JobContext):
